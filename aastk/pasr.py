@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import subprocess
 
 from .util import extract_unique_keys, determine_file_type
 
@@ -98,3 +99,17 @@ def write_fq_matches(seq_file, ids):
                 line_count = 0  # Reset after each fastq record
                 if matching:
                     yield (header, sequence)
+
+def build_protein_db(protein_name, seed_fasta, threads):
+    # name the DB in accordance with pre-existing naming convention
+    db_name = f"{protein_name}_protein_db/{protein_name}_seed_db"
+
+    #try running the subprocess for the Diamond makedb command
+    try:
+        subprocess.run(
+            ["diamond", "makedb", "--in", seed_fasta, "-d", db_name, "-p", str(threads)]
+        )
+        print(f"The Diamond database {db_name} has been successfully created.")
+    except subprocess.CalledProcessError as e:
+        print(f"Error in building the DIAMOND database: {e}")
+        raise
