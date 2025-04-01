@@ -1,7 +1,71 @@
 #!/usr/bin/env python3
-import subprocess
 
 from .util import extract_unique_keys, determine_file_type
+
+import subprocess
+import os
+
+def build_protein_db(protein_name: str, seed_fasta: str, threads: int):
+    """
+        Builds a DIAMOND protein database from a seed FASTA file.
+
+        Args:
+            protein_name (str): Name of the protein for the database.
+            seed_fasta (str): Path to the FASTA file containing seed sequences.
+            threads (int): Number of threads to use.
+
+        Raises:
+            RuntimeError: If the DIAMOND database creation fails.
+    """
+    # name the DB in accordance with pre-existing naming convention
+    db_dir = f"{protein_name}_protein_db"
+    db_name = f"{db_dir}/{protein_name}_seed_db"
+
+    # ensure the directory exists
+    os.makedirs(db_dir, exist_ok=True)
+
+    #try running the subprocess for the Diamond makedb command
+    try:
+        subprocess.run(
+            ["diamond", "makedb", "--in", seed_fasta, "-d", db_name, "-p", str(threads)],
+            check=True
+        )
+    except subprocess.CalledProcessError as e:
+        print(f"Error in building the DIAMOND database: {e}")
+        raise
+
+def search_protein_db(db_path: str, query_path: str, threads: int, protein_name: str):
+        """
+    Searches a DIAMOND reference database for homologous sequences.
+
+    Args:
+        db_path (str): Path to the DIAMOND reference database.
+        query_path (str): Path to the query FASTA file containing sequences to be searched.
+        threads (int): Number of CPU threads to use for the search.
+        protein_name (str): Name of the target protein (used for output file naming or filtering).
+    Returns:
+        None: The function performs the search and outputs results to a file.
+    """
+    # define output path
+    output_dir = f"{protein_name}_protein_db"
+    output_path = f"{output_dir}/{protein_name}_hits"
+
+    # ensure the output directory exists
+    os.makedirs(output_dir, exist_ok=True)
+
+    try:
+        # run diamond blastp
+        subprocess.run(
+            ["diamond", "blastp", "-d", db_path, "-q", query_path, "-p", str(threads), "-o",
+             output_path, "-k", str(1), "--matrix", "blosum45", "--masking", str(0), "--outfmt", str(6),
+             "qseqid", "sseqid", "pident", "qlen", "slen", "length", "mismatch", "gapopen", "qstart",
+             "qend", "sstart", "send", "evalue", "bitscore", "score", "-b", str(6), "-c", str(2),
+             "--min-score", str(50), "--comp-based-stats", str(0), "--sensitive"],
+            check=True
+        )
+    except subprocess.CalledProcessError as e:
+        print(f"Error in DIAMOND blast p search: {e}")
+        raise
 
 def extract_matching_sequences(blast_tab: str, seq_file: str, out_fasta: str, key_column: int = 0):
     """
@@ -99,17 +163,3 @@ def write_fq_matches(seq_file, ids):
                 line_count = 0  # Reset after each fastq record
                 if matching:
                     yield (header, sequence)
-
-def build_protein_db(protein_name, seed_fasta, threads):
-    # name the DB in accordance with pre-existing naming convention
-    db_name = f"{protein_name}_protein_db/{protein_name}_seed_db"
-
-    #try running the subprocess for the Diamond makedb command
-    try:
-        subprocess.run(
-            ["diamond", "makedb", "--in", seed_fasta, "-d", db_name, "-p", str(threads)]
-        )
-        print(f"The Diamond database {db_name} has been successfully created.")
-    except subprocess.CalledProcessError as e:
-        print(f"Error in building the DIAMOND database: {e}")
-        raise
