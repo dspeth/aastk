@@ -34,8 +34,10 @@ def build_protein_db(protein_name: str, seed_fasta: str, threads: int):
         print(f"Error in building the DIAMOND database: {e}")
         raise
 
+    return db_name
+
 def search_protein_db(db_path: str, query_path: str, threads: int, protein_name: str):
-        """
+    """
     Searches a DIAMOND reference database for homologous sequences.
 
     Args:
@@ -67,6 +69,8 @@ def search_protein_db(db_path: str, query_path: str, threads: int, protein_name:
         print(f"Error in DIAMOND blast p search: {e}")
         raise
 
+    return output_path
+
 def extract_matching_sequences(blast_tab: str, seq_file: str, out_fasta: str, key_column: int = 0):
     """
     Extracts reads that have BLAST/DIAMOND hits against a custom database.
@@ -88,15 +92,15 @@ def extract_matching_sequences(blast_tab: str, seq_file: str, out_fasta: str, ke
     with open(out_fasta, "w") as out:
         # Use the appropriate generator based on the file type
         if file_type == "fasta":
-            with open(seq_file, "r") as sf:
-                for header, sequence in write_fa_matches(sf, matching_ids):
-                    out.write(f">{header}\n{sequence}\n")
+            print("File type: FASTA")
+            for header, sequence in write_fa_matches(seq_file, matching_ids):
+                out.write(f">{header}\n{sequence}\n")
         elif file_type == "fastq":
-            with open(seq_file, "r") as sf:
-                for header, sequence in write_fq_matches(sf, matching_ids):
-                    out.write(f">{header}\n{sequence}\n")
+            print("File type: FASTQ")
+            for header, sequence in write_fq_matches(seq_file, matching_ids):
+                out.write(f">{header}\n{sequence}\n")
 
-
+    return out_fasta
 
 def write_fa_matches(seq_file, ids):
     """
@@ -163,3 +167,57 @@ def write_fq_matches(seq_file, ids):
                 line_count = 0  # Reset after each fastq record
                 if matching:
                     yield (header, sequence)
+
+def calculate_max_scores(fasta_file: str, matrix_name: str, out_file: str):
+    # check if valid matrix was chosen
+    if matrix_name not in ["BLOSUM45", "BLOSUM62"]:
+        raise ValueError("Matrix must either be 'BLOSUM45' or 'BLOSUM62'!")
+
+    # define the diagonals of the usable BLOSUM matrices
+    blosum_diagonals = {
+        "BLOSUM45": {
+            'A': 5, 'R': 7, 'N': 6, 'D': 7, 'C': 12, 'Q': 6, 'E': 6, 'G': 7,
+            'H': 10, 'I': 5, 'L': 5, 'K': 5, 'M': 6, 'F': 8, 'P': 9, 'S': 4,
+            'T': 5, 'W': 15, 'Y': 8, 'V': 5, 'B': 5, 'J': 4, 'Z': 5, 'X': 0
+        },
+        "BLOSUM62": {
+            'A': 4, 'R': 5, 'N': 6, 'D': 6, 'C': 9, 'Q': 5, 'E': 5, 'G': 6,
+            'H': 8, 'I': 4, 'L': 4, 'K': 5, 'M': 5, 'F': 6, 'P': 7, 'S': 4,
+            'T': 5, 'W': 11, 'Y': 7, 'V': 4, 'B': 4, 'J': 3, 'Z': 4, 'X': 0
+        }
+    }
+
+    # read the fasta file containing matched sequences as obtained via pasr extract
+    sequences = {}
+    current_header = None
+
+    with open(fasta_file, 'r') as file:
+        for line in file:
+            line = line.strip()
+            if not line:
+                continue
+
+            if line.startswith(">"):
+                # get sequence ID and store corresponding sequences in the sequences dictionary
+                current_header = line.split()[0][1:]
+                sequences[current_header] = ""
+            else:
+                if current_header:
+                    sequences[current_header] += line
+
+        # calculate the max scores
+        max_scores = {}
+        for header, sequence in sequences.items():
+            score = 0
+            for amino_acid in sequence:
+                if amino_acid in blosum_diagonals[matrix_name]:
+                    score += blosum_diagonals[matrix_name][amino_acid]
+            max_scores[header] = score
+
+        # write the results of the step to specified output file
+        with open(out_file, 'w') as out:
+            out.write("Protein_id\tmax_score\n")
+            for header, score in max_scores.items():
+                out.write(f"{header}\t{score}\n")
+
+    return max_scores
