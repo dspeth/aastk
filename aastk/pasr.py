@@ -48,7 +48,7 @@ def search_protein_db(db_path: str, query_path: str, threads: int, protein_name:
     Returns:
         None: The function performs the search and outputs results to a file.
     """
-    # define output path
+    # define output path, get rid of this convention, required argument configurable by user
     output_dir = f"{protein_name}_protein_db"
     output_path = f"{output_dir}/{protein_name}_hits"
 
@@ -57,6 +57,9 @@ def search_protein_db(db_path: str, query_path: str, threads: int, protein_name:
 
     try:
         # run diamond blastp
+        # improvements: column names as single variable [expand list]
+        # -b and -c should be configurable by user, select reasonable defaults (leave them as they are for now)
+        # make sensitivity configurable
         subprocess.run(
             ["diamond", "blastp", "-d", db_path, "-q", query_path, "-p", str(threads), "-o",
              output_path, "-k", str(1), "--matrix", "blosum45", "--masking", str(0), "--outfmt", str(6),
@@ -115,7 +118,8 @@ def write_fa_matches(seq_file, ids):
     """
     matching = False
     sequence = ""
-    
+
+    ## parser can also be in util.py
     with open(seq_file, 'r') as sf:
         for line in sf:
             line = line.strip()
@@ -199,6 +203,7 @@ def calculate_max_scores(fasta_file: str, matrix_name: str, out_file: str):
 
             if line.startswith(">"):
                 # get sequence ID and store corresponding sequences in the sequences dictionary
+                # get rid of ">"
                 current_header = line.split()[0][1:]
                 sequences[current_header] = ""
             else:
@@ -219,5 +224,40 @@ def calculate_max_scores(fasta_file: str, matrix_name: str, out_file: str):
             out.write("Protein_id\tmax_score\n")
             for header, score in max_scores.items():
                 out.write(f"{header}\t{score}\n")
+
+    return max_scores
+
+
+def pasr(protein_name: str, seed_fasta: str, query_fasta: str, matrix_name: str, threads: int = 1):
+    """
+    Full PASR workflow to build a protein database, search for homologous sequences, extract matching sequences,
+    and calculate maximum scores using a BLOSUM matrix.
+
+    Args:
+        protein_name (str): Name of the protein for the analysis.
+        seed_fasta (str): Path to the FASTA file containing seed sequences for database creation.
+        query_fasta (str): Path to the FASTA file containing query sequences for searching the database.
+        matrix_name (str): The BLOSUM matrix to use for score calculation (either 'BLOSUM45' or 'BLOSUM62').
+        threads (int): Number of threads to use for database creation and search (default is 1).
+
+    Returns:
+        dict: A dictionary of protein headers and their corresponding maximum scores.
+    """
+    # Step 1: Build Protein Database
+    print(f"Building protein database for {protein_name}...")
+    db_path = build_protein_db(protein_name, seed_fasta, threads)
+
+    # Step 2: Search Protein Database
+    print(f"Searching protein database for homologous sequences...")
+    search_output = search_protein_db(db_path, query_fasta, threads, protein_name)
+
+    # Step 3: Extract Matching Sequences
+    print(f"Extracting matching sequences from the query file...")
+    matched_sequences = extract_matching_sequences(search_output, query_fasta,
+                                                   f"{protein_name}_matched_sequences.fasta")
+
+    # Step 4: Calculate Max Scores
+    print(f"Calculating maximum scores using the {matrix_name} matrix...")
+    max_scores = calculate_max_scores(matched_sequences, matrix_name, f"{protein_name}_max_scores.txt")
 
     return max_scores

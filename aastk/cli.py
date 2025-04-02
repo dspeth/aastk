@@ -6,7 +6,7 @@ from aastk.pasr import search_protein_db
 from aastk.pasr import extract_matching_sequences
 from aastk.pasr import calculate_max_scores
 
-
+# look at gtdbtk for cleaner parsing
 def parse_cli():
     parser = argparse.ArgumentParser(description="Amino Acid Sequence Toolkit")
     subparsers = parser.add_subparsers(dest="command", required=True)
