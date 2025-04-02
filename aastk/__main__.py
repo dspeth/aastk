@@ -13,9 +13,10 @@ if __name__ == "__main__":
     elif args.subparser_name == 'pasr':
         max_scores = pasr(
             protein_name=args.protein_name,
-            seed_fasta=args.seed,
+            seed_fasta=args.seeds,
             query_fasta=args.query,
             matrix_name=args.matrix,
-            threads=args.threads
+            threads=args.threads,
+            target_dir=args.output
         )
         print(f"PASR Results: {max_scores}")

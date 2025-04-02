@@ -27,14 +27,13 @@ def __seed_fasta(group, required=False):
     group.add_argument('-s', '--seeds', type=str, default=None, required=required,
                        help='Path to FASTA files containing seed sequences for database creation')
 
+def __target_dir(group, required=False):
+    group.add_argument('-o', '--output', type=str, default=None, required=required,
+                       help='Desired output location (default: current working directory)')
+
 def __threads(group, required=False):
     group.add_argument('-t', '--threads', type=int, default=1, required=required,
                        help='Number of threads to be used (default: 1)')
-
-
-
-
-
 
 def get_main_parser():
     main_parser = argparse.ArgumentParser(
@@ -48,6 +47,7 @@ def get_main_parser():
             __query_fasta(grp, required=True)
             __seed_fasta(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
-            __threads(grp, required=False)
+            __target_dir(grp)
+            __threads(grp)
 
     return main_parser
