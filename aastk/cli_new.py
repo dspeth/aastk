@@ -51,11 +51,3 @@ def get_main_parser():
             __threads(grp, required=False)
 
     return main_parser
-
-
-if __name__ == "__main__":
-    parser = get_main_parser()
-    args = parser.parse_args()
-
-    if not args.subparser_name:
-        parser.print_help()
