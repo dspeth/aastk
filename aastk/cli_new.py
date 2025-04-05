@@ -14,6 +14,10 @@ def __db(group, required=False):
     group.add_argument('-d', '--db', type=str, required=required,
                        help='Specify path to DIAMOND database')
 
+def __extracted(group, required=False):
+    group.add_argument('-e', '--extracted', type=str, required=required,
+                       help='Path to FASTA file containing extracted matching sequences')
+
 def __key_column(group, required=False):
     group.add_argument('-k', '--key_column', type=int, default=0, required=required,
                        help='Column index in the BLAST tab file to pull unique IDs from (default is 0)')
@@ -37,6 +41,12 @@ def __query(group, required=False):
 def __seed(group, required=False):
     group.add_argument('-s', '--seed', type=str, default=None, required=required,
                        help='Path to FASTA files containing seed sequences for database creation')
+
+def __sensitivity(group, required=False):
+    group.add_argument('--sensitivity', choices=['fast', 'sensitive', 'mid-sensitive', 'very-sensitive', 'ultra-sensitive', 'faster'], required=required,
+                       help='Set the sensitivity level for the DIAMOND search: fast, sensitive, mid-sensitive, very-sensitive, '
+                            'ultra-sensitive, or faster (default: fast)')
+
 
 def __tabular(group, required=False):
     group.add_argument('-t', '--tabular', type=str, default=None, required=required,
@@ -67,6 +77,7 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __threads(grp)
+            __sensitivity(grp)
 
     with subparser(sub_parsers, 'extract', 'Extract reads that have DIAMOND hits against custom database') as parser:
         with arg_group(parser, 'Required arguments') as grp:
@@ -75,6 +86,13 @@ def get_main_parser():
             __output(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __key_column(grp)
+
+    with subparser(sub_parsers, 'calculate', 'Calculate max scores for extracted sequences using BLOSUM matrix') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __extracted(grp, required=True)
+            __matrix(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
 
 
     with subparser(sub_parsers, 'pasr', 'PASR: protein alignment score ratio') as parser:

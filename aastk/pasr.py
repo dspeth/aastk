@@ -41,7 +41,7 @@ def build_protein_db(protein_name: str, seed_fasta: str, threads: int, db_dir: s
 
     return db_path
 
-def search_protein_db(db_path: str, query_path: str, protein_name: str, threads: int, output_dir: str):
+def search_protein_db(db_path: str, query_path: str, protein_name: str, threads: int, output_dir: str, sensitivity: str):
     """
     Searches a DIAMOND reference database for homologous sequences.
 
@@ -51,6 +51,7 @@ def search_protein_db(db_path: str, query_path: str, protein_name: str, threads:
         threads (int): Number of CPU threads to use for the search.
         protein_name (str): Name of the target protein (used for output file naming or filtering).
         output_dir (str): Directory where results should be stored. (Default: current working directory)
+        sensitivity (str): Choose sensitivity of diamond blastp search (Default: --fast)
 
     Returns:
         output_path: Path to output file.
@@ -63,6 +64,16 @@ def search_protein_db(db_path: str, query_path: str, protein_name: str, threads:
     os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, f"{protein_name}_hits.txt")
 
+    # define the output columns of interest
+    columns = ["qseqid", "sseqid", "pident", "qlen", "slen", "length", "mismatch", "gapopen", "qstart", "qend",
+               "sstart", "send", "evalue", "bitscore", "score"]
+
+    # check for sensitivity, if None set to default --fast
+    if sensitivity is None:
+        sensitivity = '--fast'
+    else:
+        sensitivity = '--' + str(sensitivity)
+
     try:
         # run diamond blastp
         # improvements: column names as single variable [expand list]
@@ -70,10 +81,8 @@ def search_protein_db(db_path: str, query_path: str, protein_name: str, threads:
         # make sensitivity configurable
         subprocess.run(
             ["diamond", "blastp", "-d", db_path, "-q", query_path, "-p", str(threads), "-o",
-             output_path, "-k", str(1), "--matrix", "blosum45", "--masking", str(0), "--outfmt", str(6),
-             "qseqid", "sseqid", "pident", "qlen", "slen", "length", "mismatch", "gapopen", "qstart",
-             "qend", "sstart", "send", "evalue", "bitscore", "score", "-b", str(6), "-c", str(2),
-             "--min-score", str(50), "--comp-based-stats", str(0), "--sensitive"],
+             output_path, "-k", str(1), "--matrix", "blosum45", "--masking", str(0), "--outfmt", str(6), *columns, "-b", str(6), "-c", str(2),
+             "--min-score", str(50), "--comp-based-stats", str(0), sensitivity],
             check=True
         )
     except subprocess.CalledProcessError as e:
@@ -189,13 +198,13 @@ def write_fq_matches(seq_file, ids):
                 if matching:
                     yield (header, sequence)
 
-def calculate_max_scores(fasta_file: str, matrix_name: str, output_dir: str):
+def calculate_max_scores(extracted: str, matrix: str, output_dir: str):
     """
     Calculates max scores for sequences using a BLOSUM matrix.
 
     Args:
-        fasta_file (str): Path to the extracted FASTA file.
-        matrix_name (str): BLOSUM matrix name ('BLOSUM45' or 'BLOSUM62').
+        extracted (str): Path to the extracted FASTA file.
+        matrix (str): BLOSUM matrix name ('BLOSUM45' or 'BLOSUM62').
         output_dir (str): Directory where the output file should be stored.
 
     Returns:
@@ -210,7 +219,7 @@ def calculate_max_scores(fasta_file: str, matrix_name: str, output_dir: str):
     out_file = os.path.join(output_dir, "max_scores.txt")
 
     # check if valid matrix was chosen
-    if matrix_name not in ["BLOSUM45", "BLOSUM62"]:
+    if matrix not in ["BLOSUM45", "BLOSUM62"]:
         raise ValueError("Matrix must either be 'BLOSUM45' or 'BLOSUM62'!")
 
     # define the diagonals of the usable BLOSUM matrices
@@ -231,7 +240,7 @@ def calculate_max_scores(fasta_file: str, matrix_name: str, output_dir: str):
     sequences = {}
     current_header = None
 
-    with open(fasta_file, 'r') as file:
+    with open(extracted, 'r') as file:
         for line in file:
             line = line.strip()
             if not line:
@@ -251,8 +260,8 @@ def calculate_max_scores(fasta_file: str, matrix_name: str, output_dir: str):
         for header, sequence in sequences.items():
             score = 0
             for amino_acid in sequence:
-                if amino_acid in blosum_diagonals[matrix_name]:
-                    score += blosum_diagonals[matrix_name][amino_acid]
+                if amino_acid in blosum_diagonals[matrix]:
+                    score += blosum_diagonals[matrix][amino_acid]
             max_scores[header] = score
 
         # write the results of the step to specified output file
