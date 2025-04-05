@@ -5,15 +5,15 @@ from .util import extract_unique_keys, determine_file_type
 import subprocess
 import os
 
-def build_protein_db(target_dir: str, protein_name: str, seed_fasta: str, threads: int):
+def build_protein_db(protein_name: str, seed_fasta: str, threads: int, db_dir: str):
     """
         Builds a DIAMOND protein database from a seed FASTA file.
 
         Args:
-            target_dir (str): Directory where the database should be stored.
             protein_name (str): Name of the protein for the database.
             seed_fasta (str): Path to the FASTA file containing seed sequences.
             threads (int): Number of threads to use.
+            db_dir (str): Directory where the database should be stored. (Default: current working directory)
 
         Returns:
             db_path: Path to DIAMOND protein database.
@@ -21,9 +21,13 @@ def build_protein_db(target_dir: str, protein_name: str, seed_fasta: str, thread
         Raises:
             RuntimeError: If the DIAMOND database creation fails.
     """
+    # check for db_dir
+    if db_dir is None:
+        db_dir = '.'
+
     # configure target directory and ensure target directory exists
-    os.makedirs(target_dir, exist_ok=True)
-    db_path = os.path.join(target_dir, f"{protein_name}_seed_db")
+    os.makedirs(db_dir, exist_ok=True)
+    db_path = os.path.join(db_dir, f"{protein_name}_seed_db")
 
     #try running the subprocess for the Diamond makedb command
     try:
@@ -37,7 +41,7 @@ def build_protein_db(target_dir: str, protein_name: str, seed_fasta: str, thread
 
     return db_path
 
-def search_protein_db(db_path: str, query_path: str, threads: int, protein_name: str, target_dir: str):
+def search_protein_db(db_path: str, query_path: str, protein_name: str, threads: int, output_dir: str):
     """
     Searches a DIAMOND reference database for homologous sequences.
 
@@ -46,14 +50,18 @@ def search_protein_db(db_path: str, query_path: str, threads: int, protein_name:
         query_path (str): Path to the query FASTA file containing sequences to be searched.
         threads (int): Number of CPU threads to use for the search.
         protein_name (str): Name of the target protein (used for output file naming or filtering).
-        target_dir (str): Directory where results should be stored.
+        output_dir (str): Directory where results should be stored. (Default: current working directory)
 
     Returns:
         output_path: Path to output file.
     """
+    # check for output_dir
+    if output_dir is None:
+        output_dir = '.'
+
     # make sure target_dir exists and define results location and file name
-    os.makedirs(target_dir, exist_ok=True)
-    output_path = os.path.join(target_dir, f"{protein_name}_hits.txt")
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, f"{protein_name}_hits.txt")
 
     try:
         # run diamond blastp
@@ -74,41 +82,42 @@ def search_protein_db(db_path: str, query_path: str, threads: int, protein_name:
 
     return output_path
 
-def extract_matching_sequences(blast_tab: str, seq_file: str, target_dir: str, key_column: int = 0):
+def extract_matching_sequences(blast_tab: str, query_path: str, output_dir: str, key_column: int = 0):
     """
     Extracts reads that have BLAST/DIAMOND hits against a custom database.
 
     Args:
         blast_tab: Tabular BLAST/DIAMOND output file.
-        read_file: Fasta or fastq file containing sequencing reads used as BLAST/DIAMOND queries.
-        out_fasta: Output file to store matched sequences.
-        target_dir (str): Directory where extracted sequences should be stored.
+        query_path: Fasta or fastq file containing sequencing reads used as BLAST/DIAMOND queries.
+        output_dir (str): Directory where extracted sequences should be stored.
         key_column: Column index in the BLAST tab file to pull unique IDs from (default is 0).
-
     Returns:
         out_fasta: Path to output FASTA file.
     """
+    # check for output_dir
+    if output_dir is None:
+        output_dir = '.'
+
     # make sure target directory exists and define path to output FASTA
-    os.makedirs(target_dir, exist_ok=True)
-    out_fasta = os.path.join(target_dir, "matched_sequences.fasta")
+    os.makedirs(output_dir, exist_ok=True)
+    out_fasta = os.path.join(output_dir, "matched_sequences.fasta")
 
     # Extract unique keys (query IDs) from the specified column of the BLAST tab file
     matching_ids = extract_unique_keys(blast_tab, key_column)
 
     # Determine file type (fasta or fastq)
-    file_type = determine_file_type(seq_file)
-
+    file_type = determine_file_type(query_path)
 
     # Open the output file for writing
     with open(out_fasta, "w") as out:
         # Use the appropriate generator based on the file type
         if file_type == "fasta":
             print("File type: FASTA")
-            for header, sequence in write_fa_matches(seq_file, matching_ids):
+            for header, sequence in write_fa_matches(query_path, matching_ids):
                 out.write(f">{header}\n{sequence}\n")
         elif file_type == "fastq":
             print("File type: FASTQ")
-            for header, sequence in write_fq_matches(seq_file, matching_ids):
+            for header, sequence in write_fq_matches(query_path, matching_ids):
                 out.write(f">{header}\n{sequence}\n")
 
     return out_fasta
@@ -180,21 +189,25 @@ def write_fq_matches(seq_file, ids):
                 if matching:
                     yield (header, sequence)
 
-def calculate_max_scores(fasta_file: str, matrix_name: str, target_dir: str):
+def calculate_max_scores(fasta_file: str, matrix_name: str, output_dir: str):
     """
     Calculates max scores for sequences using a BLOSUM matrix.
 
     Args:
         fasta_file (str): Path to the extracted FASTA file.
         matrix_name (str): BLOSUM matrix name ('BLOSUM45' or 'BLOSUM62').
-        target_dir (str): Directory where the output file should be stored.
+        output_dir (str): Directory where the output file should be stored.
 
     Returns:
         max_scores: Dictionary of protein headers and their max scores.
     """
+    # check for output_dir
+    if output_dir is None:
+        output_dir = '.'
+
     # check if target_dir exists and define path to output file
-    os.makedirs(target_dir, exist_ok=True)
-    out_file = os.path.join(target_dir, "max_scores.txt")
+    os.makedirs(output_dir, exist_ok=True)
+    out_file = os.path.join(output_dir, "max_scores.txt")
 
     # check if valid matrix was chosen
     if matrix_name not in ["BLOSUM45", "BLOSUM62"]:
@@ -251,24 +264,30 @@ def calculate_max_scores(fasta_file: str, matrix_name: str, target_dir: str):
     return max_scores
 
 
-def pasr(protein_name: str, seed_fasta: str, query_fasta: str, matrix_name: str, threads: int = 1,
-         target_dir: str = "."):
+def pasr(db_dir: str, protein_name: str, seed_fasta: str, query_fasta: str, matrix_name: str,
+         output_dir: str, key_column: int = 0, threads: int = 1,):
     """
     PASR workflow with configurable output directory.
 
     Args:
+        db_dir (str): Path to DIAMOND database directory
         protein_name (str): Protein name.
         seed_fasta (str): Path to seed FASTA.
         query_fasta (str): Path to query FASTA.
         matrix_name (str): BLOSUM matrix ('BLOSUM45' or 'BLOSUM62').
+        output_dir (str): Output directory for (default: current directory).
+        key_column: Column index in the BLAST tab file to pull unique IDs from (default is 0).
         threads (int): Number of threads (default: 1).
-        target_dir (str): Target directory for outputs (default: current directory).
     """
-    #get full path to target dir
-    target_dir = os.path.abspath(target_dir)
-    print(f"Running PASR workflow. Output directory: {target_dir}")
+    # check for output_dir
+    if output_dir is None:
+        output_dir = '.'
 
-    db_path = build_protein_db(target_dir, protein_name, seed_fasta, threads)
-    search_output = search_protein_db(db_path, query_fasta, threads, protein_name, target_dir)
-    matched_fasta = extract_matching_sequences(search_output, query_fasta, target_dir)
-    return calculate_max_scores(matched_fasta, matrix_name, target_dir)
+    #get full path to target dir
+    output_dir = os.path.abspath(output_dir)
+    print(f"Running PASR workflow. Output directory: {output_dir}")
+
+    db_path = build_protein_db(protein_name, seed_fasta, threads, db_dir)
+    search_output = search_protein_db(db_path, query_fasta, protein_name, threads, output_dir)
+    matched_fasta = extract_matching_sequences(search_output, query_fasta, output_dir, key_column)
+    return calculate_max_scores(matched_fasta, matrix_name, output_dir)

@@ -10,13 +10,32 @@ if __name__ == "__main__":
     # If no subcommand is specified, print help
     if not args.subparser_name:
         parser.print_help()
+
+    elif args.subparser_name == 'build':
+        db_path = build_protein_db(
+            db_dir=args.db,
+            protein_name=args.protein_name,
+            seed_fasta=args.seed,
+            threads=args.threads
+        )
+
+    elif args.subparser_name == 'search':
+        search_results = search_protein_db(
+            db_path=args.db,
+            query_path=args.query,
+            protein_name=args.protein_name,
+            output_dir=args.output,
+            threads=args.threads
+        )
+
     elif args.subparser_name == 'pasr':
         max_scores = pasr(
+            db_dir=args.db,
             protein_name=args.protein_name,
-            seed_fasta=args.seeds,
+            seed_fasta=args.seed,
             query_fasta=args.query,
             matrix_name=args.matrix,
             threads=args.threads,
-            target_dir=args.output
+            output_dir=args.output
         )
         print(f"PASR Results: {max_scores}")
