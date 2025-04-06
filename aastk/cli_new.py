@@ -10,6 +10,14 @@ def subparser(parser, name, description):
 def arg_group(parser, name):
     yield parser.add_argument_group(name)
 
+def __block(group, required=False):
+    group.add_argument('-b', '--block', type=int, required=required,
+                       help='Choose diamond blastp sequence block size in billions of letters. (Default: 6)')
+
+def __chunk(group, required=False):
+    group.add_argument('-c', '--chunk', type=int, required=required,
+                       help='Choose number of chunks for diamond blastp index processing. (Default: 2)')
+
 def __db(group, required=False):
     group.add_argument('-d', '--db', type=str, required=required,
                        help='Specify path to DIAMOND database')
@@ -25,6 +33,10 @@ def __key_column(group, required=False):
 def __matrix(group, required=False):
     group.add_argument('-m', '--matrix', choices=['BLOSUM45', 'BLOSUM62'], required=required,
                        help='Choose BLOSUM substitution matrix (BLOSUM 45 or BLOSUM 62)')
+
+def __max_scores(group, required=False):
+    group.add_argument('-m', '--max_scores', type=str, required=required,
+                       help='Path to file containing max self scores')
 
 def __output(group, required=False):
     group.add_argument('-o', '--output', type=str, required=required,
@@ -46,7 +58,6 @@ def __sensitivity(group, required=False):
     group.add_argument('--sensitivity', choices=['fast', 'sensitive', 'mid-sensitive', 'very-sensitive', 'ultra-sensitive', 'faster'], required=required,
                        help='Set the sensitivity level for the DIAMOND search: fast, sensitive, mid-sensitive, very-sensitive, '
                             'ultra-sensitive, or faster (default: fast)')
-
 
 def __tabular(group, required=False):
     group.add_argument('-t', '--tabular', type=str, default=None, required=required,
@@ -77,6 +88,8 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __threads(grp)
+            __block(grp)
+            __chunk(grp)
             __sensitivity(grp)
 
     with subparser(sub_parsers, 'extract', 'Extract reads that have DIAMOND hits against custom database') as parser:
@@ -94,6 +107,13 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
 
+    with subparser(sub_parsers, 'bsr', 'Compute BSR (Blast Score Ratio) using a BLAST tab file and max scores from a TSV.') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __tabular(grp, required=True)
+            __max_scores(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
+            __key_column(grp)
 
     with subparser(sub_parsers, 'pasr', 'PASR: protein alignment score ratio') as parser:
         with arg_group(parser, 'Required arguments') as grp:
@@ -106,5 +126,8 @@ def get_main_parser():
             __output(grp)
             __threads(grp)
             __key_column(grp)
+            __block(grp)
+            __chunk(grp)
+            __sensitivity(grp)
 
     return main_parser

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from .util import extract_unique_keys, determine_file_type
+from .util import extract_unique_keys, determine_file_type, write_fa_matches, write_fq_matches
 
 import subprocess
 import os
@@ -41,7 +41,7 @@ def build_protein_db(protein_name: str, seed_fasta: str, threads: int, db_dir: s
 
     return db_path
 
-def search_protein_db(db_path: str, query_path: str, protein_name: str, threads: int, output_dir: str, sensitivity: str):
+def search_protein_db(db_path: str, query_path: str, protein_name: str, threads: int, output_dir: str, sensitivity: str, block: int, chunk: int):
     """
     Searches a DIAMOND reference database for homologous sequences.
 
@@ -52,9 +52,11 @@ def search_protein_db(db_path: str, query_path: str, protein_name: str, threads:
         protein_name (str): Name of the target protein (used for output file naming or filtering).
         output_dir (str): Directory where results should be stored. (Default: current working directory)
         sensitivity (str): Choose sensitivity of diamond blastp search (Default: --fast)
+        block (int): Choose diamond blastp sequence block size in billions of letters. (Default: 6)
+        chunk (int): Choose number of chunks for diamond blastp index processing. (Default: 2)
 
     Returns:
-        output_path: Path to output file.
+        output_path: Path to tabular BLAST output file.
     """
     # check for output_dir
     if output_dir is None:
@@ -74,14 +76,19 @@ def search_protein_db(db_path: str, query_path: str, protein_name: str, threads:
     else:
         sensitivity = '--' + str(sensitivity)
 
+    # check for block size
+    if block is None:
+        block = 6
+
+    # check for chunk number
+    if chunk is None:
+        chunk = 2
+
     try:
         # run diamond blastp
-        # improvements: column names as single variable [expand list]
-        # -b and -c should be configurable by user, select reasonable defaults (leave them as they are for now)
-        # make sensitivity configurable
         subprocess.run(
             ["diamond", "blastp", "-d", db_path, "-q", query_path, "-p", str(threads), "-o",
-             output_path, "-k", str(1), "--matrix", "blosum45", "--masking", str(0), "--outfmt", str(6), *columns, "-b", str(6), "-c", str(2),
+             output_path, "-k", str(1), "--matrix", "blosum45", "--masking", str(0), "--outfmt", str(6), *columns, "-b", str(block), "-c", str(chunk),
              "--min-score", str(50), "--comp-based-stats", str(0), sensitivity],
             check=True
         )
@@ -130,73 +137,6 @@ def extract_matching_sequences(blast_tab: str, query_path: str, output_dir: str,
                 out.write(f">{header}\n{sequence}\n")
 
     return out_fasta
-
-def write_fa_matches(seq_file, ids):
-    """
-    Generator function to process FASTA file and yield matching sequences in fasta format.
-
-    Args:
-    - seq_file: Path to the fasta file containing the sequences to search.
-    - ids: set of ids to retrieve matches for.
-
-    Yields:
-    - Header and sequence of matching sequences.
-    """
-    matching = False
-    sequence = ""
-
-    ## parser can also be in util.py
-    with open(seq_file, 'r') as sf:
-        for line in sf:
-            line = line.strip()
-            if line.startswith(">"):
-                if matching:
-                    yield (header, sequence)
-                sequence = ""
-                seq_id = line.split()[0][1:]  # Get the query ID without '>'
-                if seq_id in ids:
-                    matching = True
-                    header = line
-                else:
-                    matching = False
-            elif matching:
-                sequence += line
-
-        if matching:
-            yield (header, sequence)
-
-
-def write_fq_matches(seq_file, ids):
-    """
-    Generator function to process FASTQ file and yield matching sequences in fasta format.
-
-    Args:
-    - seq_file: Path to the fastq file containing the sequences to search.
-    - ids: set of ids to retrieve matches for.
-
-    Yields:
-    - Header and sequence of matching sequences (converted to fasta format).
-    """
-    matching = False
-    line_count = 0
-    sequence = ""
-
-    with open(seq_file, 'r') as sf:
-        for line in sf:
-            line = line.strip()
-            line_count += 1
-
-            if line_count == 1:
-                seq_id = line.split()[0][1:]  # Get the query ID without '@'
-                matching = seq_id in ids
-                if matching:
-                    header = seq_id  # Store the fastq ID to convert to fasta format
-            elif line_count == 2 and matching:
-                sequence = line  # Store the sequence for matching read
-            elif line_count == 4:
-                line_count = 0  # Reset after each fastq record
-                if matching:
-                    yield (header, sequence)
 
 def calculate_max_scores(extracted: str, matrix: str, output_dir: str):
     """
@@ -248,8 +188,7 @@ def calculate_max_scores(extracted: str, matrix: str, output_dir: str):
 
             if line.startswith(">"):
                 # get sequence ID and store corresponding sequences in the sequences dictionary
-                # get rid of ">"
-                current_header = line.split()[0][1:]
+                current_header = line.replace('>','')
                 sequences[current_header] = ""
             else:
                 if current_header:
@@ -270,11 +209,58 @@ def calculate_max_scores(extracted: str, matrix: str, output_dir: str):
             for header, score in max_scores.items():
                 out.write(f"{header}\t{score}\n")
 
-    return max_scores
+    return out_file
 
+def blast_score_ratio(blast_tab: str, max_scores_path: str, output_dir: str, key_column: int = 0):
+    """
+    Computes BSR (Blast Score Ratio) using a BLAST tab file and max scores from a TSV.
+
+    Args:
+        blast_tab (str): Path to DIAMOND/BLAST output file (must include 'score' column).
+        max_scores_path (str): Path to TSV file with max scores (headers: Protein_id, max_score).
+        output_dir (str): Directory to save the BSR results.
+        key_column (int): Column index in blast_tab to use for matching. (Default: 0 for 'qseqid')
+
+    Returns:
+        bsr_output (str): Path to the output file with BSR values.
+    """
+    # check for output_dir
+    if output_dir is None:
+        output_dir = '.'
+
+    # ensure output directory exists
+    os.makedirs(output_dir, exist_ok=True)
+    bsr_file = os.path.join(output_dir, "blast_score_ratios.txt")
+
+    # parse the max_scores.tsv file
+    max_scores = {}
+    with open(max_scores_path) as tsv:
+        header = tsv.readline()
+        for line in tsv:
+            parts = line.strip().split('\t')
+            if len(parts) >= 2:
+                max_scores[parts[0]] = float(parts[1])
+
+    with open(blast_tab) as infile, open(bsr_file, 'w') as out:
+        out.write("qseqid\tsseqid\tscore\tmax_score\tBSR\n")
+
+        for line in infile:
+            parts = line.strip().split('\t')
+            key = parts[key_column]
+            try:
+                raw_score = float(parts[14])
+                max_score = max_scores[key]
+                bsr = raw_score / max_score
+                out.write(f"{parts[0]}\t{parts[1]}\t{raw_score:.1f}\t{max_score:.1f}\t{bsr:.4f}\n")
+            except KeyError:
+                print(f"Warning: No max score found for {key}")
+            except ValueError:
+                print(f"Warning: Couldn't convert score to float for line: {line.strip()}")
+
+    return bsr_file
 
 def pasr(db_dir: str, protein_name: str, seed_fasta: str, query_fasta: str, matrix_name: str,
-         output_dir: str, key_column: int = 0, threads: int = 1,):
+         output_dir: str, sensitivity: str, block: int, chunk: int, key_column: int = 0, threads: int = 1,):
     """
     PASR workflow with configurable output directory.
 
@@ -285,6 +271,9 @@ def pasr(db_dir: str, protein_name: str, seed_fasta: str, query_fasta: str, matr
         query_fasta (str): Path to query FASTA.
         matrix_name (str): BLOSUM matrix ('BLOSUM45' or 'BLOSUM62').
         output_dir (str): Output directory for (default: current directory).
+        sensitivity (str): Choose sensitivity of diamond blastp search (Default: --fast)
+        block (int): Choose diamond blastp sequence block size in billions of letters. (Default: 6)
+        chunk (int): Choose number of chunks for diamond blastp index processing. (Default: 2)
         key_column: Column index in the BLAST tab file to pull unique IDs from (default is 0).
         threads (int): Number of threads (default: 1).
     """
@@ -297,6 +286,7 @@ def pasr(db_dir: str, protein_name: str, seed_fasta: str, query_fasta: str, matr
     print(f"Running PASR workflow. Output directory: {output_dir}")
 
     db_path = build_protein_db(protein_name, seed_fasta, threads, db_dir)
-    search_output = search_protein_db(db_path, query_fasta, protein_name, threads, output_dir)
+    search_output = search_protein_db(db_path, query_fasta, protein_name, threads, output_dir, sensitivity, block, chunk)
     matched_fasta = extract_matching_sequences(search_output, query_fasta, output_dir, key_column)
-    return calculate_max_scores(matched_fasta, matrix_name, output_dir)
+    max_scores = calculate_max_scores(matched_fasta, matrix_name, output_dir)
+    return blast_score_ratio(search_output, max_scores, output_dir, key_column)

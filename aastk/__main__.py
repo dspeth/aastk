@@ -26,7 +26,9 @@ if __name__ == "__main__":
             protein_name=args.protein_name,
             output_dir=args.output,
             threads=args.threads,
-            sensitivity=args.sensitivity
+            sensitivity=args.sensitivity,
+            block=args.block,
+            chunk=args.chunk
         )
 
     elif args.subparser_name == 'extract':
@@ -44,14 +46,24 @@ if __name__ == "__main__":
             output_dir=args.output
         )
 
+    elif args.subparser_name == 'bsr':
+        blast_score_ratio(
+            blast_tab=args.tabular,
+            max_scores_path=args.max_scores,
+            output_dir=args.output,
+            key_column=args.key_column
+        )
+
     elif args.subparser_name == 'pasr':
-        max_scores = pasr(
+        pasr(
             db_dir=args.db,
             protein_name=args.protein_name,
             seed_fasta=args.seed,
             query_fasta=args.query,
             matrix_name=args.matrix,
             threads=args.threads,
-            output_dir=args.output
+            output_dir=args.output,
+            block=args.block,
+            chunk=args.chunk,
+            sensitivity=args.sensitivity
         )
-        print(f"PASR Results: {max_scores}")
