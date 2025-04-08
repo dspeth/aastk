@@ -1,76 +1,143 @@
 #!/usr/bin/env python3
-
 import argparse
-from aastk.pasr import build_protein_db
-from aastk.pasr import search_protein_db
-from aastk.pasr import extract_matching_sequences
-from aastk.pasr import calculate_max_scores
+from contextlib import contextmanager
 
-# look at gtdbtk for cleaner parsing
-def parse_cli():
-    parser = argparse.ArgumentParser(description="Amino Acid Sequence Toolkit")
-    subparsers = parser.add_subparsers(dest="command", required=True)
+@contextmanager
+def subparser(parser, name, description):
+    yield parser.add_parser(name, conflict_handler='resolve', help=description)
 
-    # top level command for 'pasr'
-    pasr_parser = subparsers.add_parser("pasr", help="PASR: protein alignment score ratio")
-    pasr_subparsers = pasr_parser.add_subparsers(dest="subcommand", required=True)
+@contextmanager
+def arg_group(parser, name):
+    yield parser.add_argument_group(name)
 
-    # subparser for pasr build-db
-    build_db_parser = pasr_subparsers.add_parser("build-db", help="Build a DIAMOND database")
-    build_db_parser.add_argument("-p", "--protein_name", required=True, help="Protein name for the database")
-    build_db_parser.add_argument("-f", "--seed_fasta", required=True, help="Seed FASTA file")
-    build_db_parser.add_argument("-t", "--threads", type=int, help="Threads for makedb")
+def __block(group, required=False):
+    group.add_argument('-b', '--block', type=int, required=required,
+                       help='Choose diamond blastp sequence block size in billions of letters. (Default: 6)')
 
-    # subparser for pasr search-db
-    search_db_parser = pasr_subparsers.add_parser("search-db", help="Search DIAMOND database")
-    search_db_parser.add_argument("-d", "--db_path", required=True, help="Path to DIAMOND reference database")
-    search_db_parser.add_argument("-q", "--query_path", required=True, help="Query FASTA file")
-    search_db_parser.add_argument("-p", "--protein_name", required=True, help="Protein of interest")
-    search_db_parser.add_argument("-t", "--threads", type=int, help="Threads for search")
+def __bsr(group, required=False):
+    group.add_argument('-b', '--bsr', type=str, required=required,
+                       help='Path to blast score ratio input file.')
 
-    # subparser for pasr extract
-    extract_parser = pasr_subparsers.add_parser("extract", help="Extract matched sequences")
-    extract_parser.add_argument("-b", "--blast_tab", required=True, help="BLAST/DIAMOND tabular output file")
-    extract_parser.add_argument("-s", "--seq_file", required=True, help="FASTA or FASTQ file")
-    extract_parser.add_argument("-o", "--out_fasta", required=True, help="Output file for matched sequences")
+def __chunk(group, required=False):
+    group.add_argument('-c', '--chunk', type=int, required=required,
+                       help='Choose number of chunks for diamond blastp index processing. (Default: 2)')
 
-    # subparser for pasr max - score
-    max_score_parser = pasr_subparsers.add_parser("max-score", help="Calculate maximum BLOSUM alignment score for sequences")
-    max_score_parser.add_argument("-f", "--fasta", required=True, help="Protein FASTA file")
-    max_score_parser.add_argument("-m", "--matrix", required=True, choices=["BLOSUM45", "BLOSUM62"], help="BLOSUM matrix to use (BLOSUM45 or BLOSUM62)")
-    max_score_parser.add_argument("-o", "--output", required=True, help="Output file for scores")
+def __db(group, required=False):
+    group.add_argument('-d', '--db', type=str, required=required,
+                       help='Specify path to DIAMOND database')
 
-    # subparser for pasr all
-    all_parser = pasr_subparsers.add_parser("all", help="Run all steps: build-db, search-db, extract, max-score")
-    all_parser.add_argument("-p", "--protein_name", required=True, help="Protein name for the database")
-    all_parser.add_argument("-f", "--seed_fasta", required=True, help="Seed FASTA file")
-    all_parser.add_argument("-q", "--query_path", required=True, help="Query FASTA file")
-    all_parser.add_argument("-t", "--threads", type=int, required=True, help="Threads for all steps")
-    all_parser.add_argument("-m", "--matrix", required=True, choices=["BLOSUM45", "BLOSUM62"], help="BLOSUM matrix to use (BLOSUM45 or BLOSUM62)")
-    all_parser.add_argument("-s", "--matched", required=True, help="Path to matched sequences FASTA")
-    all_parser.add_argument("-o", "--output", required=True, help="Output file for max score results")
+def __extracted(group, required=False):
+    group.add_argument('-e', '--extracted', type=str, required=required,
+                       help='Path to FASTA file containing extracted matching sequences')
 
-    args = parser.parse_args()
+def __key_column(group, required=False):
+    group.add_argument('-k', '--key_column', type=int, default=0, required=required,
+                       help='Column index in the BLAST tab file to pull unique IDs from (default is 0)')
 
-    # check if pasr functionalities should be run
-    if args.command == "pasr":
-        if args.subcommand == "build-db":
-            build_protein_db(args.protein_name, args.seed_fasta, args.threads)
+def __matrix(group, required=False):
+    group.add_argument('-m', '--matrix', choices=['BLOSUM45', 'BLOSUM62'], required=required,
+                       help='Choose BLOSUM substitution matrix (BLOSUM 45 or BLOSUM 62)')
 
-        elif args.subcommand == "search-db":
-            search_protein_db(args.db_path, args.query_path, args.threads, args.protein_name)
+def __max_scores(group, required=False):
+    group.add_argument('-m', '--max_scores', type=str, required=required,
+                       help='Path to file containing max self scores')
 
-        elif args.subcommand == "extract":
-            extract_matching_sequences(args.blast_tab, args.seq_file, args.out_fasta)
+def __output(group, required=False):
+    group.add_argument('-o', '--output', type=str, required=required,
+                       help='Desired output location (default: current working directory)')
 
-        elif args.subcommand == "max-score":
-            calculate_max_scores(args.fasta, args.matrix, args.output)
+def __protein_name(group, required=False):
+    group.add_argument('-p', '--protein_name', type=str, default=None, required=required,
+                       help='Name of protein of interest')
 
-        elif args.subcommand == "all":
-            db_path = build_protein_db(args.protein_name, args.seed_fasta, args.threads)
-            blast_tab = search_protein_db(db_path, args.query_path, args.threads, args.protein_name)
-            fasta = extract_matching_sequences(blast_tab, args.query_path, args.matched)
-            calculate_max_scores(fasta, args.matrix, args.output)
+def __query(group, required=False):
+    group.add_argument('-q', '--query', type=str, default=None, required=required,
+                       help='Path to query FASTA')
 
-if __name__ == "__main__":
-    parse_cli()
+def __seed(group, required=False):
+    group.add_argument('-s', '--seed', type=str, default=None, required=required,
+                       help='Path to FASTA files containing seed sequences for database creation')
+
+def __sensitivity(group, required=False):
+    group.add_argument('--sensitivity', choices=['fast', 'sensitive', 'mid-sensitive', 'very-sensitive', 'ultra-sensitive', 'faster'], required=required,
+                       help='Set the sensitivity level for the DIAMOND search: fast, sensitive, mid-sensitive, very-sensitive, '
+                            'ultra-sensitive, or faster (default: fast)')
+
+def __tabular(group, required=False):
+    group.add_argument('-t', '--tabular', type=str, default=None, required=required,
+                       help='Path to tabular BLAST/DIAMOND output file')
+
+def __threads(group, required=False):
+    group.add_argument('-n', '--threads', type=int, default=1, required=required,
+                       help='Number of threads to be used (default: 1)')
+
+def get_main_parser():
+    main_parser = argparse.ArgumentParser(
+        prog='aastk', add_help=False, conflict_handler='resolve')
+    sub_parsers = main_parser.add_subparsers(help="--", dest='subparser_name')
+
+    with subparser(sub_parsers, 'build', 'Build DIAMOND database from seed sequence(s)') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __protein_name(grp, required=True)
+            __seed(grp, required=True)
+            __db(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __threads(grp)
+
+    with subparser(sub_parsers, 'search', 'Search DIAMOND reference database for homologous sequences') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __db(grp, required=True),
+            __query(grp, required=True),
+            __protein_name(grp, required=True),
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
+            __threads(grp)
+            __block(grp)
+            __chunk(grp)
+            __sensitivity(grp)
+
+    with subparser(sub_parsers, 'extract', 'Extract reads that have DIAMOND hits against custom database') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __tabular(grp, required=True),
+            __query(grp, required=True),
+            __output(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __key_column(grp)
+
+    with subparser(sub_parsers, 'calculate', 'Calculate max scores for extracted sequences using BLOSUM matrix') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __extracted(grp, required=True)
+            __matrix(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
+
+    with subparser(sub_parsers, 'bsr', 'Compute BSR (Blast Score Ratio) using a BLAST tab file and max scores from a TSV.') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __tabular(grp, required=True)
+            __max_scores(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
+            __key_column(grp)
+
+    with subparser(sub_parsers, 'plot', 'Plot the Blast Score Ratio of query sequences against the DIAMOND database') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __bsr(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
+
+    with subparser(sub_parsers, 'pasr', 'PASR: protein alignment score ratio') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __matrix(grp, required=True)
+            __protein_name(grp, required=True)
+            __query(grp, required=True)
+            __seed(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __db(grp)
+            __output(grp)
+            __threads(grp)
+            __key_column(grp)
+            __block(grp)
+            __chunk(grp)
+            __sensitivity(grp)
+
+    return main_parser

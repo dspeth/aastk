@@ -54,6 +54,12 @@ if __name__ == "__main__":
             key_column=args.key_column
         )
 
+    elif args.subparser_name == 'plot':
+        plot_bsr(
+            bsr_file=args.bsr,
+            output_dir=args.output
+        )
+
     elif args.subparser_name == 'pasr':
         pasr(
             db_dir=args.db,

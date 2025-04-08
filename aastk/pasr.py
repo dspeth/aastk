@@ -4,6 +4,8 @@ from .util import extract_unique_keys, determine_file_type, write_fa_matches, wr
 
 import subprocess
 import os
+import matplotlib.pyplot as plt
+import pandas as pd
 
 def build_protein_db(protein_name: str, seed_fasta: str, threads: int, db_dir: str):
     """
@@ -259,6 +261,38 @@ def blast_score_ratio(blast_tab: str, max_scores_path: str, output_dir: str, key
 
     return bsr_file
 
+def plot_bsr(bsr_file: str, output_dir: str):
+    # check for output_dir
+    if output_dir is None:
+        output_dir = '.'
+
+    # check if target_dir exists and define path to output file
+    os.makedirs(output_dir, exist_ok=True)
+    out_graph = os.path.join(output_dir, 'bsr_plot.png')
+
+    bsr_df = pd.read_csv(bsr_file, sep='\t', header=0)
+
+    scatter = plt.scatter(
+        bsr_df['max_score'],
+        bsr_df['score'],
+        c=bsr_df['BSR'],
+        cmap='viridis',
+        edgecolor='k',
+        alpha=0.75
+    )
+
+    plt.xlabel('Calculated maximum score')
+    plt.ylabel('Alignment score to seed set')
+    plt.xlim(0, 1.5 * bsr_df['max_score'].max())
+    plt.axvline(bsr_df['max_score'].max(), color='red', linestyle='--', linewidth=1.2, label='Max score')
+    plt.title('Blast Score Ratio (BSR) Scatter Plot')
+    cbar = plt.colorbar(scatter)
+    cbar.set_label('% seq identity')
+
+    plt.tight_layout()
+    plt.savefig(out_graph)
+    plt.close()
+
 def pasr(db_dir: str, protein_name: str, seed_fasta: str, query_fasta: str, matrix_name: str,
          output_dir: str, sensitivity: str, block: int, chunk: int, key_column: int = 0, threads: int = 1,):
     """
@@ -289,4 +323,5 @@ def pasr(db_dir: str, protein_name: str, seed_fasta: str, query_fasta: str, matr
     search_output = search_protein_db(db_path, query_fasta, protein_name, threads, output_dir, sensitivity, block, chunk)
     matched_fasta = extract_matching_sequences(search_output, query_fasta, output_dir, key_column)
     max_scores = calculate_max_scores(matched_fasta, matrix_name, output_dir)
-    return blast_score_ratio(search_output, max_scores, output_dir, key_column)
+    bsr_file = blast_score_ratio(search_output, max_scores, output_dir, key_column)
+    return plot_bsr(bsr_file, output_dir)
