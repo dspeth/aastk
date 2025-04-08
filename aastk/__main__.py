@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from aastk.cli_new import get_main_parser
+from aastk.cli import get_main_parser
 from aastk.pasr import *
 
 if __name__ == "__main__":
