@@ -60,6 +60,16 @@ if __name__ == "__main__":
             output_dir=args.output
         )
 
+    elif args.subparser_name == 'metadata':
+        metadata(
+            matched_seqs=args.matched,
+            selfmin=args.selfmin,
+            selfmax=args.selfmax,
+            metadata_file=args.output,
+            dbmin=args.dbmin,
+            bsr=args.bsr_cutoff
+        )
+
     elif args.subparser_name == 'pasr':
         pasr(
             db_dir=args.db,

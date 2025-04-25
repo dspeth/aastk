@@ -6,6 +6,7 @@ import subprocess
 import os
 import matplotlib.pyplot as plt
 import pandas as pd
+from io import StringIO
 
 def build_protein_db(protein_name: str, seed_fasta: str, threads: int, db_dir: str):
     """
@@ -132,11 +133,11 @@ def extract_matching_sequences(blast_tab: str, query_path: str, output_dir: str,
         if file_type == "fasta":
             print("File type: FASTA")
             for header, sequence in write_fa_matches(query_path, matching_ids):
-                out.write(f">{header}\n{sequence}\n")
+                out.write(f"{header}\n{sequence}\n")
         elif file_type == "fastq":
             print("File type: FASTQ")
             for header, sequence in write_fq_matches(query_path, matching_ids):
-                out.write(f">{header}\n{sequence}\n")
+                out.write(f"{header}\n{sequence}\n")
 
     return out_fasta
 
@@ -293,6 +294,21 @@ def plot_bsr(bsr_file: str, output_dir: str):
     plt.savefig(out_graph)
     plt.close()
 
+def metadata(matched_seqs: str, selfmin: int, selfmax: int, metadata_file: str, dbmin: int = None,
+             bsr: float = None):
+    result = subprocess.run(
+        ["seqkit", "stats", matched_seqs], capture_output=True, text=True
+    )
+
+    df = pd.read_csv(StringIO(result.stdout), sep="\t")
+
+    df["selfmin"] = selfmin
+    df["selfmax"] = selfmax
+    df["dbmin"] = dbmin
+    df["bsr_cutoff"] = bsr
+
+    df.to_csv(metadata_file, sep="\t", index=False)
+
 def pasr(db_dir: str, protein_name: str, seed_fasta: str, query_fasta: str, matrix_name: str,
          output_dir: str, sensitivity: str, block: int, chunk: int, key_column: int = 0, threads: int = 1,):
     """
@@ -325,3 +341,4 @@ def pasr(db_dir: str, protein_name: str, seed_fasta: str, query_fasta: str, matr
     max_scores = calculate_max_scores(matched_fasta, matrix_name, output_dir)
     bsr_file = blast_score_ratio(search_output, max_scores, output_dir, key_column)
     return plot_bsr(bsr_file, output_dir)
+

@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
 import argparse
 from contextlib import contextmanager
+from email.policy import default
+
 
 @contextmanager
 def subparser(parser, name, description):
     yield parser.add_parser(name, conflict_handler='resolve', help=description)
+
+@contextmanager
+def mutex_group(parser, required):
+    group = parser.add_argument_group(f'Mutually exclusive '
+                                      f'{"required" if required else "optional"} '
+                                      f'arguments')
+    yield group.add_mutually_exclusive_group(required=required)
 
 @contextmanager
 def arg_group(parser, name):
@@ -18,6 +27,10 @@ def __bsr(group, required=False):
     group.add_argument('-b', '--bsr', type=str, required=required,
                        help='Path to blast score ratio input file.')
 
+def __bsr_cutoff(group, required=False):
+    group.add_argument('-b', '--bsr_cutoff', type=float, default=None, required=required,
+                       help="Blast Score Ratio cutoff for inclusion in updated dataset")
+
 def __chunk(group, required=False):
     group.add_argument('-c', '--chunk', type=int, required=required,
                        help='Choose number of chunks for diamond blastp index processing. (Default: 2)')
@@ -26,6 +39,10 @@ def __db(group, required=False):
     group.add_argument('-d', '--db', type=str, required=required,
                        help='Specify path to DIAMOND database')
 
+def __dbmin(group, required=False):
+    group.add_argument('-d', '--dbmin', type=int, default=None, required=required,
+                       help='Lower database score cutoff for inclusion in updated dataset')
+
 def __extracted(group, required=False):
     group.add_argument('-e', '--extracted', type=str, required=required,
                        help='Path to FASTA file containing extracted matching sequences')
@@ -33,6 +50,10 @@ def __extracted(group, required=False):
 def __key_column(group, required=False):
     group.add_argument('-k', '--key_column', type=int, default=0, required=required,
                        help='Column index in the BLAST tab file to pull unique IDs from (default is 0)')
+
+def __matched(group, required=False):
+    group.add_argument('-m', '--matched', type=str, required=required,
+                       help='FASTA file containing matched sequences from previous PASR run')
 
 def __matrix(group, required=False):
     group.add_argument('-m', '--matrix', choices=['BLOSUM45', 'BLOSUM62'], required=required,
@@ -57,6 +78,14 @@ def __query(group, required=False):
 def __seed(group, required=False):
     group.add_argument('-s', '--seed', type=str, default=None, required=required,
                        help='Path to FASTA files containing seed sequences for database creation')
+
+def __selfmax(group, required=False):
+    group.add_argument('-u', '--selfmax', type=int, required=required,
+                       help='Upper cutoff for self score range to be included in updated dataset')
+
+def __selfmin(group, required=False):
+    group.add_argument('-l', '--selfmin', type=int, required=required,
+                       help='Lower cutoff for self score range to be included in updated dataset')
 
 def __sensitivity(group, required=False):
     group.add_argument('--sensitivity', choices=['fast', 'sensitive', 'mid-sensitive', 'very-sensitive', 'ultra-sensitive', 'faster'], required=required,
@@ -124,6 +153,17 @@ def get_main_parser():
             __bsr(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+
+    with subparser(sub_parsers, 'metadata', 'Create a metadata file for dataset update') as parser:
+        with mutex_group(parser, required=True) as grp:
+            __dbmin(grp)
+            __bsr_cutoff(grp)
+        with arg_group(parser, 'Required arguments') as grp:
+            __selfmax(grp, required=True)
+            __selfmin(grp, required=True)
+            __matched(grp, required=True)
+            __output(grp, required=True)
+
 
     with subparser(sub_parsers, 'pasr', 'PASR: protein alignment score ratio') as parser:
         with arg_group(parser, 'Required arguments') as grp:
