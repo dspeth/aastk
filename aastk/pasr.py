@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 
-from .util import extract_unique_keys, determine_file_type, write_fa_matches, write_fq_matches
+from .util import determine_file_type, extract_unique_keys, ensure_dir, write_fa_matches, write_fq_matches
 
 import subprocess
 import os
 import matplotlib.pyplot as plt
 import pandas as pd
 from io import StringIO
+import yaml
 
 def build_protein_db(protein_name: str, seed_fasta: str, threads: int, db_dir: str):
     """
@@ -25,8 +26,7 @@ def build_protein_db(protein_name: str, seed_fasta: str, threads: int, db_dir: s
             RuntimeError: If the DIAMOND database creation fails.
     """
     # check for db_dir
-    if db_dir is None:
-        db_dir = '.'
+    db_dir = ensure_dir(db_dir)
 
     # configure target directory and ensure target directory exists
     os.makedirs(db_dir, exist_ok=True)
@@ -62,8 +62,7 @@ def search_protein_db(db_path: str, query_path: str, protein_name: str, threads:
         output_path: Path to tabular BLAST output file.
     """
     # check for output_dir
-    if output_dir is None:
-        output_dir = '.'
+    output_dir = ensure_dir(output_dir)
 
     # make sure target_dir exists and define results location and file name
     os.makedirs(output_dir, exist_ok=True)
@@ -114,8 +113,7 @@ def extract_matching_sequences(blast_tab: str, query_path: str, output_dir: str,
         out_fasta: Path to output FASTA file.
     """
     # check for output_dir
-    if output_dir is None:
-        output_dir = '.'
+    output_dir = ensure_dir(output_dir)
 
     # make sure target directory exists and define path to output FASTA
     os.makedirs(output_dir, exist_ok=True)
@@ -154,8 +152,7 @@ def calculate_max_scores(extracted: str, matrix: str, output_dir: str):
         max_scores: Dictionary of protein headers and their max scores.
     """
     # check for output_dir
-    if output_dir is None:
-        output_dir = '.'
+    output_dir = ensure_dir(output_dir)
 
     # check if target_dir exists and define path to output file
     os.makedirs(output_dir, exist_ok=True)
@@ -214,11 +211,12 @@ def calculate_max_scores(extracted: str, matrix: str, output_dir: str):
 
     return out_file
 
-def blast_score_ratio(blast_tab: str, max_scores_path: str, output_dir: str, key_column: int = 0):
+def blast_score_ratio(protein_name: str, blast_tab: str, max_scores_path: str, output_dir: str, key_column: int = 0):
     """
     Computes BSR (Blast Score Ratio) using a BLAST tab file and max scores from a TSV.
 
     Args:
+        protein_name (str): Name of the protein of interest.
         blast_tab (str): Path to DIAMOND/BLAST output file (must include 'score' column).
         max_scores_path (str): Path to TSV file with max scores (headers: Protein_id, max_score).
         output_dir (str): Directory to save the BSR results.
@@ -228,12 +226,11 @@ def blast_score_ratio(blast_tab: str, max_scores_path: str, output_dir: str, key
         bsr_output (str): Path to the output file with BSR values.
     """
     # check for output_dir
-    if output_dir is None:
-        output_dir = '.'
+    output_dir = ensure_dir(output_dir)
 
     # ensure output directory exists
     os.makedirs(output_dir, exist_ok=True)
-    bsr_file = os.path.join(output_dir, "blast_score_ratios.txt")
+    bsr_file = os.path.join(output_dir, f"{protein_name}_bsr.tsv")
 
     # parse the max_scores.tsv file
     max_scores = {}
@@ -264,8 +261,7 @@ def blast_score_ratio(blast_tab: str, max_scores_path: str, output_dir: str, key
 
 def plot_bsr(bsr_file: str, output_dir: str):
     # check for output_dir
-    if output_dir is None:
-        output_dir = '.'
+    output_dir = ensure_dir(output_dir)
 
     # check if target_dir exists and define path to output file
     os.makedirs(output_dir, exist_ok=True)
@@ -294,23 +290,90 @@ def plot_bsr(bsr_file: str, output_dir: str):
     plt.savefig(out_graph)
     plt.close()
 
-def metadata(matched_seqs: str, selfmin: int, selfmax: int, metadata_file: str, dbmin: int = None,
+def metadata(selfmin: int, selfmax: int, dataset: str, output_dir: str, dbmin: int = None,
              bsr: float = None):
-    result = subprocess.run(
-        ["seqkit", "stats", matched_seqs], capture_output=True, text=True
-    )
+    if output_dir is None:
+        output_dir = '.'
 
-    df = pd.read_csv(StringIO(result.stdout), sep="\t")
+    params = {
+        "selfmin": selfmin,
+        "selfmax": selfmax,
+        "dbmin": dbmin,
+        "bsr": bsr
+    }
 
-    df["selfmin"] = selfmin
-    df["selfmax"] = selfmax
-    df["dbmin"] = dbmin
-    df["bsr_cutoff"] = bsr
+    yaml_str = yaml.dump(params)
 
-    df.to_csv(metadata_file, sep="\t", index=False)
+    with open(f"{output_dir}/{dataset}.yaml", "w") as f:
+        f.write(yaml_str)
+
+def subset(yaml_path: str, matched_fasta: str, bsr_table: str, output_dir: str):
+    """
+    Subsets matched sequences based on YAML thresholds.
+
+    Args:
+        yaml_path(str): Path to the metadata yaml file.
+        matched_fasta (str): Path to the matched sequences FASTA.
+        bsr_table (str): Path to the BSR table (blast_score_ratios.txt).
+        output_dir (str): Directory to save the subsetted sequences.
+    """
+    # Load thresholds from YAML
+    with open(yaml_path) as f:
+        thresholds = yaml.safe_load(f)
+
+    selfmin = thresholds.get("selfmin", 0)
+    selfmax = thresholds.get("selfmax", 1_000_000)
+    dbmin = thresholds.get("dbmin", 0)
+    bsr_min = thresholds.get("bsr", 0)
+
+    # Load BSR table
+    bsr_df = pd.read_csv(bsr_table, sep='\t')
+
+    if dbmin:
+        filtered = bsr_df[
+            (bsr_df['max_score'] >= selfmin) &
+            (bsr_df['max_score'] <= selfmax) &
+            (bsr_df['score'] >= dbmin)
+            ]
+
+    if bsr_min:
+        filtered = bsr_df[
+            (bsr_df['max_score'] >= selfmin) &
+            (bsr_df['max_score'] <= selfmax) &
+            (bsr_df['BSR'] >= bsr_min)
+            ]
+
+    filtered_ids = set(filtered['qseqid'])
+
+    # Load matched FASTA
+    sequences = {}
+    current_header = None
+
+    with open(matched_fasta) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith(">"):
+                current_header = line[1:]
+                sequences[current_header] = ""
+            else:
+                if current_header:
+                    sequences[current_header] += line
+
+    # Write subset
+    subset_path = os.path.join(output_dir, "subset.fasta")
+    with open(subset_path, 'w') as out:
+        for header, seq in sequences.items():
+            if header in filtered_ids:
+                out.write(f">{header}\n{seq}\n")
+
+    print(f"Subset written to {subset_path}")
+    return subset_path
 
 def pasr(db_dir: str, protein_name: str, seed_fasta: str, query_fasta: str, matrix_name: str,
-         output_dir: str, sensitivity: str, block: int, chunk: int, key_column: int = 0, threads: int = 1,):
+         output_dir: str, sensitivity: str, block: int, chunk: int, key_column: int = 0, threads: int = 1,
+         update: bool = False, yaml_path: str = None):
     """
     PASR workflow with configurable output directory.
 
@@ -327,9 +390,13 @@ def pasr(db_dir: str, protein_name: str, seed_fasta: str, query_fasta: str, matr
         key_column: Column index in the BLAST tab file to pull unique IDs from (default is 0).
         threads (int): Number of threads (default: 1).
     """
+    if update:
+        if yaml_path == None:
+            print("--yaml required if --update is True")
+            exit()
+
     # check for output_dir
-    if output_dir is None:
-        output_dir = '.'
+    output_dir = ensure_dir(output_dir)
 
     #get full path to target dir
     output_dir = os.path.abspath(output_dir)
@@ -339,6 +406,8 @@ def pasr(db_dir: str, protein_name: str, seed_fasta: str, query_fasta: str, matr
     search_output = search_protein_db(db_path, query_fasta, protein_name, threads, output_dir, sensitivity, block, chunk)
     matched_fasta = extract_matching_sequences(search_output, query_fasta, output_dir, key_column)
     max_scores = calculate_max_scores(matched_fasta, matrix_name, output_dir)
-    bsr_file = blast_score_ratio(search_output, max_scores, output_dir, key_column)
-    return plot_bsr(bsr_file, output_dir)
+    bsr_file = blast_score_ratio(protein_name, search_output, max_scores, output_dir, key_column)
+    plot_bsr(bsr_file, output_dir)
 
+    if update:
+        subset(yaml_path, matched_fasta, bsr_file, output_dir)

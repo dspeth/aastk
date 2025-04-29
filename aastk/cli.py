@@ -35,6 +35,10 @@ def __chunk(group, required=False):
     group.add_argument('-c', '--chunk', type=int, required=required,
                        help='Choose number of chunks for diamond blastp index processing. (Default: 2)')
 
+def __dataset(group, required=False):
+    group.add_argument('-s', '--dataset', type=str, required=required,
+                       help='Dataset name')
+
 def __db(group, required=False):
     group.add_argument('-d', '--db', type=str, required=required,
                        help='Specify path to DIAMOND database')
@@ -100,6 +104,14 @@ def __threads(group, required=False):
     group.add_argument('-n', '--threads', type=int, default=1, required=required,
                        help='Number of threads to be used (default: 1)')
 
+def __update(group, required=False):
+    group.add_argument('--update', type=bool, default=False, required=required,
+                       help='Update subset of data using metadata yaml file')
+
+def __yaml(group, required=False):
+    group.add_argument('-y', '--yaml', type=str, required=required,
+                       help='Path to metadata yaml file')
+
 def get_main_parser():
     main_parser = argparse.ArgumentParser(
         prog='aastk', add_help=False, conflict_handler='resolve')
@@ -142,6 +154,7 @@ def get_main_parser():
 
     with subparser(sub_parsers, 'bsr', 'Compute BSR (Blast Score Ratio) using a BLAST tab file and max scores from a TSV.') as parser:
         with arg_group(parser, 'Required arguments') as grp:
+            __protein_name(grp, required=True)
             __tabular(grp, required=True)
             __max_scores(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
@@ -161,9 +174,9 @@ def get_main_parser():
         with arg_group(parser, 'Required arguments') as grp:
             __selfmax(grp, required=True)
             __selfmin(grp, required=True)
-            __matched(grp, required=True)
-            __output(grp, required=True)
-
+            __dataset(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
 
     with subparser(sub_parsers, 'pasr', 'PASR: protein alignment score ratio') as parser:
         with arg_group(parser, 'Required arguments') as grp:
@@ -179,5 +192,8 @@ def get_main_parser():
             __block(grp)
             __chunk(grp)
             __sensitivity(grp)
+            __update(grp)
+            __yaml(grp)
+
 
     return main_parser

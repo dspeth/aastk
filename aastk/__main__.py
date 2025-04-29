@@ -48,6 +48,7 @@ if __name__ == "__main__":
 
     elif args.subparser_name == 'bsr':
         blast_score_ratio(
+            protein_name=args.protein_name,
             blast_tab=args.tabular,
             max_scores_path=args.max_scores,
             output_dir=args.output,
@@ -62,12 +63,20 @@ if __name__ == "__main__":
 
     elif args.subparser_name == 'metadata':
         metadata(
-            matched_seqs=args.matched,
             selfmin=args.selfmin,
             selfmax=args.selfmax,
-            metadata_file=args.output,
+            dataset=args.dataset,
             dbmin=args.dbmin,
-            bsr=args.bsr_cutoff
+            bsr=args.bsr_cutoff,
+            output_dir=args.output
+        )
+
+    elif args.subparser_name == 'subset':
+        subset(
+            yaml_path=args.yaml,
+            matched_fasta=args.matched,
+            bsr_table=args.bsr,
+            output_dir=args.ouput
         )
 
     elif args.subparser_name == 'pasr':
@@ -81,5 +90,7 @@ if __name__ == "__main__":
             output_dir=args.output,
             block=args.block,
             chunk=args.chunk,
-            sensitivity=args.sensitivity
+            sensitivity=args.sensitivity,
+            update=args.update,
+            yaml_path=args.yaml
         )
