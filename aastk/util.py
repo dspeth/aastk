@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 
 def extract_unique_keys(file_path, column_index=0):
     """
@@ -34,6 +35,29 @@ def determine_file_type(file_path):
             return "fastq"
         else:
             raise ValueError(f"Unrecognized file type in {file_path}")
+
+def ensure_dir(path: str) -> str:
+    if path is None:
+        path = '.'
+    os.makedirs(path, exist_ok=True)
+    return path
+
+def extract_unique_keys(file_path, column_index=0):
+    """
+    Extracts and deduplicates keys from a specified column in a tab-delimited file.
+    Args:
+    - file_path: Path to the input file.
+    - column_index: The index of the column to extract unique keys from (0-based).
+    Returns:
+    - A list of unique keys from the specified column.
+    """
+    unique_keys = set()
+    with open(file_path, 'r') as file:
+        for line in file:
+            key = line.split('\t')[column_index]
+            unique_keys.add(key.strip())
+    return unique_keys
+
 
 def write_fa_matches(seq_file, ids):
     """
