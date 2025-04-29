@@ -33,6 +33,7 @@ if __name__ == "__main__":
 
     elif args.subparser_name == 'extract':
         extract_matching_sequences(
+            protein_name=args.protein_name,
             blast_tab=args.tabular,
             query_path=args.query,
             output_dir=args.output,
@@ -41,6 +42,7 @@ if __name__ == "__main__":
 
     elif args.subparser_name == 'calculate':
         calculate_max_scores(
+            protein_name=args.protein_name,
             extracted=args.extracted,
             matrix=args.matrix,
             output_dir=args.output
@@ -57,6 +59,7 @@ if __name__ == "__main__":
 
     elif args.subparser_name == 'plot':
         plot_bsr(
+            protein_name=args.protein_name,
             bsr_file=args.bsr,
             output_dir=args.output
         )

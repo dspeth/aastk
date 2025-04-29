@@ -6,7 +6,6 @@ import subprocess
 import os
 import matplotlib.pyplot as plt
 import pandas as pd
-from io import StringIO
 import yaml
 
 def build_protein_db(protein_name: str, seed_fasta: str, threads: int, db_dir: str):
@@ -100,11 +99,12 @@ def search_protein_db(db_path: str, query_path: str, protein_name: str, threads:
 
     return output_path
 
-def extract_matching_sequences(blast_tab: str, query_path: str, output_dir: str, key_column: int = 0):
+def extract_matching_sequences(protein_name: str, blast_tab: str, query_path: str, output_dir: str, key_column: int = 0):
     """
     Extracts reads that have BLAST/DIAMOND hits against a custom database.
 
     Args:
+        protein_name (str): Name of the target protein (used for output file naming or filtering).
         blast_tab: Tabular BLAST/DIAMOND output file.
         query_path: Fasta or fastq file containing sequencing reads used as BLAST/DIAMOND queries.
         output_dir (str): Directory where extracted sequences should be stored.
@@ -117,7 +117,7 @@ def extract_matching_sequences(blast_tab: str, query_path: str, output_dir: str,
 
     # make sure target directory exists and define path to output FASTA
     os.makedirs(output_dir, exist_ok=True)
-    out_fasta = os.path.join(output_dir, "matched_sequences.fasta")
+    out_fasta = os.path.join(output_dir, f"{protein_name}_matched.fasta")
 
     # Extract unique keys (query IDs) from the specified column of the BLAST tab file
     matching_ids = extract_unique_keys(blast_tab, key_column)
@@ -129,21 +129,20 @@ def extract_matching_sequences(blast_tab: str, query_path: str, output_dir: str,
     with open(out_fasta, "w") as out:
         # Use the appropriate generator based on the file type
         if file_type == "fasta":
-            print("File type: FASTA")
             for header, sequence in write_fa_matches(query_path, matching_ids):
                 out.write(f"{header}\n{sequence}\n")
         elif file_type == "fastq":
-            print("File type: FASTQ")
             for header, sequence in write_fq_matches(query_path, matching_ids):
                 out.write(f"{header}\n{sequence}\n")
 
     return out_fasta
 
-def calculate_max_scores(extracted: str, matrix: str, output_dir: str):
+def calculate_max_scores(protein_name: str, extracted: str, matrix: str, output_dir: str):
     """
     Calculates max scores for sequences using a BLOSUM matrix.
 
     Args:
+        protein_name (str): Name of the target protein (used for output file naming or filtering).
         extracted (str): Path to the extracted FASTA file.
         matrix (str): BLOSUM matrix name ('BLOSUM45' or 'BLOSUM62').
         output_dir (str): Directory where the output file should be stored.
@@ -156,7 +155,7 @@ def calculate_max_scores(extracted: str, matrix: str, output_dir: str):
 
     # check if target_dir exists and define path to output file
     os.makedirs(output_dir, exist_ok=True)
-    out_file = os.path.join(output_dir, "max_scores.txt")
+    out_file = os.path.join(output_dir, f"{protein_name}_max_scores.tsv")
 
     # check if valid matrix was chosen
     if matrix not in ["BLOSUM45", "BLOSUM62"]:
@@ -259,13 +258,13 @@ def blast_score_ratio(protein_name: str, blast_tab: str, max_scores_path: str, o
 
     return bsr_file
 
-def plot_bsr(bsr_file: str, output_dir: str):
+def plot_bsr(protein_name: str, bsr_file: str, output_dir: str):
     # check for output_dir
     output_dir = ensure_dir(output_dir)
 
     # check if target_dir exists and define path to output file
     os.makedirs(output_dir, exist_ok=True)
-    out_graph = os.path.join(output_dir, 'bsr_plot.png')
+    out_graph = os.path.join(output_dir, f'{protein_name}_bsr.png')
 
     bsr_df = pd.read_csv(bsr_file, sep='\t', header=0)
 
@@ -404,10 +403,10 @@ def pasr(db_dir: str, protein_name: str, seed_fasta: str, query_fasta: str, matr
 
     db_path = build_protein_db(protein_name, seed_fasta, threads, db_dir)
     search_output = search_protein_db(db_path, query_fasta, protein_name, threads, output_dir, sensitivity, block, chunk)
-    matched_fasta = extract_matching_sequences(search_output, query_fasta, output_dir, key_column)
-    max_scores = calculate_max_scores(matched_fasta, matrix_name, output_dir)
+    matched_fasta = extract_matching_sequences(protein_name, search_output, query_fasta, output_dir, key_column)
+    max_scores = calculate_max_scores(protein_name, matched_fasta, matrix_name, output_dir)
     bsr_file = blast_score_ratio(protein_name, search_output, max_scores, output_dir, key_column)
-    plot_bsr(bsr_file, output_dir)
+    plot_bsr(protein_name, bsr_file, output_dir)
 
     if update:
         subset(yaml_path, matched_fasta, bsr_file, output_dir)

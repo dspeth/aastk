@@ -139,6 +139,7 @@ def get_main_parser():
 
     with subparser(sub_parsers, 'extract', 'Extract reads that have DIAMOND hits against custom database') as parser:
         with arg_group(parser, 'Required arguments') as grp:
+            __protein_name(grp, required=True)
             __tabular(grp, required=True),
             __query(grp, required=True),
             __output(grp, required=True)
@@ -147,6 +148,7 @@ def get_main_parser():
 
     with subparser(sub_parsers, 'calculate', 'Calculate max scores for extracted sequences using BLOSUM matrix') as parser:
         with arg_group(parser, 'Required arguments') as grp:
+            __protein_name(grp, required=True)
             __extracted(grp, required=True)
             __matrix(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
@@ -163,6 +165,7 @@ def get_main_parser():
 
     with subparser(sub_parsers, 'plot', 'Plot the Blast Score Ratio of query sequences against the DIAMOND database') as parser:
         with arg_group(parser, 'Required arguments') as grp:
+            __protein_name(grp, required=True)
             __bsr(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
