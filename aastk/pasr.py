@@ -1,12 +1,22 @@
 #!/usr/bin/env python3
 
-from .util import determine_file_type, extract_unique_keys, ensure_dir, write_fa_matches, write_fq_matches
+from .util import determine_file_type, ensure_dir, extract_unique_keys, read_fasta_to_dict, write_fa_matches, write_fq_matches
 
 import subprocess
 import os
 import matplotlib.pyplot as plt
 import pandas as pd
 import yaml
+import logging
+import sys
+
+logger = logging.getLogger(__name__)
+
+logging.basicConfig(
+    level=logging.DEBUG,  # or logging.INFO if you want less verbosity
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    stream=sys.stdout
+)
 
 def build_protein_db(protein_name: str, seed_fasta: str, threads: int, db_dir: str):
     """
@@ -25,25 +35,36 @@ def build_protein_db(protein_name: str, seed_fasta: str, threads: int, db_dir: s
             RuntimeError: If the DIAMOND database creation fails.
     """
     # check for db_dir
-    db_dir = ensure_dir(db_dir)
+    db_path = ensure_dir(db_dir, f"{protein_name}_seed_db")
 
-    # configure target directory and ensure target directory exists
-    os.makedirs(db_dir, exist_ok=True)
-    db_path = os.path.join(db_dir, f"{protein_name}_seed_db")
+    # log the path
+    logger.info(f"Building DIAMOND database for {protein_name} at {db_path}")
+
+    # construct diamond command and output it for control
+    cmd = ["diamond", "makedb", "--in", seed_fasta, "-d", db_path, "-p", str(threads)]
+    logger.debug(f"Running command: {' '.join(cmd)}")
 
     #try running the subprocess for the Diamond makedb command
     try:
-        subprocess.run(
-            ["diamond", "makedb", "--in", seed_fasta, "-d", db_path, "-p", str(threads)],
-            check=True
-        )
-    except subprocess.CalledProcessError as e:
-        print(f"Error in building the DIAMOND database: {e}")
-        raise
+        result = subprocess.run(cmd, check=True)
+        logger.debug(f"DIAMOND makedb output: {result.stdout}")
 
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Error in building the DIAMOND database: {e}")
+        logger.error(f"STDERR: {e.stderr}")
+        raise RuntimeError(f"DIAMOND database creation failed: {e}") from e
+
+    logger.info(f"Successfully built DIAMOND database at {db_path}")
     return db_path
 
-def search_protein_db(db_path: str, query_path: str, protein_name: str, threads: int, output_dir: str, sensitivity: str, block: int, chunk: int):
+def search_protein_db(db_path: str,
+                      query_path: str,
+                      protein_name: str,
+                      threads: int,
+                      output_dir: str,
+                      sensitivity: str,
+                      block: int = 6,
+                      chunk: int = 2):
     """
     Searches a DIAMOND reference database for homologous sequences.
 
@@ -61,42 +82,49 @@ def search_protein_db(db_path: str, query_path: str, protein_name: str, threads:
         output_path: Path to tabular BLAST output file.
     """
     # check for output_dir
-    output_dir = ensure_dir(output_dir)
-
-    # make sure target_dir exists and define results location and file name
-    os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, f"{protein_name}_hits.txt")
+    output_path = ensure_dir(output_dir, f"{protein_name}_hits.txt")
 
     # define the output columns of interest
     columns = ["qseqid", "sseqid", "pident", "qlen", "slen", "length", "mismatch", "gapopen", "qstart", "qend",
                "sstart", "send", "evalue", "bitscore", "score"]
 
     # check for sensitivity, if None set to default --fast
-    if sensitivity is None:
-        sensitivity = '--fast'
-    else:
-        sensitivity = '--' + str(sensitivity)
+    sensitivity_param = f"--{sensitivity}" if sensitivity else "--fast"
 
-    # check for block size
-    if block is None:
-        block = 6
-
-    # check for chunk number
-    if chunk is None:
-        chunk = 2
+    logger.info(f"Searching DIAMOND database {db_path} with query {query_path}")
+    logger.info(f"Output path: {output_path}")
+    logger.info(f"Using parameters: sensitivity={sensitivity_param}, block={block}, chunk={chunk}")
 
     try:
-        # run diamond blastp
-        subprocess.run(
-            ["diamond", "blastp", "-d", db_path, "-q", query_path, "-p", str(threads), "-o",
-             output_path, "-k", str(1), "--matrix", "blosum45", "--masking", str(0), "--outfmt", str(6), *columns, "-b", str(block), "-c", str(chunk),
-             "--min-score", str(50), "--comp-based-stats", str(0), sensitivity],
-            check=True
-        )
-    except subprocess.CalledProcessError as e:
-        print(f"Error in DIAMOND blast p search: {e}")
-        raise
+        # create blastp db search command
+        cmd = ["diamond", "blastp",
+               "-d", db_path,
+               "-q", query_path,
+               "-p", str(threads),
+               "-o", output_path,
+               "-k", str(1),
+               "--matrix", "blosum45",
+               "--masking", str(0),
+               "--outfmt", str(6), *columns,
+               "-b", str(block),
+               "-c", str(chunk),
+               "--min-score", str(50),
+               "--comp-based-stats", str(0),
+               sensitivity_param]
 
+        logger.debug(f"Running command: {' '.join(cmd)}")
+
+        # run diamond blastp
+        subprocess.run(cmd, check=True)
+
+
+    except subprocess.CalledProcessError as e:
+
+        logger.error(f"Error in DIAMOND blastp search: {e}")
+        logger.error(f"STDERR: {e.stderr}")
+        raise RuntimeError(f"DIAMOND blastp search failed: {e}") from e
+
+    logger.info(f"Successfully completed DIAMOND search. Results at {output_path}")
     return output_path
 
 def extract_matching_sequences(protein_name: str, blast_tab: str, query_path: str, output_dir: str, key_column: int = 0):
@@ -176,37 +204,22 @@ def calculate_max_scores(protein_name: str, extracted: str, matrix: str, output_
     }
 
     # read the fasta file containing matched sequences as obtained via pasr extract
-    sequences = {}
-    current_header = None
+    sequences = read_fasta_to_dict(extracted)
 
-    with open(extracted, 'r') as file:
-        for line in file:
-            line = line.strip()
-            if not line:
-                continue
+    # calculate the max scores
+    max_scores = {}
+    for header, sequence in sequences.items():
+        score = 0
+        for amino_acid in sequence:
+            if amino_acid in blosum_diagonals[matrix]:
+                score += blosum_diagonals[matrix][amino_acid]
+                max_scores[header] = score
 
-            if line.startswith(">"):
-                # get sequence ID and store corresponding sequences in the sequences dictionary
-                current_header = line.replace('>','')
-                sequences[current_header] = ""
-            else:
-                if current_header:
-                    sequences[current_header] += line
-
-        # calculate the max scores
-        max_scores = {}
-        for header, sequence in sequences.items():
-            score = 0
-            for amino_acid in sequence:
-                if amino_acid in blosum_diagonals[matrix]:
-                    score += blosum_diagonals[matrix][amino_acid]
-            max_scores[header] = score
-
-        # write the results of the step to specified output file
-        with open(out_file, 'w') as out:
-            out.write("Protein_id\tmax_score\n")
-            for header, score in max_scores.items():
-                out.write(f"{header}\t{score}\n")
+    # write the results of the step to specified output file
+    with open(out_file, 'w') as out:
+        out.write("Protein_id\tmax_score\n")
+        for header, score in max_scores.items():
+            out.write(f"{header}\t{score}\n")
 
     return out_file
 
@@ -345,22 +358,9 @@ def subset(yaml_path: str, matched_fasta: str, bsr_table: str, output_dir: str):
     filtered_ids = set(filtered['qseqid'])
 
     # Load matched FASTA
-    sequences = {}
-    current_header = None
+    sequences = read_fasta_to_dict(matched_fasta)
 
-    with open(matched_fasta) as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            if line.startswith(">"):
-                current_header = line[1:]
-                sequences[current_header] = ""
-            else:
-                if current_header:
-                    sequences[current_header] += line
-
-    # Write subset
+    # Write subset; add dynamic naming for output file
     subset_path = os.path.join(output_dir, "subset.fasta")
     with open(subset_path, 'w') as out:
         for header, seq in sequences.items():
@@ -389,10 +389,8 @@ def pasr(db_dir: str, protein_name: str, seed_fasta: str, query_fasta: str, matr
         key_column: Column index in the BLAST tab file to pull unique IDs from (default is 0).
         threads (int): Number of threads (default: 1).
     """
-    if update:
-        if yaml_path == None:
-            print("--yaml required if --update is True")
-            exit()
+    if update and not yaml_path:
+        raise ValueError("YAML path is required if update is True")
 
     # check for output_dir
     output_dir = ensure_dir(output_dir)

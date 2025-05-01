@@ -20,7 +20,7 @@ def arg_group(parser, name):
     yield parser.add_argument_group(name)
 
 def __block(group, required=False):
-    group.add_argument('-b', '--block', type=int, required=required,
+    group.add_argument('-b', '--block', type=int, default=6, required=required,
                        help='Choose diamond blastp sequence block size in billions of letters. (Default: 6)')
 
 def __bsr(group, required=False):
@@ -32,7 +32,7 @@ def __bsr_cutoff(group, required=False):
                        help="Blast Score Ratio cutoff for inclusion in updated dataset")
 
 def __chunk(group, required=False):
-    group.add_argument('-c', '--chunk', type=int, required=required,
+    group.add_argument('-c', '--chunk', type=int, default=2, required=required,
                        help='Choose number of chunks for diamond blastp index processing. (Default: 2)')
 
 def __dataset(group, required=False):
