@@ -3,7 +3,6 @@
 from .util import determine_file_type, ensure_path, extract_unique_keys, read_fasta_to_dict, write_fa_matches, write_fq_matches
 
 import subprocess
-import os
 import matplotlib.pyplot as plt
 import pandas as pd
 import yaml
@@ -163,6 +162,7 @@ def extract_matching_sequences(protein_name: str,
     """
     # check for output_dir
     out_fasta = ensure_path(output_dir, f"{protein_name}_matched.fasta")
+    stats_path = ensure_path(output_dir, f"{protein_name}_matched.stats")
 
     # Extract unique keys (query IDs) from the specified column of the BLAST tab file
     matching_ids = extract_unique_keys(blast_tab, key_column)
@@ -193,7 +193,17 @@ def extract_matching_sequences(protein_name: str,
             raise ValueError(f"Unsupported file type: {file_type}")
 
         logger.info(f"Successfully wrote {sequences_written} matching sequences to {out_fasta}")
-    return out_fasta
+
+    # also add seqkit stats output file to target dir
+    cmd = ["seqkit", "stats",
+            out_fasta,
+            "-o", stats_path,
+            "-a"]
+
+    logger.debug(f"Running command: {' '.join(cmd)}")
+    subprocess.run(cmd, check=True)
+
+    return out_fasta, stats_path
 
 def calculate_max_scores(protein_name: str,
                          extracted: str,
@@ -517,11 +527,15 @@ def subset(yaml_path: str,
     # determine output path
     if protein_name:
         output_file = f"{protein_name}_matched_update.fasta"
+        stats_file = f"{protein_name}_matched_update.stats"
     elif dataset:
         output_file = f"{dataset}_matched_update.fasta"
+        stats_file = f"{dataset}_matched_update.stats"
     else:
         logging.error("No output filename was specified.")
+
     output_path = ensure_path(output_dir, output_file)
+    stats_path = ensure_path(output_dir, stats_file)
 
 
     # Load BSR table
@@ -557,7 +571,17 @@ def subset(yaml_path: str,
 
     logger.info(f"Updated matched sequences written to {output_path}: "
                 f"{kept} sequences out of {len(sequences)} original sequences")
-    return output_path
+
+    # also add seqkit stats output file to target dir
+    cmd = ["seqkit", "stats",
+           output_path,
+           "-o", stats_path,
+           "-a"]
+
+    logger.debug(f"Running command: {' '.join(cmd)}")
+    subprocess.run(cmd, check=True)
+
+    return output_path, stats_path
 
 def pasr(db_dir: str, protein_name: str, seed_fasta: str, query_fasta: str, matrix_name: str,
          output_dir: str, sensitivity: str, block: int, chunk: int, key_column: int = 0, threads: int = 1,
@@ -601,8 +625,9 @@ def pasr(db_dir: str, protein_name: str, seed_fasta: str, query_fasta: str, matr
         results['column_info_path'] = column_info_path
 
         logger.info("Extracting matching sequences")
-        matched_fasta = extract_matching_sequences(protein_name, search_output, query_fasta, output_path, key_column)
+        matched_fasta, stats_path = extract_matching_sequences(protein_name, search_output, query_fasta, output_path, key_column)
         results['matched_fasta'] = matched_fasta
+        results['stats_path'] = stats_path
 
         logger.info("Calculating max scores")
         max_scores = calculate_max_scores(protein_name, matched_fasta, matrix_name, output_path)
@@ -618,8 +643,9 @@ def pasr(db_dir: str, protein_name: str, seed_fasta: str, query_fasta: str, matr
 
         if update:
             logger.info("Running update for specified data")
-            subset_fasta = subset(yaml_path, matched_fasta, bsr_file, output_dir)
+            subset_fasta, update_stats_path = subset(yaml_path, matched_fasta, bsr_file, output_dir)
             results['subset_fasta'] = subset_fasta
+            results['update_stats_path'] = update_stats_path
 
         logger.info("PASR workflow completed successfully")
         return results
