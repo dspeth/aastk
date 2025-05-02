@@ -1,20 +1,7 @@
 #!/usr/bin/env python3
-
-def extract_unique_keys(file_path, column_index=0):
-    """
-    Extracts and deduplicates keys from a specified column in a tab-delimited file.
-    Args:
-    - file_path: Path to the input file.
-    - column_index: The index of the column to extract unique keys from (0-based).
-    Returns:
-    - A list of unique keys from the specified column.
-    """
-    unique_keys = set()
-    with open(file_path, 'r') as file:
-        for line in file:
-            key = line.split('\t')[column_index]
-            unique_keys.add(key.strip())
-    return unique_keys
+from pathlib import Path
+from typing import Optional
+import logging
 
 def determine_file_type(file_path):
     """
@@ -34,6 +21,60 @@ def determine_file_type(file_path):
             return "fastq"
         else:
             raise ValueError(f"Unrecognized file type in {file_path}")
+
+def ensure_path(path: str, target: Optional[str] = None) -> str:
+    path = Path(path) if path else Path('.')
+    path.mkdir(parents=True, exist_ok=True)
+    if target:
+        final_path = path / target
+    else:
+        final_path = path
+    return str(final_path)
+
+def extract_unique_keys(file_path, column_index=0):
+    """
+    Extracts and deduplicates keys from a specified column in a tab-delimited file.
+    Args:
+    - file_path: Path to the input file.
+    - column_index: The index of the column to extract unique keys from (0-based).
+    Returns:
+    - A list of unique keys from the specified column.
+    """
+    unique_keys = set()
+    with open(file_path, 'r') as file:
+        for line in file:
+            key = line.split('\t')[column_index]
+            unique_keys.add(key.strip())
+    return unique_keys
+
+def read_fasta_to_dict(fasta: str):
+    """
+    Reads a FASTA file and returns a dictionary of headers and sequences.
+
+    Args:
+        fasta_path (str): Path to the FASTA file
+
+    Returns:
+        dict: Dictionary with headers as keys and sequences as values
+    """
+    # Load matched FASTA
+    sequences = {}
+    current_header = None
+
+    # maybe replace with funct from utils
+    with open(fasta) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith(">"):
+                current_header = line[1:]
+                sequences[current_header] = ""
+            else:
+                if current_header:
+                    sequences[current_header] += line
+
+    return sequences
 
 def write_fa_matches(seq_file, ids):
     """
