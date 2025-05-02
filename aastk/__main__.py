@@ -54,7 +54,9 @@ if __name__ == "__main__":
             blast_tab=args.tabular,
             max_scores_path=args.max_scores,
             output_dir=args.output,
-            key_column=args.key_column
+            key_column=args.key_column,
+            column_info_path=args.column_info_path,
+            score_column=args.score_column
         )
 
     elif args.subparser_name == 'plot':
@@ -68,10 +70,11 @@ if __name__ == "__main__":
         metadata(
             selfmin=args.selfmin,
             selfmax=args.selfmax,
-            dataset=args.dataset,
             dbmin=args.dbmin,
             bsr=args.bsr_cutoff,
-            output_dir=args.output
+            output_dir=args.output,
+            dataset=args.dataset,
+            protein_name=args.protein_name
         )
 
     elif args.subparser_name == 'subset':

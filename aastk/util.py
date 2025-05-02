@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import os
 from pathlib import Path
+from typing import Optional
+
 
 def determine_file_type(file_path):
     """
@@ -21,10 +23,13 @@ def determine_file_type(file_path):
         else:
             raise ValueError(f"Unrecognized file type in {file_path}")
 
-def ensure_dir(path: str, target: str) -> str:
+def ensure_path(path: str, target: Optional[str] = None) -> str:
     path = Path(path) if path else Path('.')
     path.mkdir(parents=True, exist_ok=True)
-    final_path = path / target
+    if target:
+        final_path = path / target
+    else:
+        final_path = path
     return str(final_path)
 
 def extract_unique_keys(file_path, column_index=0):
