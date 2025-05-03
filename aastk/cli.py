@@ -55,6 +55,10 @@ def __extracted(group, required=False):
     group.add_argument('-e', '--extracted', type=str, required=required,
                        help='Path to FASTA file containing extracted matching sequences')
 
+def __gff_path(group, required=False):
+    group.add_argument('-g', '--gff_path', type=str, required=required,
+                       help='Path to input GFF file')
+
 def __key_column(group, required=False):
     group.add_argument('-k', '--key_column', type=int, default=0, required=required,
                        help='Column index in the BLAST tab file to pull unique IDs from (default is 0)')
@@ -125,6 +129,8 @@ def get_main_parser():
         prog='aastk', add_help=False, conflict_handler='resolve')
     sub_parsers = main_parser.add_subparsers(help="--", dest='subparser_name')
 
+
+    ### PARSER FOR PASR FUNCTIONALITIES AND WORKFLOW ###
     with subparser(sub_parsers, 'build', 'Build DIAMOND database from seed sequence(s)') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __protein_name(grp, required=True)
@@ -210,6 +216,13 @@ def get_main_parser():
             __sensitivity(grp)
             __update(grp)
             __yaml(grp)
+
+    ### PARSER FOR CUGO FUNCTIONALITIES AND WORKFLOW ###
+    with subparser(sub_parsers, 'parse', 'Parse GFF input file') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __gff_path(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
 
 
     return main_parser

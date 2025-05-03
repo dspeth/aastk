@@ -2,6 +2,7 @@
 
 from aastk.cli import get_main_parser
 from aastk.pasr import *
+from aastk.cugo import *
 
 if __name__ == "__main__":
     parser = get_main_parser()
@@ -11,6 +12,7 @@ if __name__ == "__main__":
     if not args.subparser_name:
         parser.print_help()
 
+    ### PARSER FOR PASR FUNCTIONALITIES AND WORKFLOW ###
     elif args.subparser_name == 'build':
         db_path = build_protein_db(
             db_dir=args.db,
@@ -99,4 +101,11 @@ if __name__ == "__main__":
             sensitivity=args.sensitivity,
             update=args.update,
             yaml_path=args.yaml
+        )
+
+    ### PARSER FOR CUGO FUNCTIONALITIES AND WORKFLOW ###
+    elif args.subparser_name == 'parse':
+        parse(
+            gff_file_path=args.gff_path,
+            output_dir=args.output
         )
