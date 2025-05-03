@@ -212,24 +212,24 @@ def parse(gff_file_path: str,
                 next_parent = clean_line[0]
                 next_direction = clean_line[6]
 
-                # Determine CUGO membership
+                # determine CUGO membership
                 cugo, cugo_start, cugo_end, cugo_count, cugo_size_count = cugo_boundaries(
                     direction, prev_direction, next_direction,
                     parent, prev_parent, next_parent,
                     cugo_count, cugo_size, cugo_size_count, prev_cugo
                 )
 
-                # Add to results
+                # add to results
                 reformat_data.append([seqID, parent, gene_start, gene_end, nuc_length, aa_length,
                                       direction, COG_ID, cugo, cugo_start, cugo_end])
 
-                # Update for next iteration
+                # update for next iteration
                 prev_line = clean_line
                 prev_direction = direction
                 prev_parent = parent
                 prev_cugo = cugo
 
-            # Process last line if it's valid
+            # process last line if it's valid
             if len(clean_line) == 9 and clean_line[2] == "CDS":
                 last_line, cugo_size = process_last_gene(
                     clean_line, prev_direction, prev_parent,
@@ -237,7 +237,7 @@ def parse(gff_file_path: str,
                 )
                 reformat_data.append(last_line)
 
-        # Create dataframe
+        # create dataframe
         gff_cugo = pd.DataFrame(
             reformat_data,
             columns=["seqID", "parent_ID", "gene_start", "gene_end", "nuc_length",
