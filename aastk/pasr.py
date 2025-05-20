@@ -701,7 +701,7 @@ def pasr(protein_name: str,
         results['bsr_file'] = bsr_file
 
         logger.info("Creating BSR plot")
-        bsr_plot = plot_bsr(protein_name, bsr_file, output_path, yaml_path, force=force, update=update)
+        bsr_plot = plot_bsr(protein_name, bsr_file, output_path, yaml_path, force=force, update=False)
         results['bsr_plot'] = bsr_plot
 
         if update:
