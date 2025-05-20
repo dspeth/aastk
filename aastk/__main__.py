@@ -33,6 +33,7 @@ if __name__ == "__main__":
 
     elif args.subparser_name == 'extract':
         extract_matching_sequences(
+            protein_name=args.protein_name,
             blast_tab=args.tabular,
             query_path=args.query,
             output_dir=args.output,
@@ -41,6 +42,7 @@ if __name__ == "__main__":
 
     elif args.subparser_name == 'calculate':
         calculate_max_scores(
+            protein_name=args.protein_name,
             extracted=args.extracted,
             matrix=args.matrix,
             output_dir=args.output
@@ -48,16 +50,39 @@ if __name__ == "__main__":
 
     elif args.subparser_name == 'bsr':
         blast_score_ratio(
+            protein_name=args.protein_name,
             blast_tab=args.tabular,
             max_scores_path=args.max_scores,
             output_dir=args.output,
-            key_column=args.key_column
+            key_column=args.key_column,
+            column_info_path=args.column_info_path,
+            score_column=args.score_column
         )
 
     elif args.subparser_name == 'plot':
         plot_bsr(
+            protein_name=args.protein_name,
             bsr_file=args.bsr,
             output_dir=args.output
+        )
+
+    elif args.subparser_name == 'metadata':
+        metadata(
+            selfmin=args.selfmin,
+            selfmax=args.selfmax,
+            dbmin=args.dbmin,
+            bsr=args.bsr_cutoff,
+            output_dir=args.output,
+            dataset=args.dataset,
+            protein_name=args.protein_name
+        )
+
+    elif args.subparser_name == 'subset':
+        subset(
+            yaml_path=args.yaml,
+            matched_fasta=args.matched,
+            bsr_table=args.bsr,
+            output_dir=args.ouput
         )
 
     elif args.subparser_name == 'pasr':
@@ -71,5 +96,7 @@ if __name__ == "__main__":
             output_dir=args.output,
             block=args.block,
             chunk=args.chunk,
-            sensitivity=args.sensitivity
+            sensitivity=args.sensitivity,
+            update=args.update,
+            yaml_path=args.yaml
         )
