@@ -68,7 +68,9 @@ if __name__ == "__main__":
             protein_name=args.protein_name,
             bsr_file=args.bsr,
             output_dir=args.output,
-            force=args.force
+            yaml=args.yaml,
+            force=args.force,
+            update=args.update
         )
 
     elif args.subparser_name == 'metadata':

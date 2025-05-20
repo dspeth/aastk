@@ -190,6 +190,8 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __force(grp)
+            __update(grp)
+            __yaml(grp)
 
     with subparser(sub_parsers, 'metadata', 'Create a metadata file for dataset update') as parser:
         with mutex_group(parser, required=True) as grp:

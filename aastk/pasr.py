@@ -10,6 +10,7 @@ import logging
 import sys
 import json
 from pathlib import Path
+import numpy as np
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -392,7 +393,9 @@ def blast_score_ratio(protein_name: str,
 def plot_bsr(protein_name: str,
              bsr_file: str,
              output_dir: str,
-             force: bool = False):
+             yaml_path: str,
+             force: bool = False,
+             update: bool = False):
     """
     Creates a scatter plot of the BSR data.
 
@@ -406,7 +409,10 @@ def plot_bsr(protein_name: str,
         Path to the output plot.
     """
     # check for output_dir
-    out_graph = ensure_path(output_dir, f'{protein_name}_bsr.png', force=force)
+    if update:
+        out_graph = ensure_path(output_dir, f'{protein_name}_updated_bsr.png', force=force)
+    else:
+        out_graph = ensure_path(output_dir, f'{protein_name}_bsr.png', force=force)
 
     logger.info(f"Creating BSR scatter plot for {protein_name}")
 
@@ -437,7 +443,9 @@ def plot_bsr(protein_name: str,
 
         # set reasonable x limits
         max_score_val = bsr_df['max_score'].max()
-        plt.xlim(0, 1.5 * max_score_val)
+        score_cutoff = bsr_df['score'].max()
+        plt.xlim(0, 1.5 * score_cutoff)
+        plt.ylim(bottom=0)
 
         # add a line at the maximum score
         plt.axvline(max_score_val, color='red', linestyle='--', linewidth=1.2, label='Max score')
@@ -447,6 +455,33 @@ def plot_bsr(protein_name: str,
 
         cbar = plt.colorbar(scatter)
         cbar.set_label('BSR')
+
+        if update:
+            # load the thresholds from yaml file
+            try:
+                with open(yaml_path) as f:
+                    thresholds = yaml.safe_load(f)
+            except Exception as e:
+                logger.error(f"Failed to load YAML file {yaml}: {e}")
+                raise RuntimeError(f"Failed to load thresholds from {yaml}: {e}") from e
+
+            # get thresholds and assign default values
+            selfmin = thresholds.get("selfmin", 0)
+            selfmax = thresholds.get("selfmax", float('inf'))
+            dbmin = thresholds.get("dbmin", None)
+            bsr_min = thresholds.get("bsr", None)
+
+            if selfmin is not None:
+                plt.axvline(selfmin, color='black', linestyle='--', linewidth=1.0)
+            if selfmax is not None:
+                plt.axvline(selfmax, color='black', linestyle='--', linewidth=1.0)
+            if dbmin is not None:
+                plt.axhline(dbmin, color='black', linestyle='--', linewidth=1.0)
+            if bsr_min is not None:
+                x_min, x_max = plt.xlim()
+                x_vals = np.linspace(x_min, x_max, 500)
+                y_vals = bsr_min * x_vals
+                plt.plot(x_vals, y_vals, color='black', linestyle='--', linewidth=1.0)
 
         plt.tight_layout()
         plt.savefig(out_graph, dpi=300)
@@ -666,7 +701,7 @@ def pasr(protein_name: str,
         results['bsr_file'] = bsr_file
 
         logger.info("Creating BSR plot")
-        bsr_plot = plot_bsr(protein_name, bsr_file, output_path, force=force)
+        bsr_plot = plot_bsr(protein_name, bsr_file, output_path, yaml_path, force=force, update=update)
         results['bsr_plot'] = bsr_plot
 
         if update:
@@ -674,6 +709,8 @@ def pasr(protein_name: str,
             subset_fasta, update_stats_path = subset(yaml_path, matched_fasta, bsr_file, output_dir, force=force)
             results['subset_fasta'] = subset_fasta
             results['update_stats_path'] = update_stats_path
+            updated_plot = plot_bsr(protein_name, bsr_file, output_path,  yaml_path, force=force, update=update)
+            results['updated_plot'] = updated_plot
 
         logger.info("PASR workflow completed successfully")
         return results
