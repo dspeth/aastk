@@ -11,6 +11,7 @@ import sys
 import json
 from pathlib import Path
 
+# default logger writes to log file needs implementing
 logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.DEBUG,  # or logging.INFO if you want less verbosity

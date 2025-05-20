@@ -39,6 +39,18 @@ def __chunk(group, required=False):
     group.add_argument('-c', '--chunk', type=int, default=2, required=required,
                        help='Choose number of chunks for diamond blastp index processing. (Default: 2)')
 
+def __cugo_dir(group, required=False):
+    group.add_argument('-c', '--cugo_dir', type=str, required=required,
+                       help='Directory containing CUGO tab files')
+
+def __cugo_path(group, required=False):
+    group.add_argument('-c', '--cugo_path', type=str, required=required,
+                       help='Path to CUGO file')
+
+def __cugo_range(group, required=False):
+    group.add_argument('-r', '--cugo_range', type=int, required=required,
+                       help='CUGO range of interest for genomic context analysis')
+
 def __dataset(group, required=False):
     group.add_argument('-s', '--dataset', type=str, required=required,
                        help='Dataset name')
@@ -54,6 +66,14 @@ def __dbmin(group, required=False):
 def __extracted(group, required=False):
     group.add_argument('-e', '--extracted', type=str, required=required,
                        help='Path to FASTA file containing extracted matching sequences')
+
+def __flank_lower(group, required=False):
+    group.add_argument('-l', '--flank_lower', type=int, required=required,
+                       help='Start of flanking window (inclusive)')
+
+def __flank_upper(group, required=False):
+    group.add_argument('-u', '--flank_upper', type=int, required=required,
+                       help='End of flanking window (inclusive)')
 
 def __gff_path(group, required=False):
     group.add_argument('-g', '--gff_path', type=str, required=required,
@@ -82,6 +102,10 @@ def __output(group, required=False):
 def __protein_name(group, required=False):
     group.add_argument('-p', '--protein_name', type=str, default=None, required=required,
                        help='Name of protein of interest')
+
+def __protein_ids(group, required=False):
+    group.add_argument('-p', '--protein_ids', type=str, required=required,
+                       help='Path to file containing list of protein IDs')
 
 def __query(group, required=False):
     group.add_argument('-q', '--query', type=str, default=None, required=required,
@@ -115,6 +139,14 @@ def __tabular(group, required=False):
 def __threads(group, required=False):
     group.add_argument('-n', '--threads', type=int, default=1, required=required,
                        help='Number of threads to be used (default: 1)')
+
+def __tmhmm_dir(group, required=False):
+    group.add_argument('-t', '--tmhmm_dir', type=str, required=required,
+                       help='Directory containing tmhmm files')
+
+def __top_n(group, required=False):
+    group.add_argument('-t', '--top_n', type=int, required=required,
+                       help='Number of top COGs to plot per position')
 
 def __update(group, required=False):
     group.add_argument('--update', type=bool, default=False, required=required,
@@ -180,7 +212,7 @@ def get_main_parser():
             __output(grp)
             __key_column(grp)
 
-    with subparser(sub_parsers, 'plot', 'Plot the Blast Score Ratio of query sequences against the DIAMOND database') as parser:
+    with subparser(sub_parsers, 'pasr_plot', 'Plot the Blast Score Ratio of query sequences against the DIAMOND database') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __protein_name(grp, required=True)
             __bsr(grp, required=True)
@@ -224,5 +256,21 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
 
+    with subparser(sub_parsers, 'context', 'Parse context information from CUGO input file') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __protein_ids(grp, required=True)
+            __cugo_dir(grp, required=True)
+            __cugo_range(grp, required=True)
+            __dataset(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
+            __tmhmm_dir(grp)
+
+    with subparser(sub_parsers, 'cugo_plot', 'Plot CUGO context') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __cugo_path(grp, required=True)
+            __flank_lower(grp, required=True)
+            __flank_upper(grp, required=True)
+            __top_n(grp, required=True)
 
     return main_parser

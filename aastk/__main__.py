@@ -61,7 +61,7 @@ if __name__ == "__main__":
             score_column=args.score_column
         )
 
-    elif args.subparser_name == 'plot':
+    elif args.subparser_name == 'pasr_plot':
         plot_bsr(
             protein_name=args.protein_name,
             bsr_file=args.bsr,
@@ -108,4 +108,22 @@ if __name__ == "__main__":
         parse(
             gff_file_path=args.gff_path,
             output_dir=args.output
+        )
+
+    elif args.subparser_name == 'context':
+        context(
+            protein_ids=args.protein_ids,
+            cugo_dir=args.cugo_dir,
+            tmhmm_dir=args.tmhmm_dir,
+            cugo_range=args.cugo_range,
+            output_dir=args.output,
+            dataset=args.dataset
+        )
+
+    elif args.subparser_name == 'cugo_plot':
+        cugo_plot(
+            cugo_path=args.cugo_path,
+            flank_lower=args.flank_lower,
+            flank_upper=args.flank_upper,
+            top_n=args.top_n
         )
