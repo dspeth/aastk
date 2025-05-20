@@ -55,6 +55,10 @@ def __extracted(group, required=False):
     group.add_argument('-e', '--extracted', type=str, required=required,
                        help='Path to FASTA file containing extracted matching sequences')
 
+def __force(group, required=False):
+    group.add_argument('--force', action='store_true', required=required,
+                       help='Set flag to overwrite existing files in specified path')
+
 def __key_column(group, required=False):
     group.add_argument('-k', '--key_column', type=int, default=0, required=required,
                        help='Column index in the BLAST tab file to pull unique IDs from (default is 0)')
@@ -113,7 +117,7 @@ def __threads(group, required=False):
                        help='Number of threads to be used (default: 1)')
 
 def __update(group, required=False):
-    group.add_argument('--update', type=bool, default=False, required=required,
+    group.add_argument('--update', action='store_true', required=required,
                        help='Update subset of data using metadata yaml file')
 
 def __yaml(group, required=False):
@@ -132,6 +136,7 @@ def get_main_parser():
             __db(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __threads(grp)
+            __force(grp)
 
     with subparser(sub_parsers, 'search', 'Search DIAMOND reference database for homologous sequences') as parser:
         with arg_group(parser, 'Required arguments') as grp:
@@ -144,6 +149,7 @@ def get_main_parser():
             __block(grp)
             __chunk(grp)
             __sensitivity(grp)
+            __force(grp)
 
     with subparser(sub_parsers, 'extract', 'Extract reads that have DIAMOND hits against custom database') as parser:
         with arg_group(parser, 'Required arguments') as grp:
@@ -153,6 +159,7 @@ def get_main_parser():
             __output(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __key_column(grp)
+            __force(grp)
 
     with subparser(sub_parsers, 'calculate', 'Calculate max scores for extracted sequences using BLOSUM matrix') as parser:
         with arg_group(parser, 'Required arguments') as grp:
@@ -161,6 +168,7 @@ def get_main_parser():
             __matrix(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __force(grp)
 
     with subparser(sub_parsers, 'bsr', 'Compute BSR (Blast Score Ratio) using a BLAST tab file and max scores from a TSV.') as parser:
         with mutex_group(parser, required=True) as grp:
@@ -173,6 +181,7 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __key_column(grp)
+            __force(grp)
 
     with subparser(sub_parsers, 'plot', 'Plot the Blast Score Ratio of query sequences against the DIAMOND database') as parser:
         with arg_group(parser, 'Required arguments') as grp:
@@ -180,6 +189,7 @@ def get_main_parser():
             __bsr(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __force(grp)
 
     with subparser(sub_parsers, 'metadata', 'Create a metadata file for dataset update') as parser:
         with mutex_group(parser, required=True) as grp:
@@ -193,6 +203,7 @@ def get_main_parser():
             __selfmin(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __force(grp)
 
     with subparser(sub_parsers, 'pasr', 'PASR: protein alignment score ratio') as parser:
         with arg_group(parser, 'Required arguments') as grp:
@@ -201,7 +212,6 @@ def get_main_parser():
             __query(grp, required=True)
             __seed(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
-            __db(grp)
             __output(grp)
             __threads(grp)
             __key_column(grp)
@@ -210,6 +220,7 @@ def get_main_parser():
             __sensitivity(grp)
             __update(grp)
             __yaml(grp)
+            __force(grp)
 
 
     return main_parser
