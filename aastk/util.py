@@ -2,6 +2,9 @@
 from pathlib import Path
 from typing import Optional
 import logging
+import shutil
+
+logger = logging.getLogger(__name__)
 
 def determine_file_type(file_path):
     """
@@ -22,14 +25,25 @@ def determine_file_type(file_path):
         else:
             raise ValueError(f"Unrecognized file type in {file_path}")
 
-def ensure_path(path: str, target: Optional[str] = None) -> str:
+def ensure_path(path: str, target: Optional[str] = None, force: bool = False):
     path = Path(path) if path else Path('.')
+    final_path = path / target if target else path
+
+    if final_path.exists():
+        if force:
+            if final_path.is_dir():
+                logger.warning(f"Removing existing directory: {final_path}")
+                shutil.rmtree(final_path)
+            else:
+                logger.warning(f"Removing existing file: {final_path}")
+                final_path.unlink()
+        else:
+            raise FileExistsError(f"Path already exists: {final_path}")
+
     path.mkdir(parents=True, exist_ok=True)
-    if target:
-        final_path = path / target
-    else:
-        final_path = path
+
     return str(final_path)
+
 
 def extract_unique_keys(file_path, column_index=0):
     """
