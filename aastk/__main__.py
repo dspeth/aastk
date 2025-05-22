@@ -18,7 +18,8 @@ if __name__ == "__main__":
             db_dir=args.db,
             protein_name=args.protein_name,
             seed_fasta=args.seed,
-            threads=args.threads
+            threads=args.threads,
+            force=args.force
         )
 
     elif args.subparser_name == 'search':
@@ -30,7 +31,8 @@ if __name__ == "__main__":
             threads=args.threads,
             sensitivity=args.sensitivity,
             block=args.block,
-            chunk=args.chunk
+            chunk=args.chunk,
+            force=args.force
         )
 
     elif args.subparser_name == 'extract':
@@ -39,7 +41,8 @@ if __name__ == "__main__":
             blast_tab=args.tabular,
             query_path=args.query,
             output_dir=args.output,
-            key_column=args.key_column
+            key_column=args.key_column,
+            force=args.force
         )
 
     elif args.subparser_name == 'calculate':
@@ -58,14 +61,18 @@ if __name__ == "__main__":
             output_dir=args.output,
             key_column=args.key_column,
             column_info_path=args.column_info_path,
-            score_column=args.score_column
+            score_column=args.score_column,
+            force=args.force
         )
 
     elif args.subparser_name == 'pasr_plot':
         plot_bsr(
             protein_name=args.protein_name,
             bsr_file=args.bsr,
-            output_dir=args.output
+            output_dir=args.output,
+            yaml=args.yaml,
+            force=args.force,
+            update=args.update
         )
 
     elif args.subparser_name == 'metadata':
@@ -76,7 +83,8 @@ if __name__ == "__main__":
             bsr=args.bsr_cutoff,
             output_dir=args.output,
             dataset=args.dataset,
-            protein_name=args.protein_name
+            protein_name=args.protein_name,
+            force=args.force
         )
 
     elif args.subparser_name == 'subset':
@@ -84,7 +92,8 @@ if __name__ == "__main__":
             yaml_path=args.yaml,
             matched_fasta=args.matched,
             bsr_table=args.bsr,
-            output_dir=args.ouput
+            output_dir=args.ouput,
+            force=args.force
         )
 
     elif args.subparser_name == 'pasr':
@@ -100,7 +109,8 @@ if __name__ == "__main__":
             chunk=args.chunk,
             sensitivity=args.sensitivity,
             update=args.update,
-            yaml_path=args.yaml
+            yaml_path=args.yaml,
+            force=args.force
         )
 
     ### PARSER FOR CUGO FUNCTIONALITIES AND WORKFLOW ###
