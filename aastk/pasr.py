@@ -664,6 +664,8 @@ def pasr(protein_name: str,
         chunk (int): Choose number of chunks for diamond blastp index processing. (Default: 2)
         key_column: Column index in the BLAST tab file to pull unique IDs from (default is 0).
         threads (int): Number of threads (default: 1).
+        update (bool): Creates updated matched_fasta and bsr plot using metadata yaml file
+        yaml_path (str): Path to metadata yaml file
         force (bool): If true, existing files/directories in output path are overwritten
     """
     if update and not yaml_path:

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import argparse
 from contextlib import contextmanager
-from email.policy import default
 
 
 @contextmanager
@@ -18,6 +17,10 @@ def mutex_group(parser, required):
 @contextmanager
 def arg_group(parser, name):
     yield parser.add_argument_group(name)
+
+def __all(group, required=False):
+    group.add_argument('--all', action='store_true', required=required,
+                       help='Generate a combined plot for CUGO, AA sequence length and TMHMM')
 
 def __block(group, required=False):
     group.add_argument('-b', '--block', type=int, default=6, required=required,
@@ -38,6 +41,10 @@ def __column_info_path(group, required=False):
 def __chunk(group, required=False):
     group.add_argument('-c', '--chunk', type=int, default=2, required=required,
                        help='Choose number of chunks for diamond blastp index processing. (Default: 2)')
+
+def __cugo(group, required=False):
+    group.add_argument('--cugo', action='store_true', required=required,
+                       help='Generate CUGO plot')
 
 def __cugo_dir(group, required=False):
     group.add_argument('-c', '--cugo_dir', type=str, required=required,
@@ -135,6 +142,10 @@ def __sensitivity(group, required=False):
     group.add_argument('--sensitivity', choices=['fast', 'sensitive', 'mid-sensitive', 'very-sensitive', 'ultra-sensitive', 'faster'], required=required,
                        help='Set the sensitivity level for the DIAMOND search: fast, sensitive, mid-sensitive, very-sensitive, '
                             'ultra-sensitive, or faster (default: fast)')
+
+def __size(group, required=False):
+    group.add_argument('--size', action='store_true', required=required,
+                       help='Generate AA sequence length plot')
 
 def __tabular(group, required=False):
     group.add_argument('-t', '--tabular', type=str, default=None, required=required,
@@ -284,6 +295,11 @@ def get_main_parser():
             __cugo_path(grp, required=True)
             __flank_lower(grp, required=True)
             __flank_upper(grp, required=True)
-            __top_n(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __top_n(grp)
+            __cugo(grp)
+            __size(grp)
+            __all(grp)
+
 
     return main_parser

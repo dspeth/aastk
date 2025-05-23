@@ -6,9 +6,21 @@ import pandas as pd
 import logging
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.colors import Normalize
+from matplotlib.cm import ScalarMappable, get_cmap
+from typing import Optional
 from pathlib import Path
 import yaml
+import sys
 
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.DEBUG,  # or logging.INFO if you want less verbosity
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    stream=sys.stdout
+)
+logging.getLogger('matplotlib').setLevel(logging.WARNING)
+logging.getLogger("PIL").setLevel(logging.INFO)
 # ========================================
 # FUNCTION DEFINITIONS FOR CUGO GFF PARSER
 # ========================================
@@ -182,7 +194,8 @@ def process_last_gene(line,
 # CUGO GFF PARSER
 # ===========================
 def parse(gff_file_path: str,
-          output_dir: str):
+          output_dir: str,
+          force: bool = False):
     reformat_data = []
     cugo_size = {}
     cugo_count = prev_direction = prev_parent = prev_feat_type = prev_cugo = 0
@@ -194,7 +207,7 @@ def parse(gff_file_path: str,
     # from gzip directly;
     # name eventual output file
     identifier = gff_file_path.split('.')[0].rsplit("_", 1)[0] + '_cugo.tsv'
-    output_path = ensure_path(output_dir, identifier)
+    output_path = ensure_path(output_dir, identifier, force=force)
 
     try:
         with open(gff_file_path, "r") as GFF:
@@ -269,9 +282,14 @@ def parse(gff_file_path: str,
 # ===========================
 # CUGO CONTEXT PARSER
 # ===========================
-# combine with plotting - no intermediate files needed
-def context(protein_ids: str, cugo_dir: str, tmhmm_dir: str, cugo_range: int, output_dir: str, dataset: str):
-    log_file = ensure_path(output_dir, f"{dataset}_missing_files.log")
+def context(protein_ids: str,
+            cugo_dir: str,
+            tmhmm_dir: str,
+            cugo_range: int,
+            output_dir: str,
+            dataset: str,
+            force: bool = False):
+    log_file = ensure_path(output_dir, f"{dataset}_missing_files.log", force=force)
     logging.basicConfig(
         filename=log_file,
         level=logging.INFO,
@@ -282,7 +300,7 @@ def context(protein_ids: str, cugo_dir: str, tmhmm_dir: str, cugo_range: int, ou
         protein_identifiers = [line.strip() for line in id_file if line.strip()]
         clean_identifiers = [protein_identifier.rsplit("___", 1)[0] for protein_identifier in protein_identifiers]
 
-    output_file = ensure_path(output_dir, dataset + "_context.tsv")
+    output_file = ensure_path(output_dir, dataset + "_context.tsv", force=force)
 
     missing_files = []
     results = None
@@ -290,13 +308,13 @@ def context(protein_ids: str, cugo_dir: str, tmhmm_dir: str, cugo_range: int, ou
     for index, id in enumerate(protein_identifiers):
         cugo_tab_path = Path((cugo_dir) / f"{clean_identifiers[index]}_cugo.gz")
 
-        # Check if CUGO file exists
+        # check if CUGO file exists
         if not cugo_tab_path.exists():
             logging.warning(f"Missing CUGO file: {cugo_tab_path}")
             missing_files.append(str(cugo_tab_path))
             continue
 
-        # Try to read the gzipped file
+        # try to read the gzipped file
         try:
             genome_cugo_df = pd.read_csv(cugo_tab_path, compression='gzip', sep='\t', na_filter=False)
         except Exception as e:
@@ -304,7 +322,7 @@ def context(protein_ids: str, cugo_dir: str, tmhmm_dir: str, cugo_range: int, ou
             missing_files.append(str(cugo_tab_path))
             continue
 
-        # Process TMHMM file if provided
+        # process TMHMM file if provided
         if tmhmm_dir:
             tmhmm_file = Path(tmhmm_dir) / f"{clean_identifiers[index]}_tmhmm_clean"
             if tmhmm_file.exists():
@@ -385,24 +403,14 @@ def top_context(df: pd.DataFrame, top_n: int):
 
 
 def plot_top_cogs_per_position(
-        cugo_path: str,
-        flank_lower: int,
-        flank_upper: int,
-        top_n: int,
-        title: str = "Top COGs per Position"
+    cugo_path: str,
+    flank_lower: int,
+    flank_upper: int,
+    top_n: int,
+    title: str = "Top COGs per Position",
+    show: bool = False,
+    ax: plt.Axes = None
 ):
-    """
-    Plot the top N COGs per position from a CUGO context TSV file.
-
-    Parameters:
-    - cugo_path: Path to the CUGO context TSV file
-    - flank_lower: Start of flanking window (inclusive)
-    - flank_upper: End of flanking window (inclusive)
-    - top_n: Number of top COGs to plot per position
-    - title: Plot title string
-    """
-
-    # --- Load and prepare data ---
     cont = pd.read_csv(cugo_path, sep='\t', na_values='', keep_default_na=False)
     extract = cont.loc[cont["feat_type"] == "COG_ID"]
 
@@ -415,7 +423,6 @@ def plot_top_cogs_per_position(
     flank_cols = [str(i) for i in range(flank_lower, flank_upper + 1)]
     cugo_df = extract[flank_cols]
 
-    # Calculate top N COGs per position
     top_ids = [[] for _ in range(top_n)]
     top_counts = [[] for _ in range(top_n)]
 
@@ -472,9 +479,9 @@ def plot_top_cogs_per_position(
         current_x += pos_width + position_spacing
         pos_boundaries.append(current_x - position_spacing / 2)
 
-    figsize = (max(8, len(positions) * top_n * 0.6), 7)
-
-    fig, ax = plt.subplots(figsize=figsize)
+    if ax is None:
+        figsize = (max(8, len(positions) * top_n * 0.6), 7)
+        fig, ax = plt.subplots(figsize=figsize)
 
     ax.scatter(
         x_pos,
@@ -506,15 +513,118 @@ def plot_top_cogs_per_position(
     ax.set_ylabel("Count", fontsize=16)
     ax.set_title(title, fontsize=18, fontweight='bold')
 
+    if show:
+        plt.tight_layout()
+        plt.show()
+
+
+def plot_size_per_position(cugo_path: str,
+                           flank_lower: int,
+                           flank_upper: int,
+                           bins: int = 10,
+                           title: str = "aa_length Density per Position",
+                           show: bool = False,
+                           ax: Optional[plt.Axes] = None
+                           ):
+    cont = pd.read_csv(cugo_path, sep='\t', na_values='', keep_default_na=False)
+    extract = cont.loc[cont["feat_type"] == "aa_length"]
+
+    flank_cols = [str(i) for i in range(flank_lower, flank_upper + 1)]
+    cugo_df = extract[flank_cols]
+
+    all_lengths = cugo_df.values.flatten()
+    all_lengths = all_lengths[~pd.isna(all_lengths)].astype(float)
+    max_len = all_lengths.max()
+    bin_edges = np.linspace(0, max_len, bins + 1)
+
+    heat_data = np.zeros((bins, len(flank_cols)))
+    for col_idx, col in enumerate(flank_cols):
+        values = cugo_df[col].dropna().astype(float)
+        hist, _ = np.histogram(values, bins=bin_edges)
+        heat_data[:, col_idx] = hist
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(len(flank_cols) * 0.6, 5))
+
+    cmap = get_cmap("Blues")
+    norm = Normalize(vmin=0, vmax=heat_data.max())
+
+    for x in range(heat_data.shape[1]):
+        for y in range(heat_data.shape[0]):
+            val = heat_data[y, x]
+            color = cmap(norm(val))
+            ax.add_patch(plt.Rectangle(
+                (x, y), 1, 1, color=color, linewidth=0
+            ))
+
+    ax.set_xlim(0, len(flank_cols))
+    ax.set_ylim(0, bins)
+    ax.set_xticks(np.arange(len(flank_cols)) + 0.5)
+    ax.set_xticklabels(flank_cols, fontsize=12)
+    ax.set_yticks(np.arange(bins) + 0.5)
+    ax.set_yticklabels([
+        f"{int(bin_edges[i])}-{int(bin_edges[i + 1])}" for i in range(bins)
+    ], fontsize=10)
+    ax.set_xlabel("Position", fontsize=14)
+    ax.set_ylabel("aa_length bin", fontsize=14)
+    ax.set_title(title, fontsize=16)
+
+    sm = ScalarMappable(norm=norm, cmap=cmap)
+    sm.set_array([])
+    cbar = plt.colorbar(sm, ax=ax, pad=0.01)
+    cbar.set_label("Absolute Count", fontsize=12)
+
     plt.tight_layout()
-    plt.subplots_adjust(left=0.05, bottom=0.25)
+    if show:
+        plt.show()
 
 def cugo_plot(cugo_path: str,
         flank_lower: int,
         flank_upper: int,
-        top_n: int):
-    plot_top_cogs_per_position(cugo_path, flank_lower, flank_upper, top_n)
-    plt.show()
+        top_n: int,
+        cugo: bool = False,
+        size: bool = False,
+        all_plots: bool = False
+              ):
+    if cugo:
+        if not top_n:
+            logger.error("top_n is required if cugo is True")
+        else:
+            plot_top_cogs_per_position(cugo_path, flank_lower, flank_upper, top_n, show=True)
+    if size:
+        plot_size_per_position(cugo_path, flank_lower, flank_upper, show=True)
+    if all_plots:
+        if not top_n:
+            logger.error("top_n is required if cugo is True")
+        else:
+            width = max(8, (flank_upper - flank_lower + 1) * top_n * 0.6)
+            figsize = (width, 12)
+            fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True,
+                                       figsize=figsize,
+                                       gridspec_kw={'height_ratios': [3, 2]})
+
+            plot_top_cogs_per_position(
+                cugo_path=cugo_path,
+                flank_lower=flank_lower,
+                flank_upper=flank_upper,
+                top_n=top_n,
+                title="Top COGs per Position",
+                ax=ax1,
+                show=False
+            )
+
+            plot_size_per_position(
+                cugo_path=cugo_path,
+                flank_lower=flank_lower,
+                flank_upper=flank_upper,
+                title="aa_length Density per Position",
+                ax=ax2,
+                show=False
+            )
+
+            plt.tight_layout()
+            plt.show()
+
 
 ### maybe plot transmembrane segments parts to distinguish the numbers contributing to specks;
 ### plotting should be on transposed context dataframe; THIS SHOULD BE SEPARATE FILES (length, cog, tmhmm) Columns by position, protein ID in column 1 and needs also genomeID column - maybe think about dynamic dataframes;

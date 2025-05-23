@@ -70,7 +70,7 @@ if __name__ == "__main__":
             protein_name=args.protein_name,
             bsr_file=args.bsr,
             output_dir=args.output,
-            yaml=args.yaml,
+            yaml_path=args.yaml,
             force=args.force,
             update=args.update
         )
@@ -98,7 +98,6 @@ if __name__ == "__main__":
 
     elif args.subparser_name == 'pasr':
         pasr(
-            db_dir=args.db,
             protein_name=args.protein_name,
             seed_fasta=args.seed,
             query_fasta=args.query,
@@ -117,7 +116,8 @@ if __name__ == "__main__":
     elif args.subparser_name == 'parse':
         parse(
             gff_file_path=args.gff_path,
-            output_dir=args.output
+            output_dir=args.output,
+            force=args.force
         )
 
     elif args.subparser_name == 'context':
@@ -127,7 +127,8 @@ if __name__ == "__main__":
             tmhmm_dir=args.tmhmm_dir,
             cugo_range=args.cugo_range,
             output_dir=args.output,
-            dataset=args.dataset
+            dataset=args.dataset,
+            force=args.force
         )
 
     elif args.subparser_name == 'cugo_plot':
@@ -135,5 +136,8 @@ if __name__ == "__main__":
             cugo_path=args.cugo_path,
             flank_lower=args.flank_lower,
             flank_upper=args.flank_upper,
-            top_n=args.top_n
+            top_n=args.top_n,
+            cugo=args.cugo,
+            size=args.size,
+            all_plots=args.all
         )
