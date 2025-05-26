@@ -403,13 +403,13 @@ def top_context(df: pd.DataFrame, top_n: int):
 
 
 def plot_top_cogs_per_position(
-    cugo_path: str,
-    flank_lower: int,
-    flank_upper: int,
-    top_n: int,
-    title: str = "Top COGs per Position",
-    show: bool = False,
-    ax: plt.Axes = None
+        cugo_path: str,
+        flank_lower: int,
+        flank_upper: int,
+        top_n: int,
+        title: str = "Top COGs per Position",
+        show: bool = False,
+        ax: plt.Axes = None
 ):
     cont = pd.read_csv(cugo_path, sep='\t', na_values='', keep_default_na=False)
     extract = cont.loc[cont["feat_type"] == "COG_ID"]
@@ -422,6 +422,7 @@ def plot_top_cogs_per_position(
 
     flank_cols = [str(i) for i in range(flank_lower, flank_upper + 1)]
     cugo_df = extract[flank_cols]
+    positions = [int(col) for col in cugo_df.columns]
 
     top_ids = [[] for _ in range(top_n)]
     top_counts = [[] for _ in range(top_n)]
@@ -439,49 +440,34 @@ def plot_top_cogs_per_position(
     id_df = pd.DataFrame(top_ids, columns=cugo_df.columns)
     count_df = pd.DataFrame(top_counts, columns=cugo_df.columns)
 
-    positions = id_df.columns
-    plot_info = {
-        pos: [
-            {rank + 1: (id_df.loc[rank, pos], count_df.loc[rank, pos])}
-            for rank in range(top_n)
-        ]
-        for pos in positions
-    }
-
-    point_spacing = 0.5 * top_n
-    position_spacing = 0.5 * top_n
+    subtick_width = 0.8 / top_n
+    subtick_offset = (top_n - 1) * subtick_width / 2
 
     x_pos, y_values, cog_labels, point_colors = [], [], [], []
-    pos_boundaries, pos_centers = [], []
+    all_xticks, all_xlabels = [], []
 
-    current_x = 0
+    if ax is None:
+        figsize = (max(8, len(positions) * 0.8), 7)
+        fig, ax = plt.subplots(figsize=figsize)
+
     for pos_idx, pos in enumerate(positions):
-        pos_width = point_spacing * (top_n - 1)
-        pos_center = current_x + pos_width / 2
-        pos_centers.append(pos_center)
-
-        if pos_idx == 0:
-            pos_boundaries.append(current_x - point_spacing / 2)
-
         for rank in range(top_n):
-            cog_id, count = list(plot_info[pos][rank].values())[0]
-            x = current_x + rank * point_spacing
+            cog_id = id_df.loc[rank, str(pos)]
+            count = count_df.loc[rank, str(pos)]
+
+            x = pos + (rank * subtick_width) - subtick_offset
             x_pos.append(x)
             y_values.append(count)
+            all_xticks.append(x)
 
             if pd.isna(cog_id):
                 cog_labels.append("nan")
                 point_colors.append("#ffffff")
+                all_xlabels.append("nan")
             else:
                 cog_labels.append(cog_id)
                 point_colors.append(cog_color_map.get(cog_id, "#aaaaaa"))
-
-        current_x += pos_width + position_spacing
-        pos_boundaries.append(current_x - position_spacing / 2)
-
-    if ax is None:
-        figsize = (max(8, len(positions) * top_n * 0.6), 7)
-        fig, ax = plt.subplots(figsize=figsize)
+                all_xlabels.append(cog_id)
 
     ax.scatter(
         x_pos,
@@ -493,21 +479,22 @@ def plot_top_cogs_per_position(
         linewidths=0.7
     )
 
-    ax.set_xticks(x_pos)
-    ax.set_xticklabels(cog_labels, rotation=90, fontsize=14, ha='center')
+    ax.set_xticks(all_xticks)
+    ax.set_xticklabels(all_xlabels, rotation=90, fontsize=14, ha='center')
 
-    for boundary in pos_boundaries:
+    for pos in positions[:-1]:
+        boundary = pos + 0.5
         ax.axvline(boundary, color='gray', linestyle='--', linewidth=0.7, zorder=1)
 
     max_y = max([y for y in y_values if not pd.isna(y)], default=0)
     label_offset = max_y * 0.05
 
-    for center, pos in zip(pos_centers, positions):
-        ax.text(center, max_y + label_offset, pos, ha='center', va='bottom',
+    for pos in positions:
+        ax.text(pos, max_y + label_offset, str(pos), ha='center', va='bottom',
                 fontsize=16, fontweight='bold')
 
     ax.set_ylim(-max_y * 0.05, max_y * 1.15)
-    ax.set_xlim(pos_boundaries[0] - point_spacing / 2, pos_boundaries[-1] + point_spacing / 2)
+    ax.set_xlim(positions[0] - 0.5, positions[-1] + 0.5)
 
     ax.tick_params(axis='y', labelsize=14)
     ax.set_ylabel("Count", fontsize=16)
@@ -517,74 +504,103 @@ def plot_top_cogs_per_position(
         plt.tight_layout()
         plt.show()
 
+    return positions, [pos + 0.5 for pos in positions[:-1]]
 
 def plot_size_per_position(cugo_path: str,
                            flank_lower: int,
                            flank_upper: int,
-                           bins: int = 10,
                            title: str = "aa_length Density per Position",
                            show: bool = False,
-                           ax: Optional[plt.Axes] = None
+                           ax: Optional[plt.Axes] = None,
+                           pos_centers: Optional[list] = None,
+                           pos_boundaries: Optional[list] = None
                            ):
     cont = pd.read_csv(cugo_path, sep='\t', na_values='', keep_default_na=False)
     extract = cont.loc[cont["feat_type"] == "aa_length"]
 
     flank_cols = [str(i) for i in range(flank_lower, flank_upper + 1)]
     cugo_df = extract[flank_cols]
+    positions = [int(col) for col in cugo_df.columns]
 
     all_lengths = cugo_df.values.flatten()
     all_lengths = all_lengths[~pd.isna(all_lengths)].astype(float)
     max_len = all_lengths.max()
-    bin_edges = np.linspace(0, max_len, bins + 1)
+    bin_width = 10
+    bin_edges = np.arange(0, max_len + bin_width, bin_width)
+    n_bins = len(bin_edges) - 1
 
-    heat_data = np.zeros((bins, len(flank_cols)))
+    heat_data = np.zeros((n_bins, len(flank_cols)))
+    position_counts = []
+
     for col_idx, col in enumerate(flank_cols):
         values = cugo_df[col].dropna().astype(float)
         hist, _ = np.histogram(values, bins=bin_edges)
         heat_data[:, col_idx] = hist
+        position_counts.append(len(values))
 
     if ax is None:
-        fig, ax = plt.subplots(figsize=(len(flank_cols) * 0.6, 5))
+        fig, ax = plt.subplots()
 
     cmap = get_cmap("Blues")
     norm = Normalize(vmin=0, vmax=heat_data.max())
 
-    for x in range(heat_data.shape[1]):
+    rect_width = 0.8
+    for col_idx, pos in enumerate(positions):
         for y in range(heat_data.shape[0]):
-            val = heat_data[y, x]
+            val = heat_data[y, col_idx]
             color = cmap(norm(val))
             ax.add_patch(plt.Rectangle(
-                (x, y), 1, 1, color=color, linewidth=0
+                (pos - rect_width / 2, y), rect_width, 1, color=color, linewidth=0
             ))
 
-    ax.set_xlim(0, len(flank_cols))
-    ax.set_ylim(0, bins)
-    ax.set_xticks(np.arange(len(flank_cols)) + 0.5)
-    ax.set_xticklabels(flank_cols, fontsize=12)
-    ax.set_yticks(np.arange(bins) + 0.5)
-    ax.set_yticklabels([
-        f"{int(bin_edges[i])}-{int(bin_edges[i + 1])}" for i in range(bins)
-    ], fontsize=10)
+    if pos_boundaries is not None:
+        for boundary in pos_boundaries:
+            ax.axvline(boundary, color='gray', linestyle='--', linewidth=0.7, zorder=1)
+
+    ax.set_xlim(positions[0] - 0.5, positions[-1] + 0.5)
+    xtick_labels = [f"{pos}\n(n={count})" for pos, count in zip(positions, position_counts)]
+    ax.set_xticks(positions)
+    ax.set_xticklabels(xtick_labels, fontsize=10)
+
+    ax.set_ylim(0, n_bins)
+
+    tick_indices = []
+    tick_labels = []
+
+    for i in range(n_bins):
+        bin_start = int(bin_edges[i])
+        bin_end = int(bin_edges[i + 1])
+        if bin_end % 100 == 0:
+            tick_indices.append(i)
+            tick_labels.append(f"{bin_start}-{bin_end}")
+
+    if not tick_indices:
+        tick_step = max(1, n_bins // 10)
+        tick_indices = list(range(0, n_bins, tick_step))
+        tick_labels = [f"{int(bin_edges[i])}-{int(bin_edges[i + 1])}" for i in tick_indices]
+
+    ax.set_yticks(np.array(tick_indices) + 0.5)
+    ax.set_yticklabels(tick_labels, fontsize=10)
     ax.set_xlabel("Position", fontsize=14)
     ax.set_ylabel("aa_length bin", fontsize=14)
     ax.set_title(title, fontsize=16)
 
     sm = ScalarMappable(norm=norm, cmap=cmap)
     sm.set_array([])
-    cbar = plt.colorbar(sm, ax=ax, pad=0.01)
-    cbar.set_label("Absolute Count", fontsize=12)
 
     plt.tight_layout()
     if show:
         plt.show()
 
+
+
 def cugo_plot(cugo_path: str,
-        flank_lower: int,
-        flank_upper: int,
-        top_n: int,
-        cugo: bool = False,
-        size: bool = False,
-        all_plots: bool = False
+              flank_lower: int,
+              flank_upper: int,
+              top_n: int,
+              cugo: bool = False,
+              size: bool = False,
+              all_plots: bool = False
               ):
     if cugo:
         if not top_n:
@@ -600,10 +616,10 @@ def cugo_plot(cugo_path: str,
             width = max(8, (flank_upper - flank_lower + 1) * top_n * 0.6)
             figsize = (width, 12)
             fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True,
-                                       figsize=figsize,
-                                       gridspec_kw={'height_ratios': [3, 2]})
+                                           figsize=figsize,
+                                           gridspec_kw={'height_ratios': [3, 2]})
 
-            plot_top_cogs_per_position(
+            pos_centers, pos_boundaries = plot_top_cogs_per_position(
                 cugo_path=cugo_path,
                 flank_lower=flank_lower,
                 flank_upper=flank_upper,
@@ -619,7 +635,9 @@ def cugo_plot(cugo_path: str,
                 flank_upper=flank_upper,
                 title="aa_length Density per Position",
                 ax=ax2,
-                show=False
+                show=False,
+                pos_centers=pos_centers,
+                pos_boundaries=pos_boundaries
             )
 
             plt.tight_layout()
