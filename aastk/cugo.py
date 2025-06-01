@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from .util import ensure_path
+from .util import ensure_path, read_fasta_to_dict
 
 import pandas as pd
 import logging
@@ -288,25 +288,37 @@ def context(protein_ids: str,
             cugo_range: int,
             output_dir: str,
             dataset: str,
-            force: bool = False):
+            force: bool = False,
+            fasta_path: str = None):
     log_file = ensure_path(output_dir, f"{dataset}_missing_files.log", force=force)
     logging.basicConfig(
         filename=log_file,
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
+    if fasta_path:
+        sequences = read_fasta_to_dict(fasta_path)
+        protein_identifiers = sequences.keys()
+        clean_identifiers =  [protein_identifier.rsplit("___", 1)[0] for protein_identifier in protein_identifiers]
 
-    with open(protein_ids, 'r') as id_file:
-        protein_identifiers = [line.strip() for line in id_file if line.strip()]
-        clean_identifiers = [protein_identifier.rsplit("___", 1)[0] for protein_identifier in protein_identifiers]
+    elif protein_ids:
+        with open(protein_ids, 'r') as id_file:
+            protein_identifiers = [line.strip() for line in id_file if line.strip()]
+            clean_identifiers = [protein_identifier.rsplit("___", 1)[0] for protein_identifier in protein_identifiers]
+
+    else:
+        logger.error("Either 'fasta_path' or 'protein_ids' must be provided.")
+        raise ValueError("You must provide either a FASTA file or a list of protein IDs.")
 
     output_file = ensure_path(output_dir, dataset + "_context.tsv", force=force)
 
     missing_files = []
     results = None
 
+    cugo_dir = Path(cugo_dir)
+
     for index, id in enumerate(protein_identifiers):
-        cugo_tab_path = Path((cugo_dir) / f"{clean_identifiers[index]}_cugo.gz")
+        cugo_tab_path = cugo_dir / f"{clean_identifiers[index]}_cugo.gz"
 
         # check if CUGO file exists
         if not cugo_tab_path.exists():

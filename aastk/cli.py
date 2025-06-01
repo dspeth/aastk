@@ -78,6 +78,10 @@ def __extracted(group, required=False):
     group.add_argument('-e', '--extracted', type=str, required=required,
                        help='Path to FASTA file containing extracted matching sequences')
 
+def __fasta(group, required=False):
+    group.add_argument('-f', '--fasta', type=str, required=required,
+                       help='Path to FASTA file containing sequences for CUGO context extraction')
+
 def __force(group, required=False):
     group.add_argument('--force', action='store_true', required=required,
                        help='Set flag to overwrite existing files in specified path')
@@ -289,14 +293,17 @@ def get_main_parser():
             __output(grp)
 
     with subparser(sub_parsers, 'context', 'Parse context information from CUGO input file') as parser:
+        with mutex_group(parser, required=True) as grp:
+            __protein_ids(grp)
+            __fasta(grp)
         with arg_group(parser, 'Required arguments') as grp:
-            __protein_ids(grp, required=True)
             __cugo_dir(grp, required=True)
             __cugo_range(grp, required=True)
             __dataset(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __tmhmm_dir(grp)
+            __force(grp)
 
     with subparser(sub_parsers, 'cugo_plot', 'Plot CUGO context') as parser:
         with arg_group(parser, 'Required arguments') as grp:

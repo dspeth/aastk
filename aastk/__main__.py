@@ -128,7 +128,8 @@ if __name__ == "__main__":
             cugo_range=args.cugo_range,
             output_dir=args.output,
             dataset=args.dataset,
-            force=args.force
+            force=args.force,
+            fasta_path=args.fasta
         )
 
     elif args.subparser_name == 'cugo_plot':
