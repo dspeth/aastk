@@ -22,9 +22,13 @@ def __all(group, required=False):
     group.add_argument('--all', action='store_true', required=required,
                        help='Generate a combined plot for CUGO, AA sequence length and TMHMM')
 
+def __bin_width(group, required=False):
+    group.add_argument('-b', '--bin_width', type=int, default=10, required=required,
+                       help='Bin width for amino acid sequence size plotting (Default: 10)')
+
 def __block(group, required=False):
     group.add_argument('-b', '--block', type=int, default=6, required=required,
-                       help='Choose diamond blastp sequence block size in billions of letters. (Default: 6)')
+                       help='Choose diamond blastp sequence block size in billions of letters (Default: 6)')
 
 def __bsr(group, required=False):
     group.add_argument('-b', '--bsr', type=str, required=required,
@@ -40,7 +44,7 @@ def __column_info_path(group, required=False):
 
 def __chunk(group, required=False):
     group.add_argument('-c', '--chunk', type=int, default=2, required=required,
-                       help='Choose number of chunks for diamond blastp index processing. (Default: 2)')
+                       help='Choose number of chunks for diamond blastp index processing (Default: 2)')
 
 def __cugo(group, required=False):
     group.add_argument('--cugo', action='store_true', required=required,
@@ -171,6 +175,10 @@ def __yaml(group, required=False):
     group.add_argument('-y', '--yaml', type=str, required=required,
                        help='Path to metadata yaml file')
 
+def __y_range(group, required=False):
+    group.add_argument('-y', '--y_range', type=int, required=required,
+                       help='Upper limit for sequence length plot y-axis')
+
 def get_main_parser():
     main_parser = argparse.ArgumentParser(
         prog='aastk', add_help=False, conflict_handler='resolve')
@@ -300,6 +308,8 @@ def get_main_parser():
             __cugo(grp)
             __size(grp)
             __all(grp)
+            __bin_width(grp)
+            __y_range(grp)
 
 
     return main_parser

@@ -512,8 +512,9 @@ def plot_size_per_position(cugo_path: str,
                            title: str = "aa_length Density per Position",
                            show: bool = False,
                            ax: Optional[plt.Axes] = None,
-                           pos_centers: Optional[list] = None,
-                           pos_boundaries: Optional[list] = None
+                           pos_boundaries: Optional[list] = None,
+                           bin_width: int = 10,
+                           y_range: int = None
                            ):
     cont = pd.read_csv(cugo_path, sep='\t', na_values='', keep_default_na=False)
     extract = cont.loc[cont["feat_type"] == "aa_length"]
@@ -525,7 +526,6 @@ def plot_size_per_position(cugo_path: str,
     all_lengths = cugo_df.values.flatten()
     all_lengths = all_lengths[~pd.isna(all_lengths)].astype(float)
     max_len = all_lengths.max()
-    bin_width = 10
     bin_edges = np.arange(0, max_len + bin_width, bin_width)
     n_bins = len(bin_edges) - 1
 
@@ -562,27 +562,30 @@ def plot_size_per_position(cugo_path: str,
     ax.set_xticks(positions)
     ax.set_xticklabels(xtick_labels, fontsize=10)
 
+    if y_range:
+        n_bins = int(y_range / bin_width)
+
     ax.set_ylim(0, n_bins)
 
     tick_indices = []
     tick_labels = []
 
     for i in range(n_bins):
-        bin_start = int(bin_edges[i])
         bin_end = int(bin_edges[i + 1])
         if bin_end % 100 == 0:
             tick_indices.append(i)
-            tick_labels.append(f"{bin_start}-{bin_end}")
+            tick_labels.append(f"{bin_end}")
 
     if not tick_indices:
         tick_step = max(1, n_bins // 10)
         tick_indices = list(range(0, n_bins, tick_step))
-        tick_labels = [f"{int(bin_edges[i])}-{int(bin_edges[i + 1])}" for i in tick_indices]
+        tick_labels = [f"{int(bin_edges[i + 1])}" for i in tick_indices]
 
     ax.set_yticks(np.array(tick_indices) + 0.5)
     ax.set_yticklabels(tick_labels, fontsize=10)
+
     ax.set_xlabel("Position", fontsize=14)
-    ax.set_ylabel("aa_length bin", fontsize=14)
+    ax.set_ylabel(f"length (bin size: {bin_width})", fontsize=14)
     ax.set_title(title, fontsize=16)
 
     sm = ScalarMappable(norm=norm, cmap=cmap)
@@ -600,7 +603,9 @@ def cugo_plot(cugo_path: str,
               top_n: int,
               cugo: bool = False,
               size: bool = False,
-              all_plots: bool = False
+              all_plots: bool = False,
+              bin_width: int = 10,
+              y_range: int = None
               ):
     if cugo:
         if not top_n:
@@ -608,14 +613,14 @@ def cugo_plot(cugo_path: str,
         else:
             plot_top_cogs_per_position(cugo_path, flank_lower, flank_upper, top_n, show=True)
     if size:
-        plot_size_per_position(cugo_path, flank_lower, flank_upper, show=True)
+        plot_size_per_position(cugo_path, flank_lower, flank_upper, show=True, bin_width=bin_width)
     if all_plots:
         if not top_n:
             logger.error("top_n is required if cugo is True")
         else:
             width = max(8, (flank_upper - flank_lower + 1) * top_n * 0.6)
             figsize = (width, 12)
-            fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True,
+            fig, (ax1, ax2) = plt.subplots(2, 1,
                                            figsize=figsize,
                                            gridspec_kw={'height_ratios': [3, 2]})
 
@@ -636,18 +641,13 @@ def cugo_plot(cugo_path: str,
                 title="aa_length Density per Position",
                 ax=ax2,
                 show=False,
-                pos_centers=pos_centers,
-                pos_boundaries=pos_boundaries
+                pos_boundaries=pos_boundaries,
+                bin_width=bin_width,
+                y_range=y_range
             )
 
+            ax1.tick_params(labelbottom=True)
+
             plt.tight_layout()
+            plt.subplots_adjust(hspace=0.4)
             plt.show()
-
-
-### maybe plot transmembrane segments parts to distinguish the numbers contributing to specks;
-### plotting should be on transposed context dataframe; THIS SHOULD BE SEPARATE FILES (length, cog, tmhmm) Columns by position, protein ID in column 1 and needs also genomeID column - maybe think about dynamic dataframes;
-### processing slice by slice might be the quickest
-### for - strand, transpose and reverse - depending on length, previous lines might need padding
-### NA absence of annotation value (are genes, but don't have functional annotations), NaN no value
-
-

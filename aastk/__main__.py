@@ -139,5 +139,7 @@ if __name__ == "__main__":
             top_n=args.top_n,
             cugo=args.cugo,
             size=args.size,
-            all_plots=args.all
+            all_plots=args.all,
+            bin_width=args.bin_width,
+            y_range=args.y_range
         )
