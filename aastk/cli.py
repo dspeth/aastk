@@ -211,5 +211,7 @@ def get_main_parser():
             __update(grp)
             __yaml(grp)
 
+    with subparser(sub_parser, 'asm_clust', 'ASM_clust: protein clustering using alignment score matrices ') as parser:
+
 
     return main_parser

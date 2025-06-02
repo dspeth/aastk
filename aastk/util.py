@@ -90,7 +90,6 @@ def write_fa_matches(seq_file, ids):
     matching = False
     sequence = ""
 
-    ## parser can also be in util.py
     with open(seq_file, 'r') as sf:
         for line in sf:
             line = line.strip()
