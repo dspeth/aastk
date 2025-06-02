@@ -80,7 +80,7 @@ def __extracted(group, required=False):
 
 def __fasta(group, required=False):
     group.add_argument('-f', '--fasta', type=str, required=required,
-                       help='Path to FASTA file containing sequences for CUGO context extraction')
+                       help='Path to FASTA file')
 
 def __force(group, required=False):
     group.add_argument('--force', action='store_true', required=required,
