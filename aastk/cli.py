@@ -40,7 +40,7 @@ def __chunk(group, required=False):
                        help='Choose number of chunks for diamond blastp index processing. (Default: 2)')
 
 def __dataset(group, required=False):
-    group.add_argument('-s', '--dataset', type=str, required=required,
+    group.add_argument('-d', '--dataset', type=str, required=required,
                        help='Dataset name')
 
 def __db(group, required=False):
@@ -54,6 +54,10 @@ def __dbmin(group, required=False):
 def __extracted(group, required=False):
     group.add_argument('-e', '--extracted', type=str, required=required,
                        help='Path to FASTA file containing extracted matching sequences')
+
+def __fasta(group, required=False):
+    group.add_argument('-f', '--fasta', type=str, required=required,
+                       help='Path to FASTA file')
 
 def __key_column(group, required=False):
     group.add_argument('-k', '--key_column', type=int, default=0, required=required,
@@ -103,6 +107,10 @@ def __sensitivity(group, required=False):
     group.add_argument('--sensitivity', choices=['fast', 'sensitive', 'mid-sensitive', 'very-sensitive', 'ultra-sensitive', 'faster'], required=required,
                        help='Set the sensitivity level for the DIAMOND search: fast, sensitive, mid-sensitive, very-sensitive, '
                             'ultra-sensitive, or faster (default: fast)')
+
+def __subset_size(group, required=False):
+    group.add_argument('-s', '--subset_size', type=int, required=required,
+                       help='Number of sequences to randomly subset from input FASTA file')
 
 def __tabular(group, required=False):
     group.add_argument('-t', '--tabular', type=str, default=None, required=required,
@@ -211,7 +219,17 @@ def get_main_parser():
             __update(grp)
             __yaml(grp)
 
-    with subparser(sub_parser, 'asm_clust', 'ASM_clust: protein clustering using alignment score matrices ') as parser:
+    with subparser(sub_parsers, 'asm_clust', 'ASM_clust: protein clustering using alignment score matrices') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __fasta(grp, required=True)
+            __subset_size(grp, required=True)
+            __seed(grp, required=True)
+            __dataset(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __threads(grp)
+            __output(grp)
+
+
 
 
     return main_parser
