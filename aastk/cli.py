@@ -150,16 +150,18 @@ def __sensitivity(group, required=False):
     group.add_argument('--sensitivity', choices=['fast', 'sensitive', 'mid-sensitive', 'very-sensitive', 'ultra-sensitive', 'faster'], required=required,
                        help='Set the sensitivity level for the DIAMOND search: fast, sensitive, mid-sensitive, very-sensitive, '
                             'ultra-sensitive, or faster (default: fast)')
-def __subset(group, required=False):
-    group.add_argument('--subset,' )
-
-def __subset_size(group, required=False):
-    group.add_argument('-s', '--subset_size', type=int, required=required,
-                       help='Number of sequences to randomly subset from input FASTA file')
 
 def __size(group, required=False):
     group.add_argument('--size', action='store_true', required=required,
                        help='Generate AA sequence length plot')
+
+def __subset(group, required=False):
+    group.add_argument('--subset', action='store_true', required=required,
+                       help='Subset seed fasta')
+
+def __subset_size(group, required=False):
+    group.add_argument('-s', '--subset_size', type=int, required=required,
+                       help='Number of sequences to randomly subset from input FASTA file')
 
 def __tabular(group, required=False):
     group.add_argument('-t', '--tabular', type=str, default=None, required=required,
@@ -176,6 +178,10 @@ def __tmhmm_dir(group, required=False):
 def __top_n(group, required=False):
     group.add_argument('-t', '--top_n', type=int, required=required,
                        help='Number of top COGs to plot per position')
+
+def __tsv(group, required=False):
+    group.add_argument('-t', '--tsv', type=str, required=required,
+                       help='Path to ASM_clust tab separated output file')
 
 def __update(group, required=False):
     group.add_argument('--update', action='store_true', required=required,
@@ -333,8 +339,12 @@ def get_main_parser():
             __threads(grp)
             __output(grp)
             __subset_size(grp)
+            __subset(grp)
 
-
-
+    with subparser(sub_parsers, 'asm_plot', 'ASM_plot: plot ASM_clust output files in .tsv format') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __tsv(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
 
     return main_parser

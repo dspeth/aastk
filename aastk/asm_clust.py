@@ -1,13 +1,22 @@
 from .util import *
 
 import sys
-from pathlib import Path
 import random
 import numpy as np
 import subprocess
 import pandas as pd
 import openTSNE
 from sklearn.cluster import DBSCAN
+import matplotlib.pyplot as plt
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.DEBUG,  # or logging.INFO if you want less verbosity
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    stream=sys.stdout
+)
+logging.getLogger('matplotlib').setLevel(logging.WARNING)
+logging.getLogger("PIL").setLevel(logging.INFO)
 
 def fasta_subsample(fasta: str, output_path: str, subset_size: int):
     sequences = read_fasta_to_dict(fasta)
@@ -19,9 +28,6 @@ def fasta_subsample(fasta: str, output_path: str, subset_size: int):
             f.write(f'{seq}\n')
 
     return output_path
-
-import subprocess
-from pathlib import Path
 
 def run_diamond_alignment(fasta: str, align_subset: str, dataset: str, subset_size: int, threads: int):
     """
@@ -152,7 +158,7 @@ def tsne_embedding(matrix: np.ndarray,
                                           ['tsne1', 'tsne2'],
                                           metadata_protein,
                                           metadata_genome)
-    early_df.to_csv(f"{basename}_tsne_early_clust.tsv", sep="\t", index=False)
+    early_tsv = early_df.to_csv(f"{basename}_tsne_early_clust.tsv", sep="\t", index=False)
 
     # final embedding
     tsne_embed.optimize(n_iter=iterations,
@@ -168,10 +174,13 @@ def tsne_embedding(matrix: np.ndarray,
                                           metadata_protein,
                                           metadata_genome)
 
-    final_df.to_csv(f"{basename}_tsne_embed.tsv", sep="\t", index=False)
+    final_tsv = final_df.to_csv(f"{basename}_tsne_embed.tsv", sep="\t", index=False)
 
 
-# subset should be optional, could also be any fasta file as input
+    return early_tsv, final_tsv
+
+
+
 def asm_clust(fasta: str,
               output: str,
               subset_size: int,
@@ -182,8 +191,16 @@ def asm_clust(fasta: str,
               iterations: int = 500,
               exaggeration: int = 6,
               metadata_protein: str = None,
-              metadata_genome: str = None):
-    subset_fasta = fasta_subsample(fasta, seed_fasta, subset_size)
+              metadata_genome: str = None,
+              subset: bool = False):
+    if subset and not subset_size:
+        logger.error("Subset size required if subset is True")
+        exit()
+
+    if subset:
+        subset_fasta = fasta_subsample(fasta, seed_fasta, subset_size)
+    else:
+        subset_fasta = seed_fasta
     align_output = run_diamond_alignment(fasta, subset_fasta, dataset, subset_size, threads)
     matrix, queries, targets = build_alignment_matrix(align_output)
     tsne_embedding(matrix=matrix,
@@ -195,4 +212,44 @@ def asm_clust(fasta: str,
                    threads=threads,
                    metadata_protein=metadata_protein,
                    metadata_genome=metadata_genome)
+
+def asm_plot(tsv_file: str,
+             output: str):
+    df = pd.read_csv(tsv_file, sep='\t')
+
+    plt.figure(figsize=(12, 8))
+
+    noise_mask = df['cluster'] == -1
+    clustered_mask = df['cluster'] != -1
+
+    if noise_mask.any():
+        plt.scatter(df.loc[noise_mask, 'tsne1'],
+                    df.loc[noise_mask, 'tsne2'],
+                    c='lightgray',
+                    alpha=0.6,
+                    s=20,
+                    label='Noise')
+
+    if clustered_mask.any():
+        unique_clusters = df.loc[clustered_mask, 'cluster'].unique()
+        colors = plt.cm.Set3(np.linspace(0, 1, len(unique_clusters)))
+
+        for i, cluster in enumerate(unique_clusters):
+            cluster_mask = df['cluster'] == cluster
+            plt.scatter(df.loc[cluster_mask, 'tsne1'],
+                        df.loc[cluster_mask, 'tsne2'],
+                        c=[colors[i]], s=30, alpha=0.7,
+                        label=f'Cluster {cluster}')
+
+    plt.xlabel('t-SNE 1')
+    plt.ylabel('t-SNE 2')
+    plt.title('t-SNE Embedding with DBSCAN Clusters')
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.tight_layout()
+
+    if output:
+        plt.savefig(f"{output}_tsne_clusters.png", dpi=300, bbox_inches='tight')
+    plt.show()
+
+
 

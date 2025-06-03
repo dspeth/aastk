@@ -156,3 +156,9 @@ if __name__ == "__main__":
             dataset=args.dataset,
             threads=args.threads
         )
+
+    elif args.subparser_name == 'asm_plot':
+        asm_plot(
+            tsv_file=args.tsv,
+            output=args.output
+        )
