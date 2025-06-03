@@ -18,7 +18,7 @@
 __author__ = 'Daan Speth'
 __author_email__ = 'daan.speth@univie.ac.at'
 __copyright__ = 'Copyright 2024'
-__credits__ = ['Daan Speth']
+__credits__ = ['Daan Speth', 'Marcel Rennig']
 __description__ = 'toolkit for working with amino acid sequences obtained from GlobDB genomes'
 __license__ = 'GPL3'
 __name__ = 'aastk'
