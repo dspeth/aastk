@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import argparse
 from contextlib import contextmanager
-from email.policy import default
 
 
 @contextmanager
@@ -19,9 +18,17 @@ def mutex_group(parser, required):
 def arg_group(parser, name):
     yield parser.add_argument_group(name)
 
+def __all(group, required=False):
+    group.add_argument('--all', action='store_true', required=required,
+                       help='Generate a combined plot for CUGO, AA sequence length and TMHMM')
+
+def __bin_width(group, required=False):
+    group.add_argument('-b', '--bin_width', type=int, default=10, required=required,
+                       help='Bin width for amino acid sequence size plotting (Default: 10)')
+
 def __block(group, required=False):
     group.add_argument('-b', '--block', type=int, default=6, required=required,
-                       help='Choose diamond blastp sequence block size in billions of letters. (Default: 6)')
+                       help='Choose diamond blastp sequence block size in billions of letters (Default: 6)')
 
 def __bsr(group, required=False):
     group.add_argument('-b', '--bsr', type=str, required=required,
@@ -37,7 +44,23 @@ def __column_info_path(group, required=False):
 
 def __chunk(group, required=False):
     group.add_argument('-c', '--chunk', type=int, default=2, required=required,
-                       help='Choose number of chunks for diamond blastp index processing. (Default: 2)')
+                       help='Choose number of chunks for diamond blastp index processing (Default: 2)')
+
+def __cugo(group, required=False):
+    group.add_argument('--cugo', action='store_true', required=required,
+                       help='Generate CUGO plot')
+
+def __cugo_dir(group, required=False):
+    group.add_argument('-c', '--cugo_dir', type=str, required=required,
+                       help='Directory containing CUGO tab files')
+
+def __cugo_path(group, required=False):
+    group.add_argument('-c', '--cugo_path', type=str, required=required,
+                       help='Path to CUGO file')
+
+def __cugo_range(group, required=False):
+    group.add_argument('-r', '--cugo_range', type=int, required=required,
+                       help='CUGO range of interest for genomic context analysis')
 
 def __dataset(group, required=False):
     group.add_argument('-d', '--dataset', type=str, required=required,
@@ -58,6 +81,22 @@ def __extracted(group, required=False):
 def __fasta(group, required=False):
     group.add_argument('-f', '--fasta', type=str, required=required,
                        help='Path to FASTA file')
+
+def __force(group, required=False):
+    group.add_argument('--force', action='store_true', required=required,
+                       help='Set flag to overwrite existing files in specified path')
+
+def __flank_lower(group, required=False):
+    group.add_argument('-l', '--flank_lower', type=int, required=required,
+                       help='Start of flanking window (inclusive)')
+
+def __flank_upper(group, required=False):
+    group.add_argument('-u', '--flank_upper', type=int, required=required,
+                       help='End of flanking window (inclusive)')
+
+def __gff_path(group, required=False):
+    group.add_argument('-g', '--gff_path', type=str, required=required,
+                       help='Path to input GFF file')
 
 def __key_column(group, required=False):
     group.add_argument('-k', '--key_column', type=int, default=0, required=required,
@@ -82,6 +121,10 @@ def __output(group, required=False):
 def __protein_name(group, required=False):
     group.add_argument('-p', '--protein_name', type=str, default=None, required=required,
                        help='Name of protein of interest')
+
+def __protein_ids(group, required=False):
+    group.add_argument('-p', '--protein_ids', type=str, required=required,
+                       help='Path to file containing list of protein IDs')
 
 def __query(group, required=False):
     group.add_argument('-q', '--query', type=str, default=None, required=required,
@@ -114,6 +157,10 @@ def __subset_size(group, required=False):
     group.add_argument('-s', '--subset_size', type=int, required=required,
                        help='Number of sequences to randomly subset from input FASTA file')
 
+def __size(group, required=False):
+    group.add_argument('--size', action='store_true', required=required,
+                       help='Generate AA sequence length plot')
+
 def __tabular(group, required=False):
     group.add_argument('-t', '--tabular', type=str, default=None, required=required,
                        help='Path to tabular BLAST/DIAMOND output file')
@@ -122,19 +169,33 @@ def __threads(group, required=False):
     group.add_argument('-n', '--threads', type=int, default=1, required=required,
                        help='Number of threads to be used (default: 1)')
 
+def __tmhmm_dir(group, required=False):
+    group.add_argument('-t', '--tmhmm_dir', type=str, required=required,
+                       help='Directory containing tmhmm files')
+
+def __top_n(group, required=False):
+    group.add_argument('-t', '--top_n', type=int, required=required,
+                       help='Number of top COGs to plot per position')
+
 def __update(group, required=False):
-    group.add_argument('--update', type=bool, default=False, required=required,
+    group.add_argument('--update', action='store_true', required=required,
                        help='Update subset of data using metadata yaml file')
 
 def __yaml(group, required=False):
     group.add_argument('-y', '--yaml', type=str, required=required,
                        help='Path to metadata yaml file')
 
+def __y_range(group, required=False):
+    group.add_argument('-y', '--y_range', type=int, required=required,
+                       help='Upper limit for sequence length plot y-axis')
+
 def get_main_parser():
     main_parser = argparse.ArgumentParser(
         prog='aastk', add_help=False, conflict_handler='resolve')
     sub_parsers = main_parser.add_subparsers(help="--", dest='subparser_name')
 
+
+    ### PARSER FOR PASR FUNCTIONALITIES AND WORKFLOW ###
     with subparser(sub_parsers, 'build', 'Build DIAMOND database from seed sequence(s)') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __protein_name(grp, required=True)
@@ -142,6 +203,7 @@ def get_main_parser():
             __db(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __threads(grp)
+            __force(grp)
 
     with subparser(sub_parsers, 'search', 'Search DIAMOND reference database for homologous sequences') as parser:
         with arg_group(parser, 'Required arguments') as grp:
@@ -154,6 +216,7 @@ def get_main_parser():
             __block(grp)
             __chunk(grp)
             __sensitivity(grp)
+            __force(grp)
 
     with subparser(sub_parsers, 'extract', 'Extract reads that have DIAMOND hits against custom database') as parser:
         with arg_group(parser, 'Required arguments') as grp:
@@ -163,6 +226,7 @@ def get_main_parser():
             __output(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __key_column(grp)
+            __force(grp)
 
     with subparser(sub_parsers, 'calculate', 'Calculate max scores for extracted sequences using BLOSUM matrix') as parser:
         with arg_group(parser, 'Required arguments') as grp:
@@ -171,6 +235,7 @@ def get_main_parser():
             __matrix(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __force(grp)
 
     with subparser(sub_parsers, 'bsr', 'Compute BSR (Blast Score Ratio) using a BLAST tab file and max scores from a TSV.') as parser:
         with mutex_group(parser, required=True) as grp:
@@ -183,13 +248,17 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __key_column(grp)
+            __force(grp)
 
-    with subparser(sub_parsers, 'plot', 'Plot the Blast Score Ratio of query sequences against the DIAMOND database') as parser:
+    with subparser(sub_parsers, 'pasr_plot', 'Plot the Blast Score Ratio of query sequences against the DIAMOND database') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __protein_name(grp, required=True)
             __bsr(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __force(grp)
+            __update(grp)
+            __yaml(grp)
 
     with subparser(sub_parsers, 'metadata', 'Create a metadata file for dataset update') as parser:
         with mutex_group(parser, required=True) as grp:
@@ -203,6 +272,7 @@ def get_main_parser():
             __selfmin(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __force(grp)
 
     with subparser(sub_parsers, 'pasr', 'PASR: protein alignment score ratio') as parser:
         with arg_group(parser, 'Required arguments') as grp:
@@ -211,7 +281,6 @@ def get_main_parser():
             __query(grp, required=True)
             __seed(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
-            __db(grp)
             __output(grp)
             __threads(grp)
             __key_column(grp)
@@ -220,6 +289,40 @@ def get_main_parser():
             __sensitivity(grp)
             __update(grp)
             __yaml(grp)
+            __force(grp)
+
+    ### PARSER FOR CUGO FUNCTIONALITIES AND WORKFLOW ###
+    with subparser(sub_parsers, 'parse', 'Parse GFF input file') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __gff_path(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
+
+    with subparser(sub_parsers, 'context', 'Parse context information from CUGO input file') as parser:
+        with mutex_group(parser, required=True) as grp:
+            __protein_ids(grp)
+            __fasta(grp)
+        with arg_group(parser, 'Required arguments') as grp:
+            __cugo_dir(grp, required=True)
+            __cugo_range(grp, required=True)
+            __dataset(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
+            __tmhmm_dir(grp)
+            __force(grp)
+
+    with subparser(sub_parsers, 'cugo_plot', 'Plot CUGO context') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __cugo_path(grp, required=True)
+            __flank_lower(grp, required=True)
+            __flank_upper(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __top_n(grp)
+            __cugo(grp)
+            __size(grp)
+            __all(grp)
+            __bin_width(grp)
+            __y_range(grp)
 
     with subparser(sub_parsers, 'asm_clust', 'ASM_clust: protein clustering using alignment score matrices') as parser:
         with arg_group(parser, 'Required arguments') as grp:

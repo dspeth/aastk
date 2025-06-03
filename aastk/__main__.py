@@ -2,6 +2,7 @@
 
 from aastk.cli import get_main_parser
 from aastk.pasr import *
+from aastk.cugo import *
 from aastk.asm_clust import *
 
 if __name__ == "__main__":
@@ -12,12 +13,14 @@ if __name__ == "__main__":
     if not args.subparser_name:
         parser.print_help()
 
+    ### PARSER FOR PASR FUNCTIONALITIES AND WORKFLOW ###
     elif args.subparser_name == 'build':
         db_path = build_protein_db(
             db_dir=args.db,
             protein_name=args.protein_name,
             seed_fasta=args.seed,
-            threads=args.threads
+            threads=args.threads,
+            force=args.force
         )
 
     elif args.subparser_name == 'search':
@@ -29,7 +32,8 @@ if __name__ == "__main__":
             threads=args.threads,
             sensitivity=args.sensitivity,
             block=args.block,
-            chunk=args.chunk
+            chunk=args.chunk,
+            force=args.force
         )
 
     elif args.subparser_name == 'extract':
@@ -38,7 +42,8 @@ if __name__ == "__main__":
             blast_tab=args.tabular,
             query_path=args.query,
             output_dir=args.output,
-            key_column=args.key_column
+            key_column=args.key_column,
+            force=args.force
         )
 
     elif args.subparser_name == 'calculate':
@@ -57,14 +62,18 @@ if __name__ == "__main__":
             output_dir=args.output,
             key_column=args.key_column,
             column_info_path=args.column_info_path,
-            score_column=args.score_column
+            score_column=args.score_column,
+            force=args.force
         )
 
-    elif args.subparser_name == 'plot':
+    elif args.subparser_name == 'pasr_plot':
         plot_bsr(
             protein_name=args.protein_name,
             bsr_file=args.bsr,
-            output_dir=args.output
+            output_dir=args.output,
+            yaml_path=args.yaml,
+            force=args.force,
+            update=args.update
         )
 
     elif args.subparser_name == 'metadata':
@@ -75,7 +84,8 @@ if __name__ == "__main__":
             bsr=args.bsr_cutoff,
             output_dir=args.output,
             dataset=args.dataset,
-            protein_name=args.protein_name
+            protein_name=args.protein_name,
+            force=args.force
         )
 
     elif args.subparser_name == 'subset':
@@ -83,12 +93,12 @@ if __name__ == "__main__":
             yaml_path=args.yaml,
             matched_fasta=args.matched,
             bsr_table=args.bsr,
-            output_dir=args.ouput
+            output_dir=args.ouput,
+            force=args.force
         )
 
     elif args.subparser_name == 'pasr':
         pasr(
-            db_dir=args.db,
             protein_name=args.protein_name,
             seed_fasta=args.seed,
             query_fasta=args.query,
@@ -99,7 +109,41 @@ if __name__ == "__main__":
             chunk=args.chunk,
             sensitivity=args.sensitivity,
             update=args.update,
-            yaml_path=args.yaml
+            yaml_path=args.yaml,
+            force=args.force
+        )
+
+    ### PARSER FOR CUGO FUNCTIONALITIES AND WORKFLOW ###
+    elif args.subparser_name == 'parse':
+        parse(
+            gff_file_path=args.gff_path,
+            output_dir=args.output,
+            force=args.force
+        )
+
+    elif args.subparser_name == 'context':
+        context(
+            protein_ids=args.protein_ids,
+            cugo_dir=args.cugo_dir,
+            tmhmm_dir=args.tmhmm_dir,
+            cugo_range=args.cugo_range,
+            output_dir=args.output,
+            dataset=args.dataset,
+            force=args.force,
+            fasta_path=args.fasta
+        )
+
+    elif args.subparser_name == 'cugo_plot':
+        cugo_plot(
+            cugo_path=args.cugo_path,
+            flank_lower=args.flank_lower,
+            flank_upper=args.flank_upper,
+            top_n=args.top_n,
+            cugo=args.cugo,
+            size=args.size,
+            all_plots=args.all,
+            bin_width=args.bin_width,
+            y_range=args.y_range
         )
 
     ### PARSER FOR ASM_CLUST FUNCTIONALITIES AND WORKFLOW ###
