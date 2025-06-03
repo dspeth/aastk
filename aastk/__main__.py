@@ -2,6 +2,7 @@
 
 from aastk.cli import get_main_parser
 from aastk.pasr import *
+from aastk.cugo import *
 
 if __name__ == "__main__":
     parser = get_main_parser()
@@ -11,6 +12,7 @@ if __name__ == "__main__":
     if not args.subparser_name:
         parser.print_help()
 
+    ### PARSER FOR PASR FUNCTIONALITIES AND WORKFLOW ###
     elif args.subparser_name == 'build':
         db_path = build_protein_db(
             db_dir=args.db,
@@ -63,12 +65,12 @@ if __name__ == "__main__":
             force=args.force
         )
 
-    elif args.subparser_name == 'plot':
+    elif args.subparser_name == 'pasr_plot':
         plot_bsr(
             protein_name=args.protein_name,
             bsr_file=args.bsr,
             output_dir=args.output,
-            yaml=args.yaml,
+            yaml_path=args.yaml,
             force=args.force,
             update=args.update
         )
@@ -108,4 +110,37 @@ if __name__ == "__main__":
             update=args.update,
             yaml_path=args.yaml,
             force=args.force
+        )
+
+    ### PARSER FOR CUGO FUNCTIONALITIES AND WORKFLOW ###
+    elif args.subparser_name == 'parse':
+        parse(
+            gff_file_path=args.gff_path,
+            output_dir=args.output,
+            force=args.force
+        )
+
+    elif args.subparser_name == 'context':
+        context(
+            protein_ids=args.protein_ids,
+            cugo_dir=args.cugo_dir,
+            tmhmm_dir=args.tmhmm_dir,
+            cugo_range=args.cugo_range,
+            output_dir=args.output,
+            dataset=args.dataset,
+            force=args.force,
+            fasta_path=args.fasta
+        )
+
+    elif args.subparser_name == 'cugo_plot':
+        cugo_plot(
+            cugo_path=args.cugo_path,
+            flank_lower=args.flank_lower,
+            flank_upper=args.flank_upper,
+            top_n=args.top_n,
+            cugo=args.cugo,
+            size=args.size,
+            all_plots=args.all,
+            bin_width=args.bin_width,
+            y_range=args.y_range
         )
