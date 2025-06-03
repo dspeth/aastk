@@ -107,6 +107,8 @@ def __sensitivity(group, required=False):
     group.add_argument('--sensitivity', choices=['fast', 'sensitive', 'mid-sensitive', 'very-sensitive', 'ultra-sensitive', 'faster'], required=required,
                        help='Set the sensitivity level for the DIAMOND search: fast, sensitive, mid-sensitive, very-sensitive, '
                             'ultra-sensitive, or faster (default: fast)')
+def __subset(group, required=False):
+    group.add_argument('--subset,' )
 
 def __subset_size(group, required=False):
     group.add_argument('-s', '--subset_size', type=int, required=required,
@@ -222,12 +224,12 @@ def get_main_parser():
     with subparser(sub_parsers, 'asm_clust', 'ASM_clust: protein clustering using alignment score matrices') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __fasta(grp, required=True)
-            __subset_size(grp, required=True)
             __seed(grp, required=True)
             __dataset(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __threads(grp)
             __output(grp)
+            __subset_size(grp)
 
 
 

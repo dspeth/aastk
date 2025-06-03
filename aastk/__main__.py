@@ -102,6 +102,7 @@ if __name__ == "__main__":
             yaml_path=args.yaml
         )
 
+    ### PARSER FOR ASM_CLUST FUNCTIONALITIES AND WORKFLOW ###
     elif args.subparser_name == 'asm_clust':
         asm_clust(
             fasta=args.fasta,
