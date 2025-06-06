@@ -63,7 +63,7 @@ def __cugo_range(group, required=False):
                        help='CUGO range of interest for genomic context analysis')
 
 def __dataset(group, required=False):
-    group.add_argument('-s', '--dataset', type=str, required=required,
+    group.add_argument('-d', '--dataset', type=str, required=required,
                        help='Dataset name')
 
 def __db(group, required=False):
@@ -155,6 +155,14 @@ def __size(group, required=False):
     group.add_argument('--size', action='store_true', required=required,
                        help='Generate AA sequence length plot')
 
+def __subset(group, required=False):
+    group.add_argument('--subset', action='store_true', required=required,
+                       help='Subset seed fasta')
+
+def __subset_size(group, required=False):
+    group.add_argument('-s', '--subset_size', type=int, required=required,
+                       help='Number of sequences to randomly subset from input FASTA file')
+
 def __tabular(group, required=False):
     group.add_argument('-t', '--tabular', type=str, default=None, required=required,
                        help='Path to tabular BLAST/DIAMOND output file')
@@ -170,6 +178,10 @@ def __tmhmm_dir(group, required=False):
 def __top_n(group, required=False):
     group.add_argument('-t', '--top_n', type=int, required=required,
                        help='Number of top COGs to plot per position')
+
+def __tsv(group, required=False):
+    group.add_argument('-t', '--tsv', type=str, required=required,
+                       help='Path to ASM_clust tab separated output file')
 
 def __update(group, required=False):
     group.add_argument('--update', action='store_true', required=required,
@@ -318,5 +330,21 @@ def get_main_parser():
             __bin_width(grp)
             __y_range(grp)
 
+    with subparser(sub_parsers, 'asm_clust', 'ASM_clust: protein clustering using alignment score matrices') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __fasta(grp, required=True)
+            __seed(grp, required=True)
+            __dataset(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __threads(grp)
+            __output(grp)
+            __subset_size(grp)
+            __subset(grp)
+
+    with subparser(sub_parsers, 'asm_plot', 'ASM_plot: plot ASM_clust output files in .tsv format') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __tsv(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
 
     return main_parser

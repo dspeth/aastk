@@ -3,6 +3,7 @@
 from aastk.cli import get_main_parser
 from aastk.pasr import *
 from aastk.cugo import *
+from aastk.asm_clust import *
 
 if __name__ == "__main__":
     parser = get_main_parser()
@@ -143,4 +144,21 @@ if __name__ == "__main__":
             all_plots=args.all,
             bin_width=args.bin_width,
             y_range=args.y_range
+        )
+
+    ### PARSER FOR ASM_CLUST FUNCTIONALITIES AND WORKFLOW ###
+    elif args.subparser_name == 'asm_clust':
+        asm_clust(
+            fasta=args.fasta,
+            output=args.output,
+            subset_size=args.subset_size,
+            seed_fasta=args.seed,
+            dataset=args.dataset,
+            threads=args.threads
+        )
+
+    elif args.subparser_name == 'asm_plot':
+        asm_plot(
+            tsv_file=args.tsv,
+            output=args.output
         )
