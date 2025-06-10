@@ -280,6 +280,14 @@ def get_main_parser():
             __output(grp)
             __force(grp)
 
+    with subparser(sub_parsers, 'subset', 'Select target sequences in accordance with metadata cutoffs') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __yaml(grp, required=True)
+            __matched(grp, required=True)
+            __bsr(grp, required=True)
+            __output(grp, required=True)
+            __force(grp, required=True)
+
     with subparser(sub_parsers, 'pasr', 'PASR: protein alignment score ratio') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __matrix(grp, required=True)

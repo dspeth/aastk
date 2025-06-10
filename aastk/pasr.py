@@ -443,16 +443,12 @@ def plot_bsr(protein_name: str,
         plt.ylabel('Alignment score to seed set')
 
         # set reasonable x limits
-        max_score_val = bsr_df['max_score'].max()
         score_cutoff = bsr_df['score'].max()
         plt.xlim(0, 1.5 * score_cutoff)
         plt.ylim(bottom=0)
 
-        # add a line at the maximum score
-        plt.axvline(max_score_val, color='red', linestyle='--', linewidth=1.2, label='Max score')
 
         plt.title(f'Blast Score Ratio (BSR) for {protein_name}')
-        plt.legend()
 
         cbar = plt.colorbar(scatter)
         cbar.set_label('BSR')
@@ -556,7 +552,7 @@ def subset(yaml_path: str,
     Args:
         yaml_path(str): Path to the metadata yaml file.
         matched_fasta (str): Path to the matched sequences FASTA.
-        bsr_table (str): Path to the BSR table (blast_score_ratios.txt).
+        bsr_table (str): Path to the BSR table.
         output_dir (str): Directory to save the subsetted sequences.
         force (bool): If true, existing files/directories in output path are overwritten
     """
