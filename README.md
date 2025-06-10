@@ -12,6 +12,8 @@ Current features of aastk are:
 
 ### Using conda
 ```bash
+git clone https://github.com/dspeth/aastk.git
+cd aastk
 conda env create -f environment.yml
 conda activate aastk
 pip install -e .
