@@ -149,18 +149,23 @@ def main():
             )
 
         ### PARSER FOR ASM_CLUST FUNCTIONALITIES AND WORKFLOW ###
-        elif args.subparser_name == 'asm_clust':
-            asm_clust(
+        elif args.subparser_name == 'casm':
+            casm(
                 fasta=args.fasta,
                 output=args.output,
+                subset=args.subset,
                 subset_size=args.subset_size,
-                seed_fasta=args.seed,
-                dataset=args.dataset,
-                threads=args.threads
+                threads=args.threads,
+                perplexity=args.perplexity,
+                iterations=args.iterations,
+                exaggeration=args.exaggeration,
+                metadata_protein=args.metadata_protein,
+                metadata_genome=args.metadata_genome,
+                force=args.force
             )
 
         elif args.subparser_name == 'asm_plot':
-            asm_plot(
+            casm_plot(
                 tsv_file=args.tsv,
                 output=args.output
             )

@@ -18,7 +18,14 @@ logging.basicConfig(
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 logging.getLogger("PIL").setLevel(logging.INFO)
 
-def fasta_subsample(fasta: str, output_path: str, subset_size: int):
+def fasta_subsample(fasta: str,
+                    output_dir: str,
+                    subset_size: int,
+                    force: bool = False):
+    dataset = fasta.split('.')[0]
+    output_file = f"{dataset}_subsample.faa"
+    output_path = ensure_path(output_dir, output_file, force=force)
+
     sequences = read_fasta_to_dict(fasta)
     subset_keys = random.sample(list(sequences.keys()), subset_size)
     subset_dict = {k: sequences[k] for k in subset_keys}
@@ -29,17 +36,20 @@ def fasta_subsample(fasta: str, output_path: str, subset_size: int):
 
     return output_path
 
-def run_diamond_alignment(fasta: str, align_subset: str, dataset: str, subset_size: int, threads: int):
+def run_diamond_alignment(fasta: str,
+                          align_subset: str,
+                          subset_size: int,
+                          threads: int):
     """
     Run DIAMOND makedb and blastp to align a full FASTA file to a subset.
 
     Args:
         fasta (str): Path to the full input FASTA file (query).
         align_subset (str): Path to the subset FASTA file to use as the DIAMOND database (subject).
-        output_prefix (str): Prefix for output files (e.g., alignment and database).
         subset_size (int): Number of target sequences (used for -k).
         threads (int): Number of threads to use.
     """
+    dataset = fasta.split('.')[0]
     dbname = f"{dataset}_subset_dmnd"
     align_output = f"{dataset}_align"
 
@@ -182,26 +192,23 @@ def tsne_embedding(matrix: np.ndarray,
 
 
 def casm(fasta: str,
-              output: str,
-              subset_size: int,
-              seed_fasta: str,
-              dataset: str,
-              threads: int = 1,
-              perplexity: int = 50,
-              iterations: int = 500,
-              exaggeration: int = 6,
-              metadata_protein: str = None,
-              metadata_genome: str = None,
-              subset: bool = False):
-    if subset and not subset_size:
-        logger.error("Subset size required if subset is True")
-        exit()
-
+         output: str,
+         subset: str,
+         subset_size: int,
+         threads: int = 1,
+         perplexity: int = 50,
+         iterations: int = 500,
+         exaggeration: int = 6,
+         metadata_protein: str = None,
+         metadata_genome: str = None,
+         force: bool = False):
     if subset:
-        subset_fasta = fasta_subsample(fasta, seed_fasta, subset_size)
+        subset_fasta = subset
     else:
-        subset_fasta = seed_fasta
-    align_output = run_diamond_alignment(fasta, subset_fasta, dataset, subset_size, threads)
+        subset_fasta = fasta_subsample(fasta, output, subset_size, force=force)
+
+
+    align_output = run_diamond_alignment(fasta, subset_fasta, subset_size, threads)
     matrix, queries, targets = build_alignment_matrix(align_output)
     tsne_embedding(matrix=matrix,
                    queries=queries,
@@ -214,7 +221,7 @@ def casm(fasta: str,
                    metadata_genome=metadata_genome)
 
 def casm_plot(tsv_file: str,
-             output: str):
+              output: str):
     df = pd.read_csv(tsv_file, sep='\t')
 
     plt.figure(figsize=(12, 8))

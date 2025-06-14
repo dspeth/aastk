@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 from .util import determine_file_type, ensure_path, extract_unique_keys, read_fasta_to_dict, write_fa_matches, write_fq_matches
 
 import subprocess
@@ -11,6 +10,8 @@ import sys
 import json
 from pathlib import Path
 import numpy as np
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+
 
 # default logger writes to log file needs implementing
 logger = logging.getLogger(__name__)
@@ -321,6 +322,16 @@ def blast_score_ratio(protein_name: str,
                     logger.info(f"Using score column index {raw_score_column} from column info file")
                 else:
                     logger.warning(f"'Score column not found in column info")
+                if 'qlen' in column_info:
+                    qlen_column = column_info['qlen']
+                    logger.info(f"Using qlen column index {qlen_column} from column info file")
+                else:
+                    logger.warning(f"'qlen column not found in column info")
+                if 'pident' in column_info:
+                    pident_column = column_info['pident']
+                    logger.info(f"Using pident column index {pident_column} from column info file")
+                else:
+                    logger.warning(f"'pident column not found in column info")
         except (json.JSONDecodeError, IOError) as e:
             logger.warning(f"Error reading column info file: {e}")
     elif score_column:
@@ -347,7 +358,7 @@ def blast_score_ratio(protein_name: str,
     error_count = 0
 
     with open(blast_tab) as infile, open(bsr_file, 'w') as out:
-        out.write("qseqid\tsseqid\tscore\tmax_score\tBSR\n")
+        out.write("qseqid\tsseqid\tpident\tqlen\tscore\tmax_score\tBSR\n")
 
         for line_num, line in enumerate(infile, 1):
             parts = line.strip().split('\t')
@@ -361,6 +372,9 @@ def blast_score_ratio(protein_name: str,
             key = parts[key_column]
             try:
                 raw_score = float(parts[raw_score_column])
+                pident = float(parts[pident_column])
+                qlen = int(parts[qlen_column])
+
                 if key not in max_scores:
                     logger.warning(f"Line {line_num}: No max score found for '{key}'")
                     error_count += 1
@@ -372,14 +386,13 @@ def blast_score_ratio(protein_name: str,
                     continue
 
                 bsr = raw_score / max_score
-                out.write(f"{parts[0]}\t{parts[1]}\t{raw_score:.1f}\t{max_score:.1f}\t{bsr:.4f}\n")
+                out.write(f"{parts[0]}\t{parts[1]}\t{pident:.2f}\t{qlen}\t{raw_score:.1f}\t{max_score:.1f}\t{bsr:.4f}\n")
                 processed_count += 1
 
 
             except (KeyError, ValueError, IndexError) as e:
 
                 logger.warning(f"Line {line_num}: Error processing '{line.strip()}': {e}")
-
                 if isinstance(e, IndexError):
                     logger.warning(
                         f"Line {line_num}: Tried to access column {score_column} but line only has {len(parts)} columns")
@@ -409,7 +422,7 @@ def plot_bsr(protein_name: str,
     Returns:
         Path to the output plot.
     """
-    # check for output_dir
+    # Determine output path
     if update:
         out_graph = ensure_path(output_dir, f'{protein_name}_updated_bsr.png', force=force)
     else:
@@ -420,69 +433,108 @@ def plot_bsr(protein_name: str,
     try:
         bsr_df = pd.read_csv(bsr_file, sep='\t', header=0)
 
-        # check if dataframe has required columns
-        required_cols = ['max_score', 'score', 'BSR']
+        # Check required columns
+        required_cols = ['max_score', 'score', 'pident', 'qlen', 'BSR']
         for col in required_cols:
             if col not in bsr_df.columns:
-                logger.error(f"Required column '{col}' not found in BSR data")
                 raise ValueError(f"Required column '{col}' not found in BSR data")
 
-        # set a reasonable figure size
-        plt.figure(figsize=(10, 8))
+        bin_width = 10
+        max_score_max = bsr_df['max_score'].max()
+        score_max = bsr_df['score'].max()
 
-        scatter = plt.scatter(
-            bsr_df['max_score'],
-            bsr_df['score'],
-            c=bsr_df['BSR'],
-            cmap='viridis',
-            edgecolor='k',
-            alpha=0.75
+        max_score_bins = np.arange(0, max_score_max + bin_width, bin_width)
+        score_bins = np.arange(0, score_max + bin_width, bin_width)
+
+        # Bin values
+        bsr_df['max_score_bin'] = pd.cut(bsr_df['max_score'], bins=max_score_bins, include_lowest=True, right=False)
+        bsr_df['score_bin'] = pd.cut(bsr_df['score'], bins=score_bins, include_lowest=True, right=False)
+
+        # Count occurrences in each bin
+        binned_counts = bsr_df.groupby(['max_score_bin', 'score_bin'], observed=True).size().reset_index(name='counts')
+
+        # Extract midpoints of bins for positioning
+        def bin_mid(bin_series):
+            return bin_series.apply(lambda b: (b.left + b.right) / 2)
+
+        binned_counts['x'] = bin_mid(binned_counts['max_score_bin'])
+        binned_counts['y'] = bin_mid(binned_counts['score_bin'])
+
+        # Create layout
+        fig, axs = plt.subplot_mosaic(
+            [['histx', '.'],
+             ['scatter', 'histy']],
+            figsize=(8, 8),
+            width_ratios=(4, 1),
+            height_ratios=(1, 4),
+            layout='constrained'
         )
 
-        plt.xlabel('Calculated maximum score')
-        plt.ylabel('Alignment score to seed set')
+        # Scatterplot
+        scatter = axs['scatter'].scatter(
+            bsr_df['max_score'],
+            bsr_df['score'],
+            c=bsr_df['pident'],
+            cmap='viridis',
+            edgecolor='k',
+            alpha=0.5,
+            vmin=0,
+            vmax=100
+        )
+        axs['scatter'].set_xlabel('Calculated maximum score')
+        axs['scatter'].set_ylabel('Alignment score to seed set')
+        axs['scatter'].set_xlim(0, 1.5 * score_max)
+        axs['scatter'].set_ylim(bottom=0)
+        axs['scatter'].set_title(f'Blast Score Ratio (BSR) for {protein_name}')
 
-        # set reasonable x limits
-        score_cutoff = bsr_df['score'].max()
-        plt.xlim(0, 1.5 * score_cutoff)
-        plt.ylim(bottom=0)
+        # Colorbar inside scatterplot
+        cb_ax = inset_axes(axs['scatter'], width="5%", height="30%", loc='upper left', borderpad=1)
+        cbar = fig.colorbar(scatter, cax=cb_ax)
+        cbar.set_label('% sequence identity')
 
+        # Histogram data using binned_counts with proper axis alignment
+        # Top histogram (histx) - sum counts for each x position, align x-axis with scatter
+        x_hist = binned_counts.groupby('x', observed=True)['counts'].sum()
+        axs['histx'].bar(x_hist.index, x_hist.values, width=bin_width, align='center', color='gray', edgecolor='black')
+        axs['histx'].set_xlim(axs['scatter'].get_xlim())
+        axs['histx'].set_ylabel('Counts')
+        axs['histx'].tick_params(labelbottom=False)
 
-        plt.title(f'Blast Score Ratio (BSR) for {protein_name}')
+        y_hist = binned_counts.groupby('y', observed=True)['counts'].sum()
+        axs['histy'].barh(y_hist.index, y_hist.values, height=bin_width, align='center', color='gray', edgecolor='black')
+        axs['histy'].set_ylim(axs['scatter'].get_ylim())
+        axs['histy'].set_xlabel('Counts')
+        axs['histy'].tick_params(labelleft=False)
 
-        cbar = plt.colorbar(scatter)
-        cbar.set_label('BSR')
+        max_count = y_hist.values.max() if len(y_hist) > 0 else 100
+        axs['histy'].set_xticks(range(0, int(max_count) + 50, 50))
 
         if update:
-            # load the thresholds from yaml file
             try:
                 with open(yaml_path) as f:
                     thresholds = yaml.safe_load(f)
             except Exception as e:
-                logger.error(f"Failed to load YAML file {yaml}: {e}")
-                raise RuntimeError(f"Failed to load thresholds from {yaml}: {e}") from e
+                raise RuntimeError(f"Failed to load thresholds from {yaml_path}: {e}") from e
 
-            # get thresholds and assign default values
             selfmin = thresholds.get("selfmin", 0)
             selfmax = thresholds.get("selfmax", float('inf'))
             dbmin = thresholds.get("dbmin", None)
             bsr_min = thresholds.get("bsr", None)
 
             if selfmin is not None:
-                plt.axvline(selfmin, color='black', linestyle='--', linewidth=1.0)
+                axs['scatter'].axvline(selfmin, color='black', linestyle='--', linewidth=1.0)
             if selfmax is not None:
-                plt.axvline(selfmax, color='black', linestyle='--', linewidth=1.0)
+                axs['scatter'].axvline(selfmax, color='black', linestyle='--', linewidth=1.0)
             if dbmin is not None:
-                plt.axhline(dbmin, color='black', linestyle='--', linewidth=1.0)
+                axs['scatter'].axhline(dbmin, color='black', linestyle='--', linewidth=1.0)
             if bsr_min is not None:
-                x_min, x_max = plt.xlim()
+                x_min, x_max = axs['scatter'].get_xlim()
                 x_vals = np.linspace(x_min, x_max, 500)
                 y_vals = bsr_min * x_vals
-                plt.plot(x_vals, y_vals, color='black', linestyle='--', linewidth=1.0)
+                axs['scatter'].plot(x_vals, y_vals, color='black', linestyle='--', linewidth=1.0)
 
-        plt.tight_layout()
-        plt.savefig(out_graph, dpi=300)
-        plt.close()
+        fig.savefig(out_graph, dpi=300)
+        plt.close(fig)
 
         logger.info(f"Successfully created BSR plot at {out_graph}")
         return out_graph
