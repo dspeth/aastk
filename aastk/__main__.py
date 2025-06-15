@@ -85,18 +85,24 @@ def main():
                 dbmin=args.dbmin,
                 bsr=args.bsr_cutoff,
                 output_dir=args.output,
-                dataset=args.dataset,
                 protein_name=args.protein_name,
                 force=args.force
             )
 
-        elif args.subparser_name == 'subset':
-            subset(
+        elif args.subparser_name == 'select':
+            select(
                 yaml_path=args.yaml,
                 matched_fasta=args.matched,
                 bsr_table=args.bsr,
                 output_dir=args.ouput,
-                force=args.force
+                selfmin=args.selfmin,
+                selfmax=args.selfmax,
+                dbmin=args.dbmin,
+                bsr=args.bsr_cutoff,
+                protein_name=args.protein_name,
+                force=args.force,
+                create_yaml=args.create_yaml,
+                params=args.params
             )
 
         elif args.subparser_name == 'pasr':

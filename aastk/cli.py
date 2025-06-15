@@ -46,6 +46,10 @@ def __chunk(group, required=False):
     group.add_argument('-c', '--chunk', type=int, default=2, required=required,
                        help='Choose number of chunks for diamond blastp index processing (Default: 2)')
 
+def __create_yaml(group, required=False):
+    group.add_argument('--create_yaml', action='store_true', required=required,
+                       help='Create metadata yaml file from command line parameters')
+
 def __cugo(group, required=False):
     group.add_argument('--cugo', action='store_true', required=required,
                        help='Generate CUGO plot')
@@ -137,6 +141,10 @@ def __metadata_protein(group, required=False):
 def __output(group, required=False):
     group.add_argument('-o', '--output', type=str, required=required,
                        help='Desired output location (default: current working directory)')
+
+def __params(group, required=False):
+    group.add_argument('--params', action='store_true', required=required,
+                       help='Select subset of matched sequences based on command line parameters')
 
 def __perplexity(group, required=False):
     group.add_argument('-p', '--perplexity', type=int, required=required,
@@ -294,23 +302,30 @@ def get_main_parser():
         with mutex_group(parser, required=True) as grp:
             __dbmin(grp)
             __bsr_cutoff(grp)
-        with mutex_group(parser, required=True) as grp:
-            __dataset(grp)
-            __protein_name(grp)
         with arg_group(parser, 'Required arguments') as grp:
             __selfmax(grp, required=True)
             __selfmin(grp, required=True)
+            __protein_name(grp)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __force(grp)
 
-    with subparser(sub_parsers, 'subset', 'Select target sequences in accordance with metadata cutoffs') as parser:
+    with subparser(sub_parsers, 'select', 'Select target sequences in accordance with metadata cutoffs') as parser:
+        with mutex_group(parser, required=True) as grp:
+            __yaml(grp)
+            __params(grp)
         with arg_group(parser, 'Required arguments') as grp:
-            __yaml(grp, required=True)
             __matched(grp, required=True)
             __bsr(grp, required=True)
             __output(grp, required=True)
-            __force(grp, required=True)
+        with arg_group(parser, 'Optional'):
+            __create_yaml(grp)
+            __selfmin(grp)
+            __selfmax(grp)
+            __dbmin(grp)
+            __bsr(grp)
+            __force(grp)
+
 
     with subparser(sub_parsers, 'pasr', 'PASR: protein alignment score ratio') as parser:
         with arg_group(parser, 'Required arguments') as grp:

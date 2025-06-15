@@ -22,7 +22,7 @@ def fasta_subsample(fasta: str,
                     output_dir: str,
                     subset_size: int,
                     force: bool = False):
-    dataset = fasta.split('.')[0]
+    dataset = determine_dataset_name(fasta, '.', 0)
     output_file = f"{dataset}_subsample.faa"
     output_path = ensure_path(output_dir, output_file, force=force)
 

@@ -548,7 +548,6 @@ def metadata(selfmin: int,
              output_dir: str,
              dbmin: int = None,
              bsr: float = None,
-             dataset: str = None,
              protein_name: str = None,
              force: bool = False):
     """
@@ -560,23 +559,17 @@ def metadata(selfmin: int,
         output_dir: Directory to save the metadata file.
         dbmin: Minimum database score threshold.
         bsr: Minimum BSR threshold.
-        dataset: Name of the dataset.
         protein_name (str): Name of the protein of interest.
         force (bool): If true, existing files/directories in output path are overwritten
 
     Returns:
         Path to the metadata file.
     """
-    if dataset:
-        yaml_path = ensure_path(output_dir, f"{dataset}.yaml", force=force)
-        logger.info(f"Writing metadata for {dataset}")
-    elif protein_name:
-        yaml_path = ensure_path(output_dir, f"{protein_name}.yaml", force=force)
-        logger.info(f"Writing metadata for {protein_name}")
+    yaml_path = ensure_path(output_dir, f"{protein_name}.yaml", force=force)
+    logger.info(f"Writing metadata for {protein_name}")
 
     params = {
         "protein_name": protein_name,
-        "dataset": dataset,
         "selfmin": selfmin,
         "selfmax": selfmax,
         "dbmin": dbmin,
@@ -593,72 +586,129 @@ def metadata(selfmin: int,
     logger.info(f"Successfully wrote metadata to {yaml_path}")
     return yaml_path
 
-def subset(yaml_path: str,
+
+def select(yaml_path: str,
            matched_fasta: str,
            bsr_table: str,
            output_dir: str,
-           force: bool = False):
+           selfmin: int = None,
+           selfmax: int = None,
+           dbmin: int = None,
+           bsr: float = None,
+           protein_name: str = None,
+           force: bool = False,
+           create_yaml: bool = False,
+           params: bool = False):
     """
-    Subsets matched sequences based on YAML thresholds.
+    Subsets matched sequences based on YAML thresholds or provided parameters.
 
     Args:
         yaml_path(str): Path to the metadata yaml file.
         matched_fasta (str): Path to the matched sequences FASTA.
         bsr_table (str): Path to the BSR table.
         output_dir (str): Directory to save the subsetted sequences.
-        force (bool): If true, existing files/directories in output path are overwritten
+        selfmin (int): Minimum self score threshold (required when params=True).
+        selfmax (int): Maximum self score threshold (required when params=True).
+        dbmin (int): Minimum database score threshold (mutually exclusive with bsr).
+        bsr (float): Minimum BSR threshold (mutually exclusive with dbmin).
+        protein_name (str): Name of the protein (required when params=True).
+        force (bool): If true, existing files/directories in output path are overwritten.
+        create_yaml (bool): Create a YAML file with the provided parameters.
+        params (bool): Use provided parameters instead of YAML file (mutually exclusive with yaml_path).
     """
-    logger.info(f"Subsetting sequences based on thresholds in {yaml_path}")
+    logger.info("Starting sequence subsetting based on thresholds")
 
-    # load the thresholds from yaml file
-    try:
-        with open(yaml_path) as f:
-            thresholds = yaml.safe_load(f)
-    except Exception as e:
-        logger.error(f"Failed to load YAML file {yaml_path}: {e}")
-        raise RuntimeError(f"Failed to load thresholds from {yaml_path}: {e}") from e
+    # check mutual exclusivity of yaml_path and params
+    if yaml_path is not None and params:
+        raise ValueError(
+            "yaml_path and params are mutually exclusive. Use either a YAML file or provide parameters directly.")
 
-    # get thresholds and assign default values
-    protein_name = thresholds.get("protein_name", None)
-    dataset = thresholds.get("dataset", None)
-    selfmin = thresholds.get("selfmin", 0)
-    selfmax = thresholds.get("selfmax", float('inf'))
-    dbmin = thresholds.get("dbmin", None)
-    bsr_min = thresholds.get("bsr", None)
+    if yaml_path is None and not params:
+        raise ValueError("Either yaml_path must be provided or params must be True.")
+
+    created_yaml_path = None
+
+    if params:
+        # validate required parameters when using params=True
+        if selfmin is None or selfmax is None:
+            raise ValueError("selfmin and selfmax are required when params=True")
+
+        if protein_name is None:
+            raise ValueError("protein_name is required when params=True")
+
+        # ensure either dbmin or bsr is provided (but not both)
+        if dbmin is None and bsr is None:
+            raise ValueError("Either dbmin or bsr must be provided when params=True")
+
+        if dbmin is not None and bsr is not None:
+            raise ValueError("dbmin and bsr are mutually exclusive. Provide only one.")
+
+        logger.info("Using provided parameters for thresholds")
+
+        # Set the threshold values
+        bsr_min = bsr
+
+        # Create YAML file if requested
+        if create_yaml:
+            logger.info("Creating YAML file with provided parameters")
+            created_yaml_path = metadata(
+                selfmin=selfmin,
+                selfmax=selfmax,
+                output_dir=output_dir,
+                dbmin=dbmin,
+                bsr=bsr,
+                protein_name=protein_name,
+                force=force
+            )
+
+    else:
+        # Load thresholds from YAML file
+        logger.info(f"Loading thresholds from YAML file: {yaml_path}")
+        try:
+            with open(yaml_path) as f:
+                thresholds = yaml.safe_load(f)
+        except Exception as e:
+            logger.error(f"Failed to load YAML file {yaml_path}: {e}")
+            raise RuntimeError(f"Failed to load thresholds from {yaml_path}: {e}") from e
+
+        # Get thresholds and assign default values
+        protein_name = thresholds.get("protein_name", None)
+        selfmin = thresholds.get("selfmin", 0)
+        selfmax = thresholds.get("selfmax", float('inf'))
+        dbmin = thresholds.get("dbmin", None)
+        bsr_min = thresholds.get("bsr", None)
+
+        if protein_name is None:
+            raise ValueError("protein_name must be specified in the YAML file")
 
     # determine output path
-    if protein_name:
-        output_file = f"{protein_name}_matched_update.fasta"
-        stats_file = f"{protein_name}_matched_update.stats"
-    elif dataset:
-        output_file = f"{dataset}_matched_update.fasta"
-        stats_file = f"{dataset}_matched_update.stats"
-    else:
-        logging.error("No output filename was specified.")
+    output_file = f"{protein_name}_matched_update.faa"
+    stats_file = f"{protein_name}_matched_update.stats"
 
     output_path = ensure_path(output_dir, output_file, force=force)
     stats_path = ensure_path(output_dir, stats_file, force=force)
 
-
-    # Load BSR table
+    # load BSR table
     bsr_df = pd.read_csv(bsr_table, sep='\t')
 
-    # these are essential so we can always add them to the data frame to start it of
+    # spply essential filters
     filtered = bsr_df[(bsr_df['max_score'] >= selfmin) & (bsr_df['max_score'] <= selfmax)]
 
-    # check for the mutually exlusive arguments
+    # apply mutually exclusive filters
     if dbmin is not None:
         filtered = filtered[filtered['score'] >= dbmin]
+        logger.info(f"Applied dbmin filter: score >= {dbmin}")
     elif bsr_min is not None:
         filtered = filtered[filtered['BSR'] >= bsr_min]
+        logger.info(f"Applied BSR filter: BSR >= {bsr_min}")
 
     if filtered.empty:
-        logger.warning("No sequences passed the update filtering criteria!")
+        logger.warning("No sequences passed the filtering criteria!")
 
-    # extract sequence IDs kept after update
+    # extract sequence IDs kept after filtering
     filtered_ids = set(filtered['qseqid'])
 
-    # load matched FASTA of the PASR run
+    # load matched FASTA
     sequences = read_fasta_to_dict(matched_fasta)
 
     # track how many sequences we are keeping
@@ -671,10 +721,10 @@ def subset(yaml_path: str,
                 out.write(f">{header}\n{seq}\n")
                 kept += 1
 
-    logger.info(f"Updated matched sequences written to {output_path}: "
+    logger.info(f"Filtered sequences written to {output_path}: "
                 f"{kept} sequences out of {len(sequences)} original sequences")
 
-    # also add seqkit stats output file to target dir
+    # generate seqkit stats
     cmd = ["seqkit", "stats",
            output_path,
            "-o", stats_path,
@@ -683,7 +733,10 @@ def subset(yaml_path: str,
     logger.debug(f"Running command: {' '.join(cmd)}")
     subprocess.run(cmd, check=True)
 
-    return output_path, stats_path
+    if created_yaml_path:
+        return output_path, stats_path, created_yaml_path
+    else:
+        return output_path, stats_path
 
 def pasr(protein_name: str,
          seed_fasta: str,
@@ -757,7 +810,7 @@ def pasr(protein_name: str,
 
         if update:
             logger.info("Running update for specified data")
-            subset_fasta, update_stats_path = subset(yaml_path, matched_fasta, bsr_file, output_dir, force=force)
+            subset_fasta, update_stats_path = select(yaml_path, matched_fasta, bsr_file, output_dir, force=force)
             results['subset_fasta'] = subset_fasta
             results['update_stats_path'] = update_stats_path
             updated_plot = plot_bsr(protein_name, bsr_file, output_path,  yaml_path, force=force, update=update)

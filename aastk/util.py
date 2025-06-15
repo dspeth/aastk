@@ -6,6 +6,10 @@ import shutil
 
 logger = logging.getLogger(__name__)
 
+def determine_dataset_name(file: str, splitter:str, part: int):
+    dataset = file.split(splitter)[part]
+    return dataset
+
 def determine_file_type(file_path):
     """
     Determines the file type (fasta or fastq) based on the first character in the file.
@@ -155,3 +159,4 @@ def write_fq_matches(seq_file, ids):
                 line_count = 0  # Reset after each fastq record
                 if matching:
                     yield (header, sequence)
+
