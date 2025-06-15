@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from .util import ensure_path, read_fasta_to_dict
+from .util import ensure_path, read_fasta_to_dict, parse_protein_identifier
 
 import pandas as pd
 import logging
@@ -299,12 +299,12 @@ def context(protein_ids: str,
     if fasta_path:
         sequences = read_fasta_to_dict(fasta_path)
         protein_identifiers = sequences.keys()
-        clean_identifiers =  [protein_identifier.rsplit("___", 1)[0] for protein_identifier in protein_identifiers]
+        genome_identifiers =  [protein_identifier.rsplit("___", 1)[0] for protein_identifier in protein_identifiers]
 
     elif protein_ids:
         with open(protein_ids, 'r') as id_file:
             protein_identifiers = [line.strip() for line in id_file if line.strip()]
-            clean_identifiers = [protein_identifier.rsplit("___", 1)[0] for protein_identifier in protein_identifiers]
+            genome_identifiers = [parse_protein_identifier(protein_identifier) for protein_identifier in protein_identifiers]
 
     else:
         logger.error("Either 'fasta_path' or 'protein_ids' must be provided.")
@@ -318,7 +318,7 @@ def context(protein_ids: str,
     cugo_dir = Path(cugo_dir)
 
     for index, id in enumerate(protein_identifiers):
-        cugo_tab_path = cugo_dir / f"{clean_identifiers[index]}_cugo.gz"
+        cugo_tab_path = cugo_dir / f"{genome_identifiers[index]}_cugo.gz"
 
         # check if CUGO file exists
         if not cugo_tab_path.exists():
@@ -336,7 +336,7 @@ def context(protein_ids: str,
 
         # process TMHMM file if provided
         if tmhmm_dir:
-            tmhmm_file = Path(tmhmm_dir) / f"{clean_identifiers[index]}_tmhmm_clean"
+            tmhmm_file = Path(tmhmm_dir) / f"{genome_identifiers[index]}_tmhmm_clean"
             if tmhmm_file.exists():
                 genome_tmhmm_df = pd.read_csv(tmhmm_file, sep="\t", na_filter=False)
                 parse_df = pd.merge(genome_cugo_df, genome_tmhmm_df, on="prot_ID", how="left")

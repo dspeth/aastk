@@ -170,7 +170,7 @@ def main():
                 force=args.force
             )
 
-        elif args.subparser_name == 'asm_plot':
+        elif args.subparser_name == 'casm_plot':
             casm_plot(
                 tsv_file=args.tsv,
                 output=args.output

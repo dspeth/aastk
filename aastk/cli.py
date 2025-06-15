@@ -79,7 +79,7 @@ def __dbmin(group, required=False):
                        help='Lower database score cutoff for inclusion in updated dataset')
 
 def __exaggeration(group, required=False):
-    group.add_argument('-e', '--exaggeration', type=int, required=required,
+    group.add_argument('-e', '--exaggeration', type=int, default=6, required=required,
                        help='Exaggeration value for tSNE clustering')
 
 def __extracted(group, required=False):
@@ -111,7 +111,7 @@ def __help(group, required=False):
                        help='Display help text')
 
 def __iterations(group, required=False):
-    group.add_argument('-i', '--iterations', type=str, required=required,
+    group.add_argument('-i', '--iterations', type=str, default=500, required=required,
                        help='Number of clustering iterations')
 
 def __key_column(group, required=False):
@@ -147,7 +147,7 @@ def __params(group, required=False):
                        help='Select subset of matched sequences based on command line parameters')
 
 def __perplexity(group, required=False):
-    group.add_argument('-p', '--perplexity', type=int, required=required,
+    group.add_argument('-p', '--perplexity', type=int, default=50, required=required,
                        help='Perplexity value for tSNE clustering')
 
 def __protein_name(group, required=False):

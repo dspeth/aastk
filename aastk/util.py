@@ -65,6 +65,20 @@ def extract_unique_keys(file_path, column_index=0):
             unique_keys.add(key.strip())
     return unique_keys
 
+def parse_protein_identifier(id: str):
+    """
+    Parse protein identifier to retrieve genome identifier
+
+    Args:
+        id (str): protein ID
+
+    Returns:
+        genome_id (str): genome ID
+    """
+    genome_id = id.rsplit("___", 1)[0]
+    return genome_id
+
+
 def read_fasta_to_dict(fasta: str):
     """
     Reads a FASTA file and returns a dictionary of headers and sequences.
