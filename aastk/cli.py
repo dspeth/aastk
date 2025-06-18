@@ -46,6 +46,10 @@ def __chunk(group, required=False):
     group.add_argument('-c', '--chunk', type=int, default=2, required=required,
                        help='Choose number of chunks for diamond blastp index processing (Default: 2)')
 
+def __create_yaml(group, required=False):
+    group.add_argument('--create_yaml', action='store_true', required=required,
+                       help='Create metadata yaml file from command line parameters')
+
 def __cugo(group, required=False):
     group.add_argument('--cugo', action='store_true', required=required,
                        help='Generate CUGO plot')
@@ -74,6 +78,10 @@ def __dbmin(group, required=False):
     group.add_argument('-d', '--dbmin', type=int, default=None, required=required,
                        help='Lower database score cutoff for inclusion in updated dataset')
 
+def __exaggeration(group, required=False):
+    group.add_argument('-e', '--exaggeration', type=int, default=6, required=required,
+                       help='Exaggeration value for tSNE clustering')
+
 def __extracted(group, required=False):
     group.add_argument('-e', '--extracted', type=str, required=required,
                        help='Path to FASTA file containing extracted matching sequences')
@@ -98,6 +106,14 @@ def __gff_path(group, required=False):
     group.add_argument('-g', '--gff_path', type=str, required=required,
                        help='Path to input GFF file')
 
+def __help(group, required=False):
+    group.add_argument('-h', '--help', action='help',
+                       help='Display help text')
+
+def __iterations(group, required=False):
+    group.add_argument('-i', '--iterations', type=str, default=500, required=required,
+                       help='Number of clustering iterations')
+
 def __key_column(group, required=False):
     group.add_argument('-k', '--key_column', type=int, default=0, required=required,
                        help='Column index in the BLAST tab file to pull unique IDs from (default is 0)')
@@ -114,9 +130,25 @@ def __max_scores(group, required=False):
     group.add_argument('-m', '--max_scores', type=str, required=required,
                        help='Path to file containing max self scores')
 
+def __metadata_genome(group, required=False):
+    group.add_argument('-g', '--metadata_genome', type=str, required=required,
+                       help='Path to genome metadata file')
+
+def __metadata_protein(group, required=False):
+    group.add_argument('-a', '--metadata_protein', type=str, required=required,
+                       help='Path to protein metadata file')
+
 def __output(group, required=False):
     group.add_argument('-o', '--output', type=str, required=required,
                        help='Desired output location (default: current working directory)')
+
+def __params(group, required=False):
+    group.add_argument('--params', action='store_true', required=required,
+                       help='Select subset of matched sequences based on command line parameters')
+
+def __perplexity(group, required=False):
+    group.add_argument('-p', '--perplexity', type=int, default=50, required=required,
+                       help='Perplexity value for tSNE clustering')
 
 def __protein_name(group, required=False):
     group.add_argument('-p', '--protein_name', type=str, default=None, required=required,
@@ -156,11 +188,11 @@ def __size(group, required=False):
                        help='Generate AA sequence length plot')
 
 def __subset(group, required=False):
-    group.add_argument('--subset', action='store_true', required=required,
-                       help='Subset seed fasta')
+    group.add_argument('-s', '--subset', type=str, required=required,
+                       help='Path to subset fasta to use as DIAMOND alignment reference set')
 
 def __subset_size(group, required=False):
-    group.add_argument('-s', '--subset_size', type=int, required=required,
+    group.add_argument('--subset_size', type=int, required=required,
                        help='Number of sequences to randomly subset from input FASTA file')
 
 def __tabular(group, required=False):
@@ -197,7 +229,7 @@ def __y_range(group, required=False):
 
 def get_main_parser():
     main_parser = argparse.ArgumentParser(
-        prog='aastk', add_help=False, conflict_handler='resolve')
+        prog='aastk', add_help=True, conflict_handler='resolve')
     sub_parsers = main_parser.add_subparsers(help="--", dest='subparser_name')
 
 
@@ -270,23 +302,30 @@ def get_main_parser():
         with mutex_group(parser, required=True) as grp:
             __dbmin(grp)
             __bsr_cutoff(grp)
-        with mutex_group(parser, required=True) as grp:
-            __dataset(grp)
-            __protein_name(grp)
         with arg_group(parser, 'Required arguments') as grp:
             __selfmax(grp, required=True)
             __selfmin(grp, required=True)
+            __protein_name(grp)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __force(grp)
 
-    with subparser(sub_parsers, 'subset', 'Select target sequences in accordance with metadata cutoffs') as parser:
+    with subparser(sub_parsers, 'select', 'Select target sequences in accordance with metadata cutoffs') as parser:
+        with mutex_group(parser, required=True) as grp:
+            __yaml(grp)
+            __params(grp)
         with arg_group(parser, 'Required arguments') as grp:
-            __yaml(grp, required=True)
             __matched(grp, required=True)
             __bsr(grp, required=True)
             __output(grp, required=True)
-            __force(grp, required=True)
+        with arg_group(parser, 'Optional'):
+            __create_yaml(grp)
+            __selfmin(grp)
+            __selfmax(grp)
+            __dbmin(grp)
+            __bsr(grp)
+            __force(grp)
+
 
     with subparser(sub_parsers, 'pasr', 'PASR: protein alignment score ratio') as parser:
         with arg_group(parser, 'Required arguments') as grp:
@@ -338,18 +377,24 @@ def get_main_parser():
             __bin_width(grp)
             __y_range(grp)
 
-    with subparser(sub_parsers, 'asm_clust', 'ASM_clust: protein clustering using alignment score matrices') as parser:
+    with subparser(sub_parsers, 'casm', 'CASM: protein clustering using alignment score matrices') as parser:
+        with mutex_group(parser, required=True) as grp:
+            __subset(grp)
+            __subset_size(grp)
         with arg_group(parser, 'Required arguments') as grp:
             __fasta(grp, required=True)
-            __seed(grp, required=True)
-            __dataset(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __threads(grp)
             __output(grp)
-            __subset_size(grp)
-            __subset(grp)
+            __perplexity(grp)
+            __iterations(grp)
+            __exaggeration(grp)
+            __metadata_protein(grp)
+            __metadata_genome(grp)
+            __force(grp)
+            __cugo_dir(grp)
 
-    with subparser(sub_parsers, 'asm_plot', 'ASM_plot: plot ASM_clust output files in .tsv format') as parser:
+    with subparser(sub_parsers, 'casm_plot', 'Plot CASM .tsv output files') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __tsv(grp, required=True)
         with arg_group(parser, 'Optional') as grp:

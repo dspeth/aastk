@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 from .util import determine_file_type, ensure_path, extract_unique_keys, read_fasta_to_dict, write_fa_matches, write_fq_matches
 
 import subprocess
@@ -11,6 +10,8 @@ import sys
 import json
 from pathlib import Path
 import numpy as np
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+
 
 # default logger writes to log file needs implementing
 logger = logging.getLogger(__name__)
@@ -321,6 +322,16 @@ def blast_score_ratio(protein_name: str,
                     logger.info(f"Using score column index {raw_score_column} from column info file")
                 else:
                     logger.warning(f"'Score column not found in column info")
+                if 'qlen' in column_info:
+                    qlen_column = column_info['qlen']
+                    logger.info(f"Using qlen column index {qlen_column} from column info file")
+                else:
+                    logger.warning(f"'qlen column not found in column info")
+                if 'pident' in column_info:
+                    pident_column = column_info['pident']
+                    logger.info(f"Using pident column index {pident_column} from column info file")
+                else:
+                    logger.warning(f"'pident column not found in column info")
         except (json.JSONDecodeError, IOError) as e:
             logger.warning(f"Error reading column info file: {e}")
     elif score_column:
@@ -347,7 +358,7 @@ def blast_score_ratio(protein_name: str,
     error_count = 0
 
     with open(blast_tab) as infile, open(bsr_file, 'w') as out:
-        out.write("qseqid\tsseqid\tscore\tmax_score\tBSR\n")
+        out.write("qseqid\tsseqid\tpident\tqlen\tscore\tmax_score\tBSR\n")
 
         for line_num, line in enumerate(infile, 1):
             parts = line.strip().split('\t')
@@ -361,6 +372,9 @@ def blast_score_ratio(protein_name: str,
             key = parts[key_column]
             try:
                 raw_score = float(parts[raw_score_column])
+                pident = float(parts[pident_column])
+                qlen = int(parts[qlen_column])
+
                 if key not in max_scores:
                     logger.warning(f"Line {line_num}: No max score found for '{key}'")
                     error_count += 1
@@ -372,14 +386,13 @@ def blast_score_ratio(protein_name: str,
                     continue
 
                 bsr = raw_score / max_score
-                out.write(f"{parts[0]}\t{parts[1]}\t{raw_score:.1f}\t{max_score:.1f}\t{bsr:.4f}\n")
+                out.write(f"{parts[0]}\t{parts[1]}\t{pident:.2f}\t{qlen}\t{raw_score:.1f}\t{max_score:.1f}\t{bsr:.4f}\n")
                 processed_count += 1
 
 
             except (KeyError, ValueError, IndexError) as e:
 
                 logger.warning(f"Line {line_num}: Error processing '{line.strip()}': {e}")
-
                 if isinstance(e, IndexError):
                     logger.warning(
                         f"Line {line_num}: Tried to access column {score_column} but line only has {len(parts)} columns")
@@ -409,7 +422,7 @@ def plot_bsr(protein_name: str,
     Returns:
         Path to the output plot.
     """
-    # check for output_dir
+    # Determine output path
     if update:
         out_graph = ensure_path(output_dir, f'{protein_name}_updated_bsr.png', force=force)
     else:
@@ -420,69 +433,108 @@ def plot_bsr(protein_name: str,
     try:
         bsr_df = pd.read_csv(bsr_file, sep='\t', header=0)
 
-        # check if dataframe has required columns
-        required_cols = ['max_score', 'score', 'BSR']
+        # Check required columns
+        required_cols = ['max_score', 'score', 'pident', 'qlen', 'BSR']
         for col in required_cols:
             if col not in bsr_df.columns:
-                logger.error(f"Required column '{col}' not found in BSR data")
                 raise ValueError(f"Required column '{col}' not found in BSR data")
 
-        # set a reasonable figure size
-        plt.figure(figsize=(10, 8))
+        bin_width = 10
+        max_score_max = bsr_df['max_score'].max()
+        score_max = bsr_df['score'].max()
 
-        scatter = plt.scatter(
-            bsr_df['max_score'],
-            bsr_df['score'],
-            c=bsr_df['BSR'],
-            cmap='viridis',
-            edgecolor='k',
-            alpha=0.75
+        max_score_bins = np.arange(0, max_score_max + bin_width, bin_width)
+        score_bins = np.arange(0, score_max + bin_width, bin_width)
+
+        # Bin values
+        bsr_df['max_score_bin'] = pd.cut(bsr_df['max_score'], bins=max_score_bins, include_lowest=True, right=False)
+        bsr_df['score_bin'] = pd.cut(bsr_df['score'], bins=score_bins, include_lowest=True, right=False)
+
+        # Count occurrences in each bin
+        binned_counts = bsr_df.groupby(['max_score_bin', 'score_bin'], observed=True).size().reset_index(name='counts')
+
+        # Extract midpoints of bins for positioning
+        def bin_mid(bin_series):
+            return bin_series.apply(lambda b: (b.left + b.right) / 2)
+
+        binned_counts['x'] = bin_mid(binned_counts['max_score_bin'])
+        binned_counts['y'] = bin_mid(binned_counts['score_bin'])
+
+        # Create layout
+        fig, axs = plt.subplot_mosaic(
+            [['histx', '.'],
+             ['scatter', 'histy']],
+            figsize=(8, 8),
+            width_ratios=(4, 1),
+            height_ratios=(1, 4),
+            layout='constrained'
         )
 
-        plt.xlabel('Calculated maximum score')
-        plt.ylabel('Alignment score to seed set')
+        # Scatterplot
+        scatter = axs['scatter'].scatter(
+            bsr_df['max_score'],
+            bsr_df['score'],
+            c=bsr_df['pident'],
+            cmap='viridis',
+            edgecolor='k',
+            alpha=0.5,
+            vmin=0,
+            vmax=100
+        )
+        axs['scatter'].set_xlabel('Calculated maximum score')
+        axs['scatter'].set_ylabel('Alignment score to seed set')
+        axs['scatter'].set_xlim(0, 1.5 * score_max)
+        axs['scatter'].set_ylim(bottom=0)
+        axs['scatter'].set_title(f'Blast Score Ratio (BSR) for {protein_name}')
 
-        # set reasonable x limits
-        score_cutoff = bsr_df['score'].max()
-        plt.xlim(0, 1.5 * score_cutoff)
-        plt.ylim(bottom=0)
+        # Colorbar inside scatterplot
+        cb_ax = inset_axes(axs['scatter'], width="5%", height="30%", loc='upper left', borderpad=1)
+        cbar = fig.colorbar(scatter, cax=cb_ax)
+        cbar.set_label('% sequence identity')
 
+        # Histogram data using binned_counts with proper axis alignment
+        # Top histogram (histx) - sum counts for each x position, align x-axis with scatter
+        x_hist = binned_counts.groupby('x', observed=True)['counts'].sum()
+        axs['histx'].bar(x_hist.index, x_hist.values, width=bin_width, align='center', color='gray', edgecolor='black')
+        axs['histx'].set_xlim(axs['scatter'].get_xlim())
+        axs['histx'].set_ylabel('Counts')
+        axs['histx'].tick_params(labelbottom=False)
 
-        plt.title(f'Blast Score Ratio (BSR) for {protein_name}')
+        y_hist = binned_counts.groupby('y', observed=True)['counts'].sum()
+        axs['histy'].barh(y_hist.index, y_hist.values, height=bin_width, align='center', color='gray', edgecolor='black')
+        axs['histy'].set_ylim(axs['scatter'].get_ylim())
+        axs['histy'].set_xlabel('Counts')
+        axs['histy'].tick_params(labelleft=False)
 
-        cbar = plt.colorbar(scatter)
-        cbar.set_label('BSR')
+        max_count = y_hist.values.max() if len(y_hist) > 0 else 100
+        axs['histy'].set_xticks(range(0, int(max_count) + 50, 50))
 
         if update:
-            # load the thresholds from yaml file
             try:
                 with open(yaml_path) as f:
                     thresholds = yaml.safe_load(f)
             except Exception as e:
-                logger.error(f"Failed to load YAML file {yaml}: {e}")
-                raise RuntimeError(f"Failed to load thresholds from {yaml}: {e}") from e
+                raise RuntimeError(f"Failed to load thresholds from {yaml_path}: {e}") from e
 
-            # get thresholds and assign default values
             selfmin = thresholds.get("selfmin", 0)
             selfmax = thresholds.get("selfmax", float('inf'))
             dbmin = thresholds.get("dbmin", None)
             bsr_min = thresholds.get("bsr", None)
 
             if selfmin is not None:
-                plt.axvline(selfmin, color='black', linestyle='--', linewidth=1.0)
+                axs['scatter'].axvline(selfmin, color='black', linestyle='--', linewidth=1.0)
             if selfmax is not None:
-                plt.axvline(selfmax, color='black', linestyle='--', linewidth=1.0)
+                axs['scatter'].axvline(selfmax, color='black', linestyle='--', linewidth=1.0)
             if dbmin is not None:
-                plt.axhline(dbmin, color='black', linestyle='--', linewidth=1.0)
+                axs['scatter'].axhline(dbmin, color='black', linestyle='--', linewidth=1.0)
             if bsr_min is not None:
-                x_min, x_max = plt.xlim()
+                x_min, x_max = axs['scatter'].get_xlim()
                 x_vals = np.linspace(x_min, x_max, 500)
                 y_vals = bsr_min * x_vals
-                plt.plot(x_vals, y_vals, color='black', linestyle='--', linewidth=1.0)
+                axs['scatter'].plot(x_vals, y_vals, color='black', linestyle='--', linewidth=1.0)
 
-        plt.tight_layout()
-        plt.savefig(out_graph, dpi=300)
-        plt.close()
+        fig.savefig(out_graph, dpi=300)
+        plt.close(fig)
 
         logger.info(f"Successfully created BSR plot at {out_graph}")
         return out_graph
@@ -496,7 +548,6 @@ def metadata(selfmin: int,
              output_dir: str,
              dbmin: int = None,
              bsr: float = None,
-             dataset: str = None,
              protein_name: str = None,
              force: bool = False):
     """
@@ -508,23 +559,17 @@ def metadata(selfmin: int,
         output_dir: Directory to save the metadata file.
         dbmin: Minimum database score threshold.
         bsr: Minimum BSR threshold.
-        dataset: Name of the dataset.
         protein_name (str): Name of the protein of interest.
         force (bool): If true, existing files/directories in output path are overwritten
 
     Returns:
         Path to the metadata file.
     """
-    if dataset:
-        yaml_path = ensure_path(output_dir, f"{dataset}.yaml", force=force)
-        logger.info(f"Writing metadata for {dataset}")
-    elif protein_name:
-        yaml_path = ensure_path(output_dir, f"{protein_name}.yaml", force=force)
-        logger.info(f"Writing metadata for {protein_name}")
+    yaml_path = ensure_path(output_dir, f"{protein_name}.yaml", force=force)
+    logger.info(f"Writing metadata for {protein_name}")
 
     params = {
         "protein_name": protein_name,
-        "dataset": dataset,
         "selfmin": selfmin,
         "selfmax": selfmax,
         "dbmin": dbmin,
@@ -541,72 +586,129 @@ def metadata(selfmin: int,
     logger.info(f"Successfully wrote metadata to {yaml_path}")
     return yaml_path
 
-def subset(yaml_path: str,
+
+def select(yaml_path: str,
            matched_fasta: str,
            bsr_table: str,
            output_dir: str,
-           force: bool = False):
+           selfmin: int = None,
+           selfmax: int = None,
+           dbmin: int = None,
+           bsr: float = None,
+           protein_name: str = None,
+           force: bool = False,
+           create_yaml: bool = False,
+           params: bool = False):
     """
-    Subsets matched sequences based on YAML thresholds.
+    Subsets matched sequences based on YAML thresholds or provided parameters.
 
     Args:
         yaml_path(str): Path to the metadata yaml file.
         matched_fasta (str): Path to the matched sequences FASTA.
         bsr_table (str): Path to the BSR table.
         output_dir (str): Directory to save the subsetted sequences.
-        force (bool): If true, existing files/directories in output path are overwritten
+        selfmin (int): Minimum self score threshold (required when params=True).
+        selfmax (int): Maximum self score threshold (required when params=True).
+        dbmin (int): Minimum database score threshold (mutually exclusive with bsr).
+        bsr (float): Minimum BSR threshold (mutually exclusive with dbmin).
+        protein_name (str): Name of the protein (required when params=True).
+        force (bool): If true, existing files/directories in output path are overwritten.
+        create_yaml (bool): Create a YAML file with the provided parameters.
+        params (bool): Use provided parameters instead of YAML file (mutually exclusive with yaml_path).
     """
-    logger.info(f"Subsetting sequences based on thresholds in {yaml_path}")
+    logger.info("Starting sequence subsetting based on thresholds")
 
-    # load the thresholds from yaml file
-    try:
-        with open(yaml_path) as f:
-            thresholds = yaml.safe_load(f)
-    except Exception as e:
-        logger.error(f"Failed to load YAML file {yaml_path}: {e}")
-        raise RuntimeError(f"Failed to load thresholds from {yaml_path}: {e}") from e
+    # check mutual exclusivity of yaml_path and params
+    if yaml_path is not None and params:
+        raise ValueError(
+            "yaml_path and params are mutually exclusive. Use either a YAML file or provide parameters directly.")
 
-    # get thresholds and assign default values
-    protein_name = thresholds.get("protein_name", None)
-    dataset = thresholds.get("dataset", None)
-    selfmin = thresholds.get("selfmin", 0)
-    selfmax = thresholds.get("selfmax", float('inf'))
-    dbmin = thresholds.get("dbmin", None)
-    bsr_min = thresholds.get("bsr", None)
+    if yaml_path is None and not params:
+        raise ValueError("Either yaml_path must be provided or params must be True.")
+
+    created_yaml_path = None
+
+    if params:
+        # validate required parameters when using params=True
+        if selfmin is None or selfmax is None:
+            raise ValueError("selfmin and selfmax are required when params=True")
+
+        if protein_name is None:
+            raise ValueError("protein_name is required when params=True")
+
+        # ensure either dbmin or bsr is provided (but not both)
+        if dbmin is None and bsr is None:
+            raise ValueError("Either dbmin or bsr must be provided when params=True")
+
+        if dbmin is not None and bsr is not None:
+            raise ValueError("dbmin and bsr are mutually exclusive. Provide only one.")
+
+        logger.info("Using provided parameters for thresholds")
+
+        # Set the threshold values
+        bsr_min = bsr
+
+        # Create YAML file if requested
+        if create_yaml:
+            logger.info("Creating YAML file with provided parameters")
+            created_yaml_path = metadata(
+                selfmin=selfmin,
+                selfmax=selfmax,
+                output_dir=output_dir,
+                dbmin=dbmin,
+                bsr=bsr,
+                protein_name=protein_name,
+                force=force
+            )
+
+    else:
+        # Load thresholds from YAML file
+        logger.info(f"Loading thresholds from YAML file: {yaml_path}")
+        try:
+            with open(yaml_path) as f:
+                thresholds = yaml.safe_load(f)
+        except Exception as e:
+            logger.error(f"Failed to load YAML file {yaml_path}: {e}")
+            raise RuntimeError(f"Failed to load thresholds from {yaml_path}: {e}") from e
+
+        # Get thresholds and assign default values
+        protein_name = thresholds.get("protein_name", None)
+        selfmin = thresholds.get("selfmin", 0)
+        selfmax = thresholds.get("selfmax", float('inf'))
+        dbmin = thresholds.get("dbmin", None)
+        bsr_min = thresholds.get("bsr", None)
+
+        if protein_name is None:
+            raise ValueError("protein_name must be specified in the YAML file")
 
     # determine output path
-    if protein_name:
-        output_file = f"{protein_name}_matched_update.fasta"
-        stats_file = f"{protein_name}_matched_update.stats"
-    elif dataset:
-        output_file = f"{dataset}_matched_update.fasta"
-        stats_file = f"{dataset}_matched_update.stats"
-    else:
-        logging.error("No output filename was specified.")
+    output_file = f"{protein_name}_matched_update.faa"
+    stats_file = f"{protein_name}_matched_update.stats"
 
     output_path = ensure_path(output_dir, output_file, force=force)
     stats_path = ensure_path(output_dir, stats_file, force=force)
 
-
-    # Load BSR table
+    # load BSR table
     bsr_df = pd.read_csv(bsr_table, sep='\t')
 
-    # these are essential so we can always add them to the data frame to start it of
+    # spply essential filters
     filtered = bsr_df[(bsr_df['max_score'] >= selfmin) & (bsr_df['max_score'] <= selfmax)]
 
-    # check for the mutually exlusive arguments
+    # apply mutually exclusive filters
     if dbmin is not None:
         filtered = filtered[filtered['score'] >= dbmin]
+        logger.info(f"Applied dbmin filter: score >= {dbmin}")
     elif bsr_min is not None:
         filtered = filtered[filtered['BSR'] >= bsr_min]
+        logger.info(f"Applied BSR filter: BSR >= {bsr_min}")
 
     if filtered.empty:
-        logger.warning("No sequences passed the update filtering criteria!")
+        logger.warning("No sequences passed the filtering criteria!")
 
-    # extract sequence IDs kept after update
+    # extract sequence IDs kept after filtering
     filtered_ids = set(filtered['qseqid'])
 
-    # load matched FASTA of the PASR run
+    # load matched FASTA
     sequences = read_fasta_to_dict(matched_fasta)
 
     # track how many sequences we are keeping
@@ -619,10 +721,10 @@ def subset(yaml_path: str,
                 out.write(f">{header}\n{seq}\n")
                 kept += 1
 
-    logger.info(f"Updated matched sequences written to {output_path}: "
+    logger.info(f"Filtered sequences written to {output_path}: "
                 f"{kept} sequences out of {len(sequences)} original sequences")
 
-    # also add seqkit stats output file to target dir
+    # generate seqkit stats
     cmd = ["seqkit", "stats",
            output_path,
            "-o", stats_path,
@@ -631,7 +733,10 @@ def subset(yaml_path: str,
     logger.debug(f"Running command: {' '.join(cmd)}")
     subprocess.run(cmd, check=True)
 
-    return output_path, stats_path
+    if created_yaml_path:
+        return output_path, stats_path, created_yaml_path
+    else:
+        return output_path, stats_path
 
 def pasr(protein_name: str,
          seed_fasta: str,
@@ -705,7 +810,7 @@ def pasr(protein_name: str,
 
         if update:
             logger.info("Running update for specified data")
-            subset_fasta, update_stats_path = subset(yaml_path, matched_fasta, bsr_file, output_dir, force=force)
+            subset_fasta, update_stats_path = select(yaml_path, matched_fasta, bsr_file, output_dir, force=force)
             results['subset_fasta'] = subset_fasta
             results['update_stats_path'] = update_stats_path
             updated_plot = plot_bsr(protein_name, bsr_file, output_path,  yaml_path, force=force, update=update)

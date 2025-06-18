@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
     name="aastk",
     version="0.0.1",
-    description="Automated Annotation Support ToolKit",
+    description="Amino Acid Sequence ToolKit",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
     author="Marcel Rennig and Daan Speth",

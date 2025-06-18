@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 from pathlib import Path
 from typing import Optional
+import pandas as pd
 import logging
 import shutil
 
 logger = logging.getLogger(__name__)
+
+def determine_dataset_name(file: str, splitter:str, part: int):
+    dataset = file.split(splitter)[part]
+    return dataset
 
 def determine_file_type(file_path):
     """
@@ -44,6 +49,8 @@ def ensure_path(path: str, target: Optional[str] = None, force: bool = False):
 
     return str(final_path)
 
+def extract_cog_info(df: pd.DataFrame, feat_type=str):
+    return df.loc[df["feat_type"] == feat_type]
 
 def extract_unique_keys(file_path, column_index=0):
     """
@@ -60,6 +67,20 @@ def extract_unique_keys(file_path, column_index=0):
             key = line.split('\t')[column_index]
             unique_keys.add(key.strip())
     return unique_keys
+
+def parse_protein_identifier(id: str):
+    """
+    Parse protein identifier to retrieve genome identifier
+
+    Args:
+        id (str): protein ID
+
+    Returns:
+        genome_id (str): genome ID
+    """
+    genome_id = id.rsplit("___", 1)[0]
+    return genome_id
+
 
 def read_fasta_to_dict(fasta: str):
     """
@@ -155,3 +176,4 @@ def write_fq_matches(seq_file, ids):
                 line_count = 0  # Reset after each fastq record
                 if matching:
                     yield (header, sequence)
+
