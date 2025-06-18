@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from .util import ensure_path, read_fasta_to_dict, parse_protein_identifier
+from .util import ensure_path, read_fasta_to_dict, parse_protein_identifier, extract_cog_info
 
 import pandas as pd
 import logging
@@ -299,7 +299,7 @@ def context(protein_ids: str,
     if fasta_path:
         sequences = read_fasta_to_dict(fasta_path)
         protein_identifiers = sequences.keys()
-        genome_identifiers =  [protein_identifier.rsplit("___", 1)[0] for protein_identifier in protein_identifiers]
+        genome_identifiers =  [parse_protein_identifier(protein_identifier) for protein_identifier in protein_identifiers]
 
     elif protein_ids:
         with open(protein_ids, 'r') as id_file:
@@ -387,9 +387,6 @@ def context(protein_ids: str,
 def load_cugo_context(path: str):
     return pd.read_csv(path, sep='\t', na_values='', keep_default_na=False)
 
-def extract_cog_info(df: pd.DataFrame, feat_type=str):
-    return df.loc[df["feat_type"] == feat_type]
-
 def extract_flanking_window(df: pd.DataFrame, lower: int, upper: int):
     flank_list = list(range(lower, upper + 1))
     flank_str = [str(i) for i in flank_list]
@@ -423,8 +420,8 @@ def plot_top_cogs_per_position(
         show: bool = False,
         ax: plt.Axes = None
 ):
-    cont = pd.read_csv(cugo_path, sep='\t', na_values='', keep_default_na=False)
-    extract = cont.loc[cont["feat_type"] == "COG_ID"]
+    cont = load_cugo_context(cugo_path)
+    extract = extract_cog_info(cont, "COG_ID")
 
     script_dir = Path(__file__).resolve().parent
     color_yaml_path = script_dir / "cog_colors.yaml"

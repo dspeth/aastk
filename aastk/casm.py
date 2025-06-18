@@ -8,39 +8,56 @@ import pandas as pd
 import openTSNE
 from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
+import yaml
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
-    level=logging.DEBUG,  # or logging.INFO if you want less verbosity
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    stream=sys.stdout
+	level=logging.DEBUG,  # or logging.INFO if you want less verbosity
+	format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+	stream=sys.stdout
 )
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 logging.getLogger("PIL").setLevel(logging.INFO)
+
 
 def fasta_subsample(fasta: str,
                     output_dir: str,
                     subset_size: int,
                     force: bool = False):
-    dataset = determine_dataset_name(fasta, '.', 0)
-    output_file = f"{dataset}_subsample.faa"
-    output_path = ensure_path(output_dir, output_file, force=force)
+	logger.info(f"Starting FASTA subsampling from {fasta}")
+	dataset = determine_dataset_name(fasta, '.', 0)
+	output_file = f"{dataset}_subsample.faa"
+	output_path = ensure_path(output_dir, output_file, force=force)
 
-    sequences = read_fasta_to_dict(fasta)
-    subset_keys = random.sample(list(sequences.keys()), subset_size)
-    subset_dict = {k: sequences[k] for k in subset_keys}
-    with open(output_path, 'w') as f:
-        for header, seq in subset_dict.items():
-            f.write(f">{header}\n")
-            f.write(f'{seq}\n')
+	logger.debug(f"Reading FASTA file: {fasta}")
+	sequences = read_fasta_to_dict(fasta)
+	total_sequences = len(sequences)
+	logger.info(f"Total sequences in FASTA: {total_sequences}")
 
-    return output_path
+	if subset_size > total_sequences:
+		logger.warning(
+			f"Requested subset size ({subset_size}) is larger than total sequences ({total_sequences}). Using all sequences.")
+		subset_size = total_sequences
+
+	logger.info(f"Randomly sampling {subset_size} sequences from {total_sequences}")
+	subset_keys = random.sample(list(sequences.keys()), subset_size)
+	subset_dict = {k: sequences[k] for k in subset_keys}
+
+	logger.debug(f"Writing subset to: {output_path}")
+	with open(output_path, 'w') as f:
+		for header, seq in subset_dict.items():
+			f.write(f">{header}\n")
+			f.write(f'{seq}\n')
+
+	logger.info(f"Successfully created subset FASTA with {len(subset_dict)} sequences")
+	return output_path
+
 
 def run_diamond_alignment(fasta: str,
                           align_subset: str,
                           subset_size: int,
                           threads: int):
-    """
+	"""
     Run DIAMOND makedb and blastp to align a full FASTA file to a subset.
 
     Args:
@@ -49,55 +66,103 @@ def run_diamond_alignment(fasta: str,
         subset_size (int): Number of target sequences (used for -k).
         threads (int): Number of threads to use.
     """
-    dataset = fasta.split('.')[0]
-    dbname = f"{dataset}_subset_dmnd"
-    align_output = f"{dataset}_align"
+	logger.info(f"Starting DIAMOND alignment process")
+	logger.info(f"Query FASTA: {fasta}")
+	logger.info(f"Reference subset: {align_subset}")
+	logger.info(f"Using {threads} threads")
 
-    run_dmnd_makedb = [
-        "diamond", "makedb",
-        "--in", align_subset,
-        "-d", dbname,
-        "-p", str(threads)
-    ]
+	dataset = fasta.split('.')[0]
+	dbname = f"{dataset}_subset_dmnd"
+	align_output = f"{dataset}_align"
 
-    run_dmnd_blastp = [
-        "diamond", "blastp",
-        "-q", fasta,
-        "-d", dbname,
-        "-o", align_output,
-        "-p", str(threads),
-        "-k", str(subset_size),
-        "--sensitive",
-        "--masking", "0",
-        "--outfmt", "6", "qseqid", "sseqid", "score",
-        "--comp-based-stats", "0"
-    ]
+	logger.info(f"Creating DIAMOND database: {dbname}")
+	run_dmnd_makedb = [
+		"diamond", "makedb",
+		"--in", align_subset,
+		"-d", dbname,
+		"-p", str(threads)
+	]
 
-    subprocess.run(run_dmnd_makedb)
-    subprocess.run(run_dmnd_blastp)
+	logger.info(f"Running DIAMOND blastp alignment")
+	run_dmnd_blastp = [
+		"diamond", "blastp",
+		"-q", fasta,
+		"-d", dbname,
+		"-o", align_output,
+		"-p", str(threads),
+		"-k", str(subset_size),
+		"--sensitive",
+		"--masking", "0",
+		"--outfmt", "6", "qseqid", "sseqid", "score",
+		"--comp-based-stats", "0"
+	]
 
-    return align_output
+	logger.debug(f"DIAMOND makedb command: {' '.join(run_dmnd_makedb)}")
+	subprocess.run(run_dmnd_makedb)
+	logger.info("DIAMOND database creation completed")
+
+	logger.debug(f"DIAMOND blastp command: {' '.join(run_dmnd_blastp)}")
+	subprocess.run(run_dmnd_blastp)
+	logger.info(f"DIAMOND alignment completed. Output saved to: {align_output}")
+
+	return align_output
 
 
 def build_alignment_matrix(align_file: str):
-    align_data = pd.read_csv(align_file, sep="\t", header=None, names=['query', 'target', 'score'])
+	logger.info(f"Building alignment matrix from: {align_file}")
 
-    # ordered list of protein IDs as rows
-    queries = sorted(align_data['query'].unique())
-    # ordered list of reference subset IDs as columns
-    targets = sorted(align_data['target'].unique())
+	logger.debug("Reading alignment data")
+	align_data = pd.read_csv(align_file, sep="\t", header=None, names=['query', 'target', 'score'])
+	logger.info(f"Total alignment records: {len(align_data)}")
 
-    query_to_idx = {q: i for i, q in enumerate(queries)}
-    target_to_idx = {t: i for i, t in enumerate(targets)}
+	# ordered list of protein IDs as rows
+	queries = sorted(align_data['query'].unique())
+	# ordered list of reference subset IDs as columns
+	targets = sorted(align_data['target'].unique())
 
-    matrix = np.zeros((len(queries), len(targets)), dtype=np.float32)
+	num_queries = len(queries)
+	num_targets = len(targets)
 
-    for _, row in align_data.iterrows():
-        i = query_to_idx[row['query']]
-        j = target_to_idx[row['target']]
-        matrix[i, j] = row['score']
+	logger.info(f"Matrix dimensions: {num_queries} queries × {num_targets} targets")
 
-    return matrix, queries, targets
+	# Estimate matrix size
+	matrix_elements = num_queries * num_targets
+	matrix_size_bytes = matrix_elements * 4  # 4 bytes per float32
+	matrix_size_mb = matrix_size_bytes / (1024 * 1024)
+	matrix_size_gb = matrix_size_mb / 1024
+
+	if matrix_size_gb >= 1:
+		logger.info(f"Estimated matrix size: {matrix_size_gb:.2f} GB ({matrix_elements:,} elements)")
+	elif matrix_size_mb >= 1:
+		logger.info(f"Estimated matrix size: {matrix_size_mb:.2f} MB ({matrix_elements:,} elements)")
+	else:
+		logger.info(f"Estimated matrix size: {matrix_size_bytes:,} bytes ({matrix_elements:,} elements)")
+
+	logger.debug("Creating index mappings")
+	query_to_idx = {q: i for i, q in enumerate(queries)}
+	target_to_idx = {t: i for i, t in enumerate(targets)}
+
+	logger.debug("Initializing alignment matrix")
+	matrix = np.zeros((len(queries), len(targets)), dtype=np.float32)
+
+	logger.info("Populating alignment matrix with scores")
+	for idx, row in align_data.iterrows():
+		if idx > 0 and idx % 100000 == 0:
+			logger.debug(f"Processed {idx:,} alignment records")
+		i = query_to_idx[row['query']]
+		j = target_to_idx[row['target']]
+		matrix[i, j] = row['score']
+
+	# Calculate matrix statistics
+	non_zero_elements = np.count_nonzero(matrix)
+	sparsity = (matrix_elements - non_zero_elements) / matrix_elements * 100
+
+	logger.info(f"Matrix construction completed")
+	logger.info(f"Non-zero elements: {non_zero_elements:,} ({100 - sparsity:.2f}% filled)")
+	logger.info(f"Matrix sparsity: {sparsity:.2f}%")
+	logger.info(f"Score range: {matrix.min():.2f} - {matrix.max():.2f}")
+
+	return matrix, queries, targets
 
 
 def create_embedding_dataframe(embedding: np.ndarray,
@@ -105,90 +170,117 @@ def create_embedding_dataframe(embedding: np.ndarray,
                                clusters: np.ndarray,
                                col_names: list,
                                metadata_protein: str = None,
-                               metadata_genome: str = None):
-    df = pd.DataFrame(embedding, columns=col_names)
-    df['prot_ID'] = queries
-    df['cluster'] = clusters
+                               metadata_genome: str = None
+                               ):
+	logger.debug(f"Creating embedding dataframe with {len(queries)} proteins")
+	df = pd.DataFrame(embedding, columns=col_names)
+	df['prot_ID'] = queries
+	df['cluster'] = clusters
 
-    # extract locus and genome info from protein IDs
-    df['locus_nr'] = df['prot_ID'].astype(str).str.rsplit("_", n=1).str[1]
-    df['genome_ID'] = df['prot_ID'].astype(str).str.rsplit("_", n=1).str[0]
+	logger.debug("Extracting locus and genome information from protein IDs")
+	# extract locus and genome info from protein IDs
+	df['locus_nr'] = df['prot_ID'].astype(str).str.rsplit("_", n=1).str[1]
+	df['genome_ID'] = df['prot_ID'].astype(str).str.rsplit("_", n=1).str[0]
 
-    # reorder columns
-    base_cols = ['prot_ID', 'locus_nr', 'genome_ID'] + col_names + ['cluster']
-    df = df[base_cols]
+	# reorder columns
+	base_cols = ['prot_ID', 'locus_nr', 'genome_ID'] + col_names + ['cluster']
+	df = df[base_cols]
 
-    # add metadata if provided
-    if metadata_protein and metadata_protein.is_file():
-        protein_meta = pd.read_csv(metadata_protein, sep="\t")
-        df = pd.merge(df, protein_meta, on="prot_ID", how="left")
+	# add metadata if provided
+	if metadata_protein and metadata_protein.is_file():
+		logger.info(f"Adding protein metadata from: {metadata_protein}")
+		protein_meta = pd.read_csv(metadata_protein, sep="\t")
+		df = pd.merge(df, protein_meta, on="prot_ID", how="left")
 
-    if metadata_genome and metadata_genome.is_file():
-        genome_meta = pd.read_csv(metadata_genome, sep="\t")
-        df = pd.merge(df, genome_meta, on="genome_ID", how="left")
+	if metadata_genome and metadata_genome.is_file():
+		logger.info(f"Adding genome metadata from: {metadata_genome}")
+		genome_meta = pd.read_csv(metadata_genome, sep="\t")
+		df = pd.merge(df, genome_meta, on="genome_ID", how="left")
 
-    return df
+	logger.debug(f"Final dataframe shape: {df.shape}")
+	return df
+
 
 def tsne_embedding(matrix: np.ndarray,
                    queries: list,
                    basename: str,
-                   perplexity:int,
+                   perplexity: int,
                    iterations: int,
                    exaggeration: int,
                    threads: int,
                    metadata_protein: str = None,
-                   metadata_genome: str = None):
-    # t-SNE embedding
-    affinities = openTSNE.affinity.Multiscale(matrix,
-                                              perplexities=[20, perplexity],
-                                              metric="cosine",
-                                              n_jobs=threads)
+                   metadata_genome: str = None,
+                   ):
+	logger.info("Starting t-SNE embedding process")
+	logger.info(f"Matrix shape: {matrix.shape}")
+	logger.info(f"Perplexity: {perplexity}, Iterations: {iterations}, Exaggeration: {exaggeration}")
+	logger.info(f"Using {threads} threads")
 
-    pca_init = openTSNE.initialization.pca(matrix)
-    tsne_embed = openTSNE.TSNEEmbedding(pca_init,
-                                        affinities,
-                                        n_jobs=threads,
-                                        dof=1,
-                                        learning_rate="auto")
+	# t-SNE embedding
+	logger.info("Computing multiscale affinities")
+	affinities = openTSNE.affinity.Multiscale(matrix,
+	                                          perplexities=[20, perplexity],
+	                                          metric="cosine",
+	                                          n_jobs=threads)
 
-    # early embed with exaggeration
-    tsne_embed.optimize(n_iter=iterations,
-                        exaggeration=exaggeration,
-                        momentum=0.5,
-                        inplace=True,
-                        n_jobs=threads)
+	logger.info("Initializing t-SNE with PCA")
+	pca_init = openTSNE.initialization.pca(matrix)
+	tsne_embed = openTSNE.TSNEEmbedding(pca_init,
+	                                    affinities,
+	                                    n_jobs=threads,
+	                                    dof=1,
+	                                    learning_rate="auto")
 
-    # cluster on early embedding
-    clustering = DBSCAN(eps=1, min_samples=10).fit(tsne_embed)
+	# early embed with exaggeration
+	logger.info(f"Starting early optimization with exaggeration={exaggeration}")
+	tsne_embed.optimize(n_iter=iterations,
+	                    exaggeration=exaggeration,
+	                    momentum=0.5,
+	                    inplace=True,
+	                    n_jobs=threads)
+	logger.info("Early optimization completed")
 
-    # save early embedding
-    early_df = create_embedding_dataframe(tsne_embed,
-                                          queries,
-                                          clustering.labels_,
-                                          ['tsne1', 'tsne2'],
-                                          metadata_protein,
-                                          metadata_genome)
-    early_tsv = early_df.to_csv(f"{basename}_tsne_early_clust.tsv", sep="\t", index=False)
+	# cluster on early embedding
+	logger.info("Performing DBSCAN clustering on early embedding")
+	clustering = DBSCAN(eps=1, min_samples=10).fit(tsne_embed)
+	n_clusters = len(set(clustering.labels_)) - (1 if -1 in clustering.labels_ else 0)
+	n_noise = list(clustering.labels_).count(-1)
+	logger.info(f"DBSCAN clustering results: {n_clusters} clusters, {n_noise} noise points")
 
-    # final embedding
-    tsne_embed.optimize(n_iter=iterations,
-                        momentum=0.8,
-                        inplace=True,
-                        n_jobs=threads)
+	# save early embedding
+	logger.debug("Saving early embedding results")
+	early_df = create_embedding_dataframe(tsne_embed,
+	                                      queries,
+	                                      clustering.labels_,
+	                                      ['tsne1', 'tsne2'],
+	                                      metadata_protein,
+	                                      metadata_genome,
+	                                      )
+	early_tsv = early_df.to_csv(f"{basename}_tsne_early_clust.tsv", sep="\t", index=False)
+	logger.info(f"Early embedding saved to: {basename}_tsne_early_clust.tsv")
 
-    # save final embedding
-    final_df = create_embedding_dataframe(tsne_embed,
-                                          queries,
-                                          clustering.labels_,
-                                          ['tsne1', 'tsne2'],
-                                          metadata_protein,
-                                          metadata_genome)
+	# final embedding
+	logger.info("Starting final optimization")
+	tsne_embed.optimize(n_iter=iterations,
+	                    momentum=0.8,
+	                    inplace=True,
+	                    n_jobs=threads)
+	logger.info("Final optimization completed")
 
-    final_tsv = final_df.to_csv(f"{basename}_tsne_embed.tsv", sep="\t", index=False)
+	# save final embedding
+	logger.debug("Saving final embedding results")
+	final_df = create_embedding_dataframe(tsne_embed,
+	                                      queries,
+	                                      clustering.labels_,
+	                                      ['tsne1', 'tsne2'],
+	                                      metadata_protein,
+	                                      metadata_genome,
+	                                      )
 
+	final_tsv = final_df.to_csv(f"{basename}_tsne_embed.tsv", sep="\t", index=False)
+	logger.info(f"Final embedding saved to: {basename}_tsne_embed.tsv")
 
-    return early_tsv, final_tsv
-
+	return early_tsv, final_tsv
 
 
 def casm(fasta: str,
@@ -201,62 +293,91 @@ def casm(fasta: str,
          exaggeration: int = 6,
          metadata_protein: str = None,
          metadata_genome: str = None,
-         force: bool = False):
-    if subset:
-        subset_fasta = subset
-    else:
-        subset_fasta = fasta_subsample(fasta, output, subset_size, force=force)
+         force: bool = False,
+         cugo_dir: str = False
+         ):
+	logger.info("=== Starting CASM Analysis ===")
+	logger.info(f"Input FASTA: {fasta}")
+	logger.info(f"Output basename: {output}")
+	logger.info(f"Subset size: {subset_size}")
+	logger.info(f"Threads: {threads}")
 
+	if subset:
+		logger.info(f"Using provided subset: {subset}")
+		subset_fasta = subset
+	else:
+		logger.info("Creating random subset from input FASTA")
+		subset_fasta = fasta_subsample(fasta, output, subset_size, force=force)
 
-    align_output = run_diamond_alignment(fasta, subset_fasta, subset_size, threads)
-    matrix, queries, targets = build_alignment_matrix(align_output)
-    tsne_embedding(matrix=matrix,
-                   queries=queries,
-                   basename=output,
-                   perplexity=perplexity,
-                   iterations=iterations,
-                   exaggeration=exaggeration,
-                   threads=threads,
-                   metadata_protein=metadata_protein,
-                   metadata_genome=metadata_genome)
+	logger.info("=== Phase 1: DIAMOND Alignment ===")
+	align_output = run_diamond_alignment(fasta, subset_fasta, subset_size, threads)
+
+	logger.info("=== Phase 2: Matrix Construction ===")
+	matrix, queries, targets = build_alignment_matrix(align_output)
+
+	logger.info("=== Phase 3: t-SNE Embedding ===")
+	tsne_embedding(matrix=matrix,
+	               queries=queries,
+	               basename=output,
+	               perplexity=perplexity,
+	               iterations=iterations,
+	               exaggeration=exaggeration,
+	               threads=threads,
+	               metadata_protein=metadata_protein,
+	               metadata_genome=metadata_genome,
+	               )
+
+	logger.info("=== CASM Analysis Completed ===")
+
 
 def casm_plot(tsv_file: str,
-              output: str):
-    df = pd.read_csv(tsv_file, sep='\t')
+              output: str,
+              ):
+	logger.info(f"Creating t-SNE plot from: {tsv_file}")
+	df = pd.read_csv(tsv_file, sep='\t')
+	logger.info(f"Loaded {len(df)} data points for plotting")
 
-    plt.figure(figsize=(12, 8))
+	plt.figure(figsize=(12, 8))
 
-    noise_mask = df['cluster'] == -1
-    clustered_mask = df['cluster'] != -1
+	noise_mask = df['cluster'] == -1
+	clustered_mask = df['cluster'] != -1
 
-    if noise_mask.any():
-        plt.scatter(df.loc[noise_mask, 'tsne1'],
-                    df.loc[noise_mask, 'tsne2'],
-                    c='lightgray',
-                    alpha=0.6,
-                    s=20,
-                    label='Noise')
+	n_noise = noise_mask.sum()
+	n_clustered = clustered_mask.sum()
+	logger.info(f"Plotting {n_clustered} clustered points and {n_noise} noise points")
 
-    if clustered_mask.any():
-        unique_clusters = df.loc[clustered_mask, 'cluster'].unique()
-        colors = plt.cm.Set3(np.linspace(0, 1, len(unique_clusters)))
+	if noise_mask.any():
+		plt.scatter(df.loc[noise_mask, 'tsne1'],
+		            df.loc[noise_mask, 'tsne2'],
+		            c='lightgray',
+		            alpha=0.6,
+		            s=20,
+		            label='Noise')
 
-        for i, cluster in enumerate(unique_clusters):
-            cluster_mask = df['cluster'] == cluster
-            plt.scatter(df.loc[cluster_mask, 'tsne1'],
-                        df.loc[cluster_mask, 'tsne2'],
-                        c=[colors[i]], s=30, alpha=0.7,
-                        label=f'Cluster {cluster}')
+	if clustered_mask.any():
+		unique_clusters = df.loc[clustered_mask, 'cluster'].unique()
+		colors = plt.cm.Set3(np.linspace(0, 1, len(unique_clusters)))
+		logger.info(f"Plotting {len(unique_clusters)} unique clusters")
 
-    plt.xlabel('t-SNE 1')
-    plt.ylabel('t-SNE 2')
-    plt.title('t-SNE Embedding with DBSCAN Clusters')
-    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    plt.tight_layout()
+		for i, cluster in enumerate(unique_clusters):
+			cluster_mask = df['cluster'] == cluster
+			cluster_size = cluster_mask.sum()
+			logger.debug(f"Cluster {cluster}: {cluster_size} points")
+			plt.scatter(df.loc[cluster_mask, 'tsne1'],
+			            df.loc[cluster_mask, 'tsne2'],
+			            c=[colors[i]], s=30, alpha=0.7,
+			            label=f'Cluster {cluster}')
 
-    if output:
-        plt.savefig(f"{output}_tsne_clusters.png", dpi=300, bbox_inches='tight')
-    plt.show()
+	plt.xlabel('t-SNE 1')
+	plt.ylabel('t-SNE 2')
+	plt.title('t-SNE Embedding with DBSCAN Clusters')
 
+	plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+	plt.tight_layout()
 
-
+	if output:
+		suffix = "_tsne_cog.png" if 'cog' in locals() else "_tsne_clusters.png"
+		output_file = f"{output}{suffix}"
+		plt.savefig(output_file, dpi=300, bbox_inches='tight')
+		logger.info(f"Plot saved to: {output_file}")
+	plt.show()

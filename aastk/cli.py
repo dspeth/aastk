@@ -392,6 +392,7 @@ def get_main_parser():
             __metadata_protein(grp)
             __metadata_genome(grp)
             __force(grp)
+            __cugo_dir(grp)
 
     with subparser(sub_parsers, 'casm_plot', 'Plot CASM .tsv output files') as parser:
         with arg_group(parser, 'Required arguments') as grp:

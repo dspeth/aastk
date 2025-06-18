@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from pathlib import Path
 from typing import Optional
+import pandas as pd
 import logging
 import shutil
 
@@ -48,6 +49,8 @@ def ensure_path(path: str, target: Optional[str] = None, force: bool = False):
 
     return str(final_path)
 
+def extract_cog_info(df: pd.DataFrame, feat_type=str):
+    return df.loc[df["feat_type"] == feat_type]
 
 def extract_unique_keys(file_path, column_index=0):
     """
