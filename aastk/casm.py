@@ -112,12 +112,8 @@ def run_diamond_alignment(fasta: str,
 def build_alignment_matrix(align_file: str):
 	logger.info(f"Building alignment matrix from: {align_file} (regex parsing)")
 
-	# pre-compile regex pattern for tab-separated values
-	# matches: query_id \t target_id \t score
 	pattern = re.compile(r'^([^\t]+)\t([^\t]+)\t([^\t]+)$')
 
-	logger.debug("First pass: parsing file with regex")
-	alignment_data = []
 	queries_set = set()
 	targets_set = set()
 
@@ -130,40 +126,37 @@ def build_alignment_matrix(align_file: str):
 			match = pattern.match(line)
 			if match:
 				query, target, score_str = match.groups()
-				try:
-					score = float(score_str)
-					alignment_data.append((query, target, score))
-					queries_set.add(query)
-					targets_set.add(target)
-				except ValueError:
-					logger.warning(f"Invalid score '{score_str}' on line {line_num}")
-					continue
-			else:
-				logger.warning(f"Malformed line {line_num}: {line[:50]}...")
-
-	logger.info(f"Parsed {len(alignment_data):,} alignment records")
+				queries_set.add(query)
+				targets_set.add(target)
 
 	queries = sorted(queries_set)
 	targets = sorted(targets_set)
-
-	num_queries = len(queries)
-	num_targets = len(targets)
-	logger.info(f"Matrix dimensions: {num_queries} queries × {num_targets} targets")
-
-	logger.debug("Creating index mappings")
 	query_to_idx = {q: i for i, q in enumerate(queries)}
 	target_to_idx = {t: i for i, t in enumerate(targets)}
 
-	logger.info("Building alignment matrix")
-	matrix = np.zeros((num_queries, num_targets), dtype=np.float32)
+	del queries_set, targets_set
 
-	for query, target, score in alignment_data:
-		i = query_to_idx[query]
-		j = target_to_idx[target]
-		matrix[i, j] = score
+	matrix = np.zeros((len(queries), len(targets)), dtype=np.float32)
+
+	with open(align_file, 'r') as f:
+		for line_num, line in enumerate(f, 1):
+			line = line.rstrip('\n\r')
+			if not line:
+				continue
+
+			match = pattern.match(line)
+			if match:
+				query, target, score_str = match.groups()
+				try:
+					score = float(score_str)
+					i = query_to_idx[query]
+					j = target_to_idx[target]
+					matrix[i, j] = score
+				except (ValueError, KeyError):
+					continue
 
 	non_zero_elements = np.count_nonzero(matrix)
-	matrix_elements = num_queries * num_targets
+	matrix_elements = len(queries) * len(targets)
 	sparsity = (matrix_elements - non_zero_elements) / matrix_elements * 100
 
 	logger.info(f"Matrix construction completed")
