@@ -338,7 +338,7 @@ def casm_plot(tsv_file: str,
 	df = pd.read_csv(tsv_file, sep='\t')
 	logger.info(f"Loaded {len(df)} data points for plotting")
 
-	plt.figure(figsize=(12, 8))
+	plt.figure(figsize=(14, 10))
 
 	noise_mask = df['cluster'] == -1
 	clustered_mask = df['cluster'] != -1
@@ -351,13 +351,17 @@ def casm_plot(tsv_file: str,
 		plt.scatter(df.loc[noise_mask, 'tsne1'],
 		            df.loc[noise_mask, 'tsne2'],
 		            c='lightgray',
-		            alpha=0.6,
-		            s=20,
+		            alpha=0.4,
+		            s=12,
+		            edgecolors='none',
 		            label='Noise')
 
 	if clustered_mask.any():
 		unique_clusters = df.loc[clustered_mask, 'cluster'].unique()
-		colors = plt.cm.Set3(np.linspace(0, 1, len(unique_clusters)))
+		colors = plt.cm.tab20(np.linspace(0, 1, len(unique_clusters)))
+		if len(unique_clusters) > 20:
+			colors = plt.cm.hsv(np.linspace(0, 1, len(unique_clusters)))
+
 		logger.info(f"Plotting {len(unique_clusters)} unique clusters")
 
 		for i, cluster in enumerate(unique_clusters):
@@ -366,14 +370,20 @@ def casm_plot(tsv_file: str,
 			logger.debug(f"Cluster {cluster}: {cluster_size} points")
 			plt.scatter(df.loc[cluster_mask, 'tsne1'],
 			            df.loc[cluster_mask, 'tsne2'],
-			            c=[colors[i]], s=30, alpha=0.7,
+			            c=[colors[i]],
+			            s=15,
+			            alpha=0.7,
+			            edgecolors='white',
+			            linewidths=0.3,
 			            label=f'Cluster {cluster}')
 
-	plt.xlabel('t-SNE 1')
-	plt.ylabel('t-SNE 2')
-	plt.title('t-SNE Embedding with DBSCAN Clusters')
+	plt.xlabel('t-SNE 1', fontsize=12)
+	plt.ylabel('t-SNE 2', fontsize=12)
+	plt.title('t-SNE Embedding with DBSCAN Clusters', fontsize=14)
 
-	plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+	if len(df.loc[clustered_mask, 'cluster'].unique()) <= 15:
+		plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=10)
+
 	plt.tight_layout()
 
 	if output:
