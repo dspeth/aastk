@@ -9,6 +9,7 @@ import openTSNE
 from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
 import yaml
+import re
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -109,52 +110,60 @@ def run_diamond_alignment(fasta: str,
 
 
 def build_alignment_matrix(align_file: str):
-	logger.info(f"Building alignment matrix from: {align_file}")
+	logger.info(f"Building alignment matrix from: {align_file} (regex parsing)")
 
-	logger.debug("Reading alignment data")
-	align_data = pd.read_csv(align_file, sep="\t", header=None, names=['query', 'target', 'score'])
-	logger.info(f"Total alignment records: {len(align_data)}")
+	# pre-compile regex pattern for tab-separated values
+	# matches: query_id \t target_id \t score
+	pattern = re.compile(r'^([^\t]+)\t([^\t]+)\t([^\t]+)$')
 
-	# ordered list of protein IDs as rows
-	queries = sorted(align_data['query'].unique())
-	# ordered list of reference subset IDs as columns
-	targets = sorted(align_data['target'].unique())
+	logger.debug("First pass: parsing file with regex")
+	alignment_data = []
+	queries_set = set()
+	targets_set = set()
+
+	with open(align_file, 'r') as f:
+		for line_num, line in enumerate(f, 1):
+			line = line.rstrip('\n\r')
+			if not line:
+				continue
+
+			match = pattern.match(line)
+			if match:
+				query, target, score_str = match.groups()
+				try:
+					score = float(score_str)
+					alignment_data.append((query, target, score))
+					queries_set.add(query)
+					targets_set.add(target)
+				except ValueError:
+					logger.warning(f"Invalid score '{score_str}' on line {line_num}")
+					continue
+			else:
+				logger.warning(f"Malformed line {line_num}: {line[:50]}...")
+
+	logger.info(f"Parsed {len(alignment_data):,} alignment records")
+
+	queries = sorted(queries_set)
+	targets = sorted(targets_set)
 
 	num_queries = len(queries)
 	num_targets = len(targets)
-
 	logger.info(f"Matrix dimensions: {num_queries} queries × {num_targets} targets")
-
-	# Estimate matrix size
-	matrix_elements = num_queries * num_targets
-	matrix_size_bytes = matrix_elements * 4  # 4 bytes per float32
-	matrix_size_mb = matrix_size_bytes / (1024 * 1024)
-	matrix_size_gb = matrix_size_mb / 1024
-
-	if matrix_size_gb >= 1:
-		logger.info(f"Estimated matrix size: {matrix_size_gb:.2f} GB ({matrix_elements:,} elements)")
-	elif matrix_size_mb >= 1:
-		logger.info(f"Estimated matrix size: {matrix_size_mb:.2f} MB ({matrix_elements:,} elements)")
-	else:
-		logger.info(f"Estimated matrix size: {matrix_size_bytes:,} bytes ({matrix_elements:,} elements)")
 
 	logger.debug("Creating index mappings")
 	query_to_idx = {q: i for i, q in enumerate(queries)}
 	target_to_idx = {t: i for i, t in enumerate(targets)}
 
-	logger.debug("Initializing alignment matrix")
-	matrix = np.zeros((len(queries), len(targets)), dtype=np.float32)
+	logger.info("Building alignment matrix")
+	matrix = np.zeros((num_queries, num_targets), dtype=np.float32)
 
-	logger.info("Populating alignment matrix with scores")
-	for idx, row in align_data.iterrows():
-		if idx > 0 and idx % 100000 == 0:
-			logger.debug(f"Processed {idx:,} alignment records")
-		i = query_to_idx[row['query']]
-		j = target_to_idx[row['target']]
-		matrix[i, j] = row['score']
+	for query, target, score in alignment_data:
+		i = query_to_idx[query]
+		j = target_to_idx[target]
+		matrix[i, j] = score
 
-	# Calculate matrix statistics
 	non_zero_elements = np.count_nonzero(matrix)
+	matrix_elements = num_queries * num_targets
 	sparsity = (matrix_elements - non_zero_elements) / matrix_elements * 100
 
 	logger.info(f"Matrix construction completed")
@@ -163,7 +172,6 @@ def build_alignment_matrix(align_file: str):
 	logger.info(f"Score range: {matrix.min():.2f} - {matrix.max():.2f}")
 
 	return matrix, queries, targets
-
 
 def create_embedding_dataframe(embedding: np.ndarray,
                                queries: list,
