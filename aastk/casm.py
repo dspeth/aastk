@@ -166,6 +166,78 @@ def build_alignment_matrix(align_file: str):
 
 	return matrix, queries, targets
 
+
+def build_alignment_matrix_split(align_file: str):
+	logger.info(f"Building alignment matrix from: {align_file} (split parsing)")
+
+	queries_set = set()
+	targets_set = set()
+
+	with open(align_file, 'r') as f:
+		for line_num, line in enumerate(f, 1):
+			line = line.rstrip('\n\r')
+			if not line:
+				continue
+
+			try:
+				parts = line.split("\t")
+				if len(parts) != 3:
+					logger.warning(f"Line {line_num}: Expected 3 fields, got {len(parts)}. Skipping.")
+					continue
+
+				query, target, score_str = parts
+				queries_set.add(query)
+				targets_set.add(target)
+			except Exception as e:
+				logger.warning(f"Line {line_num}: Error parsing line. Skipping. ({e})")
+				continue
+
+	queries = sorted(queries_set)
+	targets = sorted(targets_set)
+	query_to_idx = {q: i for i, q in enumerate(queries)}
+	target_to_idx = {t: i for i, t in enumerate(targets)}
+
+	del queries_set, targets_set
+
+	matrix = np.zeros((len(queries), len(targets)), dtype=np.float32)
+
+	with open(align_file, 'r') as f:
+		for line_num, line in enumerate(f, 1):
+			line = line.rstrip('\n\r')
+			if not line:
+				continue
+
+			try:
+				parts = line.split("\t")
+				if len(parts) != 3:
+					continue  # Already logged in first pass
+
+				query, target, score_str = parts
+				score = float(score_str)
+				i = query_to_idx[query]
+				j = target_to_idx[target]
+				matrix[i, j] = score
+			except ValueError as e:
+				logger.warning(f"Line {line_num}: Invalid score '{score_str}'. Skipping. ({e})")
+				continue
+			except KeyError as e:
+				logger.warning(f"Line {line_num}: Key not found in mapping. Skipping. ({e})")
+				continue
+			except Exception as e:
+				logger.warning(f"Line {line_num}: Unexpected error. Skipping. ({e})")
+				continue
+
+	non_zero_elements = np.count_nonzero(matrix)
+	matrix_elements = len(queries) * len(targets)
+	sparsity = (matrix_elements - non_zero_elements) / matrix_elements * 100
+
+	logger.info(f"Matrix construction completed")
+	logger.info(f"Non-zero elements: {non_zero_elements:,} ({100 - sparsity:.2f}% filled)")
+	logger.info(f"Matrix sparsity: {sparsity:.2f}%")
+	logger.info(f"Score range: {matrix.min():.2f} - {matrix.max():.2f}")
+
+	return matrix, queries, targets
+
 def create_embedding_dataframe(embedding: np.ndarray,
                                queries: list,
                                clusters: np.ndarray,
@@ -314,7 +386,7 @@ def casm(fasta: str,
 	align_output = run_diamond_alignment(fasta, subset_fasta, subset_size, threads)
 
 	logger.info("=== Phase 2: Matrix Construction ===")
-	matrix, queries, targets = build_alignment_matrix(align_output)
+	matrix, queries, targets = build_alignment_matrix_split(align_output)
 
 	logger.info("=== Phase 3: t-SNE Embedding ===")
 	tsne_embedding(matrix=matrix,
