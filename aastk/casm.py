@@ -72,7 +72,7 @@ def run_diamond_alignment(fasta: str,
 	logger.info(f"Reference subset: {align_subset}")
 	logger.info(f"Using {threads} threads")
 
-	dataset = fasta.split('.')[0]
+	dataset = determine_dataset_name(fasta, '.', 0)
 	dbname = f"{dataset}_subset_dmnd"
 	align_output = f"{dataset}_align"
 
@@ -210,7 +210,7 @@ def build_alignment_matrix_split(align_file: str):
 			try:
 				parts = line.split("\t")
 				if len(parts) != 3:
-					continue  # Already logged in first pass
+					continue
 
 				query, target, score_str = parts
 				score = float(score_str)

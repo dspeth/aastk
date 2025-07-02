@@ -485,7 +485,6 @@ def plot_bsr(protein_name: str,
         axs['scatter'].set_ylabel('Alignment score to seed set')
         axs['scatter'].set_xlim(0, 1.5 * score_max)
         axs['scatter'].set_ylim(bottom=0)
-        axs['scatter'].set_title(f'Blast Score Ratio (BSR) for {protein_name}')
 
         # Colorbar inside scatterplot
         cb_ax = inset_axes(axs['scatter'], width="5%", height="30%", loc='upper left', borderpad=1)
@@ -499,6 +498,7 @@ def plot_bsr(protein_name: str,
         axs['histx'].set_xlim(axs['scatter'].get_xlim())
         axs['histx'].set_ylabel('Counts')
         axs['histx'].tick_params(labelbottom=False)
+        axs['histx'].set_title(f'Protein Alignment Score Ratio for {protein_name}')
 
         y_hist = binned_counts.groupby('y', observed=True)['counts'].sum()
         axs['histy'].barh(y_hist.index, y_hist.values, height=bin_width, align='center', color='gray', edgecolor='black')
@@ -691,7 +691,7 @@ def select(yaml_path: str,
     # load BSR table
     bsr_df = pd.read_csv(bsr_table, sep='\t')
 
-    # spply essential filters
+    # apply essential filters
     filtered = bsr_df[(bsr_df['max_score'] >= selfmin) & (bsr_df['max_score'] <= selfmax)]
 
     # apply mutually exclusive filters

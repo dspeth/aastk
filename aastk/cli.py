@@ -358,7 +358,7 @@ def get_main_parser():
         with arg_group(parser, 'Required arguments') as grp:
             __cugo_dir(grp, required=True)
             __cugo_range(grp, required=True)
-            __dataset(grp, required=True)
+            __protein_name(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __tmhmm_dir(grp)

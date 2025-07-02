@@ -136,7 +136,7 @@ def main():
                 tmhmm_dir=args.tmhmm_dir,
                 cugo_range=args.cugo_range,
                 output_dir=args.output,
-                dataset=args.dataset,
+                protein_name=args.protein_name,
                 force=args.force,
                 fasta_path=args.fasta
             )
