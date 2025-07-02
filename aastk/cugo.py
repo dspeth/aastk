@@ -287,10 +287,10 @@ def context(protein_ids: str,
             tmhmm_dir: str,
             cugo_range: int,
             output_dir: str,
-            dataset: str,
+            protein_name: str,
             force: bool = False,
             fasta_path: str = None):
-    log_file = ensure_path(output_dir, f"{dataset}_missing_files.log", force=force)
+    log_file = ensure_path(output_dir, f"{protein_name}_missing_files.log", force=force)
     logging.basicConfig(
         filename=log_file,
         level=logging.INFO,
@@ -310,7 +310,7 @@ def context(protein_ids: str,
         logger.error("Either 'fasta_path' or 'protein_ids' must be provided.")
         raise ValueError("You must provide either a FASTA file or a list of protein IDs.")
 
-    output_file = ensure_path(output_dir, dataset + "_context.tsv", force=force)
+    output_file = ensure_path(output_dir, protein_name + "_context.tsv", force=force)
 
     missing_files = []
     results = None
@@ -569,7 +569,7 @@ def plot_size_per_position(cugo_path: str,
     ax.set_xlim(positions[0] - 0.5, positions[-1] + 0.5)
     xtick_labels = [f"{pos}\n(n={count})" for pos, count in zip(positions, position_counts)]
     ax.set_xticks(positions)
-    ax.set_xticklabels(xtick_labels, fontsize=10)
+    ax.set_xticklabels(xtick_labels, fontsize=14)
 
     if y_range:
         n_bins = int(y_range / bin_width)
@@ -591,11 +591,11 @@ def plot_size_per_position(cugo_path: str,
         tick_labels = [f"{int(bin_edges[i + 1])}" for i in tick_indices]
 
     ax.set_yticks(np.array(tick_indices) + 0.5)
-    ax.set_yticklabels(tick_labels, fontsize=10)
+    ax.set_yticklabels(tick_labels, fontsize=16)
 
-    ax.set_xlabel("Position", fontsize=14)
-    ax.set_ylabel(f"length (bin size: {bin_width})", fontsize=14)
-    ax.set_title(title, fontsize=16)
+    ax.set_xlabel("Position", fontsize=18)
+    ax.set_ylabel(f"length (bin size: {bin_width})", fontsize=18)
+    ax.set_title(title, fontsize=20)
 
     sm = ScalarMappable(norm=norm, cmap=cmap)
     sm.set_array([])
@@ -656,6 +656,7 @@ def cugo_plot(cugo_path: str,
             )
 
             ax1.tick_params(labelbottom=True)
+
 
             plt.tight_layout()
             plt.subplots_adjust(hspace=0.4)

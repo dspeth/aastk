@@ -9,6 +9,7 @@ import openTSNE
 from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
 import yaml
+import re
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -71,7 +72,7 @@ def run_diamond_alignment(fasta: str,
 	logger.info(f"Reference subset: {align_subset}")
 	logger.info(f"Using {threads} threads")
 
-	dataset = fasta.split('.')[0]
+	dataset = determine_dataset_name(fasta, '.', 0)
 	dbname = f"{dataset}_subset_dmnd"
 	align_output = f"{dataset}_align"
 
@@ -109,52 +110,53 @@ def run_diamond_alignment(fasta: str,
 
 
 def build_alignment_matrix(align_file: str):
-	logger.info(f"Building alignment matrix from: {align_file}")
+	logger.info(f"Building alignment matrix from: {align_file} (regex parsing)")
 
-	logger.debug("Reading alignment data")
-	align_data = pd.read_csv(align_file, sep="\t", header=None, names=['query', 'target', 'score'])
-	logger.info(f"Total alignment records: {len(align_data)}")
+	pattern = re.compile(r'^([^\t]+)\t([^\t]+)\t([^\t]+)$')
 
-	# ordered list of protein IDs as rows
-	queries = sorted(align_data['query'].unique())
-	# ordered list of reference subset IDs as columns
-	targets = sorted(align_data['target'].unique())
+	queries_set = set()
+	targets_set = set()
 
-	num_queries = len(queries)
-	num_targets = len(targets)
+	with open(align_file, 'r') as f:
+		for line_num, line in enumerate(f, 1):
+			line = line.rstrip('\n\r')
+			if not line:
+				continue
 
-	logger.info(f"Matrix dimensions: {num_queries} queries × {num_targets} targets")
+			match = pattern.match(line)
+			if match:
+				query, target, score_str = match.groups()
+				queries_set.add(query)
+				targets_set.add(target)
 
-	# Estimate matrix size
-	matrix_elements = num_queries * num_targets
-	matrix_size_bytes = matrix_elements * 4  # 4 bytes per float32
-	matrix_size_mb = matrix_size_bytes / (1024 * 1024)
-	matrix_size_gb = matrix_size_mb / 1024
-
-	if matrix_size_gb >= 1:
-		logger.info(f"Estimated matrix size: {matrix_size_gb:.2f} GB ({matrix_elements:,} elements)")
-	elif matrix_size_mb >= 1:
-		logger.info(f"Estimated matrix size: {matrix_size_mb:.2f} MB ({matrix_elements:,} elements)")
-	else:
-		logger.info(f"Estimated matrix size: {matrix_size_bytes:,} bytes ({matrix_elements:,} elements)")
-
-	logger.debug("Creating index mappings")
+	queries = sorted(queries_set)
+	targets = sorted(targets_set)
 	query_to_idx = {q: i for i, q in enumerate(queries)}
 	target_to_idx = {t: i for i, t in enumerate(targets)}
 
-	logger.debug("Initializing alignment matrix")
+	del queries_set, targets_set
+
 	matrix = np.zeros((len(queries), len(targets)), dtype=np.float32)
 
-	logger.info("Populating alignment matrix with scores")
-	for idx, row in align_data.iterrows():
-		if idx > 0 and idx % 100000 == 0:
-			logger.debug(f"Processed {idx:,} alignment records")
-		i = query_to_idx[row['query']]
-		j = target_to_idx[row['target']]
-		matrix[i, j] = row['score']
+	with open(align_file, 'r') as f:
+		for line_num, line in enumerate(f, 1):
+			line = line.rstrip('\n\r')
+			if not line:
+				continue
 
-	# Calculate matrix statistics
+			match = pattern.match(line)
+			if match:
+				query, target, score_str = match.groups()
+				try:
+					score = float(score_str)
+					i = query_to_idx[query]
+					j = target_to_idx[target]
+					matrix[i, j] = score
+				except (ValueError, KeyError):
+					continue
+
 	non_zero_elements = np.count_nonzero(matrix)
+	matrix_elements = len(queries) * len(targets)
 	sparsity = (matrix_elements - non_zero_elements) / matrix_elements * 100
 
 	logger.info(f"Matrix construction completed")
@@ -164,6 +166,77 @@ def build_alignment_matrix(align_file: str):
 
 	return matrix, queries, targets
 
+
+def build_alignment_matrix_split(align_file: str):
+	logger.info(f"Building alignment matrix from: {align_file} (split parsing)")
+
+	queries_set = set()
+	targets_set = set()
+
+	with open(align_file, 'r') as f:
+		for line_num, line in enumerate(f, 1):
+			line = line.rstrip('\n\r')
+			if not line:
+				continue
+
+			try:
+				parts = line.split("\t")
+				if len(parts) != 3:
+					logger.warning(f"Line {line_num}: Expected 3 fields, got {len(parts)}. Skipping.")
+					continue
+
+				query, target, score_str = parts
+				queries_set.add(query)
+				targets_set.add(target)
+			except Exception as e:
+				logger.warning(f"Line {line_num}: Error parsing line. Skipping. ({e})")
+				continue
+
+	queries = sorted(queries_set)
+	targets = sorted(targets_set)
+	query_to_idx = {q: i for i, q in enumerate(queries)}
+	target_to_idx = {t: i for i, t in enumerate(targets)}
+
+	del queries_set, targets_set
+
+	matrix = np.zeros((len(queries), len(targets)), dtype=np.float32)
+
+	with open(align_file, 'r') as f:
+		for line_num, line in enumerate(f, 1):
+			line = line.rstrip('\n\r')
+			if not line:
+				continue
+
+			try:
+				parts = line.split("\t")
+				if len(parts) != 3:
+					continue
+
+				query, target, score_str = parts
+				score = float(score_str)
+				i = query_to_idx[query]
+				j = target_to_idx[target]
+				matrix[i, j] = score
+			except ValueError as e:
+				logger.warning(f"Line {line_num}: Invalid score '{score_str}'. Skipping. ({e})")
+				continue
+			except KeyError as e:
+				logger.warning(f"Line {line_num}: Key not found in mapping. Skipping. ({e})")
+				continue
+			except Exception as e:
+				logger.warning(f"Line {line_num}: Unexpected error. Skipping. ({e})")
+				continue
+
+	non_zero_elements = np.count_nonzero(matrix)
+	matrix_elements = len(queries) * len(targets)
+	sparsity = (matrix_elements - non_zero_elements) / matrix_elements * 100
+
+	logger.info(f"Matrix construction completed")
+	logger.info(f"Non-zero elements: {non_zero_elements:,} ({100 - sparsity:.2f}% filled)")
+	logger.info(f"Matrix sparsity: {sparsity:.2f}%")
+	logger.info(f"Score range: {matrix.min():.2f} - {matrix.max():.2f}")
+
+	return matrix, queries, targets
 
 def create_embedding_dataframe(embedding: np.ndarray,
                                queries: list,
@@ -313,7 +386,7 @@ def casm(fasta: str,
 	align_output = run_diamond_alignment(fasta, subset_fasta, subset_size, threads)
 
 	logger.info("=== Phase 2: Matrix Construction ===")
-	matrix, queries, targets = build_alignment_matrix(align_output)
+	matrix, queries, targets = build_alignment_matrix_split(align_output)
 
 	logger.info("=== Phase 3: t-SNE Embedding ===")
 	tsne_embedding(matrix=matrix,
@@ -337,7 +410,7 @@ def casm_plot(tsv_file: str,
 	df = pd.read_csv(tsv_file, sep='\t')
 	logger.info(f"Loaded {len(df)} data points for plotting")
 
-	plt.figure(figsize=(12, 8))
+	plt.figure(figsize=(14, 10))
 
 	noise_mask = df['cluster'] == -1
 	clustered_mask = df['cluster'] != -1
@@ -350,13 +423,17 @@ def casm_plot(tsv_file: str,
 		plt.scatter(df.loc[noise_mask, 'tsne1'],
 		            df.loc[noise_mask, 'tsne2'],
 		            c='lightgray',
-		            alpha=0.6,
-		            s=20,
+		            alpha=0.4,
+		            s=12,
+		            edgecolors='none',
 		            label='Noise')
 
 	if clustered_mask.any():
 		unique_clusters = df.loc[clustered_mask, 'cluster'].unique()
-		colors = plt.cm.Set3(np.linspace(0, 1, len(unique_clusters)))
+		colors = plt.cm.tab20(np.linspace(0, 1, len(unique_clusters)))
+		if len(unique_clusters) > 20:
+			colors = plt.cm.hsv(np.linspace(0, 1, len(unique_clusters)))
+
 		logger.info(f"Plotting {len(unique_clusters)} unique clusters")
 
 		for i, cluster in enumerate(unique_clusters):
@@ -365,14 +442,20 @@ def casm_plot(tsv_file: str,
 			logger.debug(f"Cluster {cluster}: {cluster_size} points")
 			plt.scatter(df.loc[cluster_mask, 'tsne1'],
 			            df.loc[cluster_mask, 'tsne2'],
-			            c=[colors[i]], s=30, alpha=0.7,
+			            c=[colors[i]],
+			            s=15,
+			            alpha=0.7,
+			            edgecolors='white',
+			            linewidths=0.3,
 			            label=f'Cluster {cluster}')
 
-	plt.xlabel('t-SNE 1')
-	plt.ylabel('t-SNE 2')
-	plt.title('t-SNE Embedding with DBSCAN Clusters')
+	plt.xlabel('t-SNE 1', fontsize=12)
+	plt.ylabel('t-SNE 2', fontsize=12)
+	plt.title('t-SNE Embedding with DBSCAN Clusters', fontsize=14)
 
-	plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+	if len(df.loc[clustered_mask, 'cluster'].unique()) <= 15:
+		plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=10)
+
 	plt.tight_layout()
 
 	if output:
