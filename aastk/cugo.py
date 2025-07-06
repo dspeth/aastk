@@ -195,8 +195,51 @@ def process_last_gene(line,
 # ===========================
 # CUGO GFF PARSER
 # ===========================
-def parse_single_gff(gff_content: str):
-    """Parse a single GFF file content and return the reformatted data"""
+def get_tmhmm_data_for_file(tmhmm_tar: tarfile.TarFile, file_id: str) -> dict:
+    tmhmm_filename = f"{file_id}_tmhmm_clean.gz"
+
+    for member in tmhmm_tar.getmembers():
+        if member.name.endswith(tmhmm_filename):
+            file_obj = tmhmm_tar.extractfile(member)
+            if file_obj is None:
+                return {}
+
+            try:
+                content = gzip.decompress(file_obj.read()).decode('utf-8')
+                file_tmhmm = {}
+
+                for line in content.strip().split('\n'):
+                    if line.startswith('prot_ID'):
+                        continue
+                    parts = line.strip().split('\t')
+                    if len(parts) >= 2:
+                        prot_id = parts[0]
+                        no_tmh = int(parts[1])
+                        file_tmhmm[prot_id] = no_tmh
+
+                return file_tmhmm
+            except Exception:
+                return {}
+
+    return {}
+
+
+def extract_gene_info_with_tmhmm(line: list, tmhmm_dict: dict) -> tuple:
+    seqID = line[0]
+    COG_ID = line[8].split(';')[0].split('=')[1] if 'ID=' in line[8] else ''
+    parent = line[0]
+    direction = 1 if line[6] == '+' else -1
+    gene_start = int(line[3])
+    gene_end = int(line[4])
+    nuc_length = gene_end - gene_start + 1
+    aa_length = nuc_length // 3
+
+    no_tmh = tmhmm_dict.get(COG_ID, 0)
+
+    return seqID, COG_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length, no_tmh
+
+
+def parse_single_gff_with_tmhmm(gff_content: str, tmhmm_dict: dict) -> list:
     reformat_data = []
     cugo_size = {}
     cugo_count = prev_direction = prev_parent = prev_feat_type = prev_cugo = 0
@@ -209,7 +252,6 @@ def parse_single_gff(gff_content: str):
     for line_count, line in enumerate(lines, 1):
         clean_line = line.strip().split("\t")
 
-        # skip invalid lines and non-CDS features
         if len(clean_line) != 9:
             continue
 
@@ -221,93 +263,105 @@ def parse_single_gff(gff_content: str):
             continue
         prev_feat_type = feat_type
 
-        # initialize with first valid line
         if prev_line is None:
             prev_line = clean_line
             continue
 
-        # extract information from current line
-        seqID, COG_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length = extract_gene_info(
-            prev_line)
+        seqID, COG_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length, no_tmh = extract_gene_info_with_tmhmm(
+            prev_line, tmhmm_dict)
 
-        # get context
         next_parent = clean_line[0]
         next_direction = clean_line[6]
 
-        # determine CUGO membership
         cugo, cugo_start, cugo_end, cugo_count, cugo_size_count = cugo_boundaries(
             direction, prev_direction, next_direction,
             parent, prev_parent, next_parent,
             cugo_count, cugo_size, cugo_size_count, prev_cugo
         )
 
-        # add to results
         reformat_data.append([seqID, parent, gene_start, gene_end, nuc_length, aa_length,
-                              direction, COG_ID, cugo, cugo_start, cugo_end])
+                              direction, COG_ID, cugo, cugo_start, cugo_end, no_tmh])
 
-        # update for next iteration
         prev_line = clean_line
         prev_direction = direction
         prev_parent = parent
         prev_cugo = cugo
 
-    # process last line if it's valid
     if len(clean_line) == 9 and clean_line[2] == "CDS":
-        last_line, cugo_size = process_last_gene(
-            clean_line, prev_direction, prev_parent,
-            cugo_count, cugo_size_count, prev_cugo, cugo_size
-        )
-        reformat_data.append(last_line)
+        seqID, COG_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length, no_tmh = extract_gene_info_with_tmhmm(
+            clean_line, tmhmm_dict)
 
-    # Map CUGO sizes to the data
+        cugo, cugo_start, cugo_end, cugo_count, cugo_size_count = cugo_boundaries(
+            direction, prev_direction, 0,
+            parent, prev_parent, "",
+            cugo_count, cugo_size, cugo_size_count, prev_cugo
+        )
+
+        reformat_data.append([seqID, parent, gene_start, gene_end, nuc_length, aa_length,
+                              direction, COG_ID, cugo, cugo_start, cugo_end, no_tmh])
+
+        cugo_size[cugo] = cugo_size_count
+
     for row in reformat_data:
-        cugo_number = row[8]  # CUGO_number is at index 8
-        row.append(cugo_size.get(cugo_number, 0))  # Add CUGO_size
+        cugo_number = row[8]
+        cugo_size_val = cugo_size.get(cugo_number, 0)
+        no_tmh = row.pop()
+        row.append(cugo_size_val)
+        row.append(no_tmh)
 
     return reformat_data
 
 
-def parse(tar_gz_path: str,
-          output_dir: str,
-          globdb_version: int,
-          force: bool = False):
-    output_path = ensure_path(output_dir, f"globdb_r{globdb_version}_cugo")
+def get_file_id_from_gff_name(gff_name: str) -> str:
+    base_name = os.path.basename(gff_name)
+    if '_cog.gff' in base_name:
+        return base_name.split('_cog.gff')[0]
+    return base_name
+
+
+def parse(tar_gz_path: str, tmhmm_tar_path: str, output_dir: str, globdb_version: int, force: bool = False):
+    output_path = ensure_path(output_dir, f"globdb_r{globdb_version}_cugo_tmhmm")
 
     file_count = 0
     columns = ["seqID", "parent_ID", "gene_start", "gene_end", "nuc_length",
-               "aa_length", "strand", "COG_ID", "CUGO_number", "CUGO_start", "CUGO_end", "CUGO_size"]
+               "aa_length", "strand", "COG_ID", "CUGO_number", "CUGO_start", "CUGO_end", "CUGO_size", "no_TMH"]
 
     with open(output_path, 'w') as output_file:
-        # write header
         output_file.write('\t'.join(columns) + '\n')
 
         try:
-            with tarfile.open(tar_gz_path, 'r:gz') as tar:
-                members = tar.getmembers()
-                total_files = len([m for m in members if m.name.endswith('.gff') or m.name.endswith('.gff.gz')])
+            with tarfile.open(tar_gz_path, 'r:gz') as gff_tar, tarfile.open(tmhmm_tar_path, 'r:gz') as tmhmm_tar:
+                members = gff_tar.getmembers()
+                total_files = len([m for m in members if '_cog.gff' in m.name])
 
                 logger.info(f"Found {total_files} GFF files to process")
 
                 for member in members:
-                    if not (member.name.endswith('.gff') or member.name.endswith('.gff.gz')):
+                    if '_cog.gff' not in member.name:
                         continue
 
                     file_count += 1
 
-                    file_obj = tar.extractfile(member)
+                    file_id = get_file_id_from_gff_name(member.name)
+                    file_tmhmm = get_tmhmm_data_for_file(tmhmm_tar, file_id)
+
+                    if not file_tmhmm:
+                        logger.warning(f"No TMHMM data found for {file_id}")
+                    else:
+                        logger.debug(f"Found TMHMM data for {file_id}: {len(file_tmhmm)} proteins")
+
+                    file_obj = gff_tar.extractfile(member)
                     if file_obj is None:
                         logger.warning(f"Could not extract {member.name}")
                         continue
 
                     try:
-                        # Handle gzipped files
                         if member.name.endswith('.gz'):
                             content = gzip.decompress(file_obj.read()).decode('utf-8')
                         else:
                             content = file_obj.read().decode('utf-8')
 
-                        # Parse and write directly to file
-                        file_data = parse_single_gff(content)
+                        file_data = parse_single_gff_with_tmhmm(content, file_tmhmm)
 
                         for row in file_data:
                             output_file.write('\t'.join(map(str, row)) + '\n')
@@ -316,7 +370,6 @@ def parse(tar_gz_path: str,
                         logger.error(f"Error processing {member.name}: {str(e)}")
                         continue
 
-                    # progress logging
                     if file_count % 1000 == 0:
                         logger.info(f"Processed {file_count}/{total_files} files")
 
@@ -331,7 +384,6 @@ def parse(tar_gz_path: str,
 # ===========================
 def context(protein_ids: str,
             cugo_dir: str,
-            tmhmm_dir: str,
             cugo_range: int,
             output_dir: str,
             protein_name: str,
@@ -381,16 +433,7 @@ def context(protein_ids: str,
             missing_files.append(str(cugo_tab_path))
             continue
 
-        # process TMHMM file if provided
-        if tmhmm_dir:
-            tmhmm_file = Path(tmhmm_dir) / f"{genome_identifiers[index]}_tmhmm_clean"
-            if tmhmm_file.exists():
-                genome_tmhmm_df = pd.read_csv(tmhmm_file, sep="\t", na_filter=False)
-                parse_df = pd.merge(genome_cugo_df, genome_tmhmm_df, on="prot_ID", how="left")
-            else:
-                parse_df = genome_cugo_df
-        else:
-            parse_df = genome_cugo_df
+        parse_df = genome_cugo_df
 
         # in the CUGO tab we only care about our protein
         target_select = parse_df[parse_df['seqID'] == id]

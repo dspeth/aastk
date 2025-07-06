@@ -125,6 +125,7 @@ def main():
         elif args.subparser_name == 'parse':
             parse(
                 tar_gz_path=args.gff_path,
+                tmhmm_tar_path=args.tmhmm_dir,
                 output_dir=args.output,
                 globdb_version=args.globdb_version,
                 force=args.force
@@ -135,7 +136,6 @@ def main():
             context(
                 protein_ids=args.protein_ids,
                 cugo_dir=args.cugo_dir,
-                tmhmm_dir=args.tmhmm_dir,
                 cugo_range=args.cugo_range,
                 output_dir=args.output,
                 protein_name=args.protein_name,
