@@ -320,7 +320,7 @@ def get_file_id_from_gff_name(gff_name: str) -> str:
 
 
 def parse(tar_gz_path: str, tmhmm_tar_path: str, output_dir: str, globdb_version: int, force: bool = False):
-    output_path = ensure_path(output_dir, f"globdb_r{globdb_version}_cugo_tmhmm")
+    output_path = ensure_path(output_dir, f"globdb_r{globdb_version}_cugo")
 
     file_count = 0
     columns = ["seqID", "parent_ID", "gene_start", "gene_end", "nuc_length",
@@ -347,8 +347,6 @@ def parse(tar_gz_path: str, tmhmm_tar_path: str, output_dir: str, globdb_version
 
                     if not file_tmhmm:
                         logger.warning(f"No TMHMM data found for {file_id}")
-                    else:
-                        logger.debug(f"Found TMHMM data for {file_id}: {len(file_tmhmm)} proteins")
 
                     file_obj = gff_tar.extractfile(member)
                     if file_obj is None:
