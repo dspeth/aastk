@@ -313,7 +313,7 @@ def parse_single_gff_with_tmhmm(gff_content: str, tmhmm_dict: dict) -> list:
 
 
 def get_file_id_from_gff_name(gff_name: str) -> str:
-    base_name = os.path.basename(gff_name)
+    base_name = Path(gff_name).name
     if '_cog.gff' in base_name:
         return base_name.split('_cog.gff')[0]
     return base_name
