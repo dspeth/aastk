@@ -104,7 +104,11 @@ def __flank_upper(group, required=False):
 
 def __gff_path(group, required=False):
     group.add_argument('-g', '--gff_path', type=str, required=required,
-                       help='Path to input GFF file')
+                       help='Path to (gzipped) GFF directory')
+
+def __globdb_version(group, required=False):
+    group.add_argument('-g', '--globdb_version', type=int, required=required,
+                       help='GlobDB version')
 
 def __help(group, required=False):
     group.add_argument('-h', '--help', action='help',
@@ -348,6 +352,7 @@ def get_main_parser():
     with subparser(sub_parsers, 'parse', 'Parse GFF input file') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __gff_path(grp, required=True)
+            __globdb_version(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
 

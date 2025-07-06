@@ -12,6 +12,8 @@ from typing import Optional
 from pathlib import Path
 import yaml
 import sys
+import tarfile
+import gzip
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -193,9 +195,8 @@ def process_last_gene(line,
 # ===========================
 # CUGO GFF PARSER
 # ===========================
-def parse(gff_file_path: str,
-          output_dir: str,
-          force: bool = False):
+def parse_single_gff(gff_content: str):
+    """Parse a single GFF file content and return the reformatted data"""
     reformat_data = []
     cugo_size = {}
     cugo_count = prev_direction = prev_parent = prev_feat_type = prev_cugo = 0
@@ -203,81 +204,127 @@ def parse(gff_file_path: str,
     prev_line = None
     cds_count = 0
 
-    # also implement reading directly from gzip - check if unpacked file is there, otherwise read
-    # from gzip directly;
-    # name eventual output file
-    identifier = gff_file_path.split('.')[0].rsplit("_", 1)[0] + '_cugo.tsv'
-    output_path = ensure_path(output_dir, identifier, force=force)
+    lines = gff_content.strip().split('\n')
 
-    try:
-        with open(gff_file_path, "r") as GFF:
-            for line_count, line in enumerate(GFF, 1):
-                clean_line = line.strip().split("\t")
+    for line_count, line in enumerate(lines, 1):
+        clean_line = line.strip().split("\t")
 
-                # skip invalid lines and non-CDS features
-                if len(clean_line) != 9:
-                    continue
+        # skip invalid lines and non-CDS features
+        if len(clean_line) != 9:
+            continue
 
-                feat_type = clean_line[2]
-                if feat_type == "CDS":
-                    cds_count += 1
+        feat_type = clean_line[2]
+        if feat_type == "CDS":
+            cds_count += 1
 
-                if feat_type != "CDS" and prev_feat_type != "CDS":
-                    continue
-                prev_feat_type = feat_type
+        if feat_type != "CDS" and prev_feat_type != "CDS":
+            continue
+        prev_feat_type = feat_type
 
-                # initialize with first valid line
-                if prev_line is None:
-                    prev_line = clean_line
-                    continue
+        # initialize with first valid line
+        if prev_line is None:
+            prev_line = clean_line
+            continue
 
-                # extract information from current line
-                seqID, COG_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length = extract_gene_info(
-                    prev_line)
+        # extract information from current line
+        seqID, COG_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length = extract_gene_info(
+            prev_line)
 
-                # get context
-                next_parent = clean_line[0]
-                next_direction = clean_line[6]
+        # get context
+        next_parent = clean_line[0]
+        next_direction = clean_line[6]
 
-                # determine CUGO membership
-                cugo, cugo_start, cugo_end, cugo_count, cugo_size_count = cugo_boundaries(
-                    direction, prev_direction, next_direction,
-                    parent, prev_parent, next_parent,
-                    cugo_count, cugo_size, cugo_size_count, prev_cugo
-                )
-
-                # add to results
-                reformat_data.append([seqID, parent, gene_start, gene_end, nuc_length, aa_length,
-                                      direction, COG_ID, cugo, cugo_start, cugo_end])
-
-                # update for next iteration
-                prev_line = clean_line
-                prev_direction = direction
-                prev_parent = parent
-                prev_cugo = cugo
-
-            # process last line if it's valid
-            if len(clean_line) == 9 and clean_line[2] == "CDS":
-                last_line, cugo_size = process_last_gene(
-                    clean_line, prev_direction, prev_parent,
-                    cugo_count, cugo_size_count, prev_cugo, cugo_size
-                )
-                reformat_data.append(last_line)
-
-        # create dataframe
-        gff_cugo = pd.DataFrame(
-            reformat_data,
-            columns=["seqID", "parent_ID", "gene_start", "gene_end", "nuc_length",
-                     "aa_length", "strand", "COG_ID", "CUGO_number", "CUGO_start", "CUGO_end"]
+        # determine CUGO membership
+        cugo, cugo_start, cugo_end, cugo_count, cugo_size_count = cugo_boundaries(
+            direction, prev_direction, next_direction,
+            parent, prev_parent, next_parent,
+            cugo_count, cugo_size, cugo_size_count, prev_cugo
         )
-        gff_cugo["CUGO_size"] = gff_cugo["CUGO_number"].map(cugo_size)
 
-        gff_cugo.to_csv(output_path, sep="\t", index=False)
+        # add to results
+        reformat_data.append([seqID, parent, gene_start, gene_end, nuc_length, aa_length,
+                              direction, COG_ID, cugo, cugo_start, cugo_end])
 
-        return gff_cugo
+        # update for next iteration
+        prev_line = clean_line
+        prev_direction = direction
+        prev_parent = parent
+        prev_cugo = cugo
 
-    except Exception as e:
-        raise Exception(f"Error processing GFF file: {str(e)}")
+    # process last line if it's valid
+    if len(clean_line) == 9 and clean_line[2] == "CDS":
+        last_line, cugo_size = process_last_gene(
+            clean_line, prev_direction, prev_parent,
+            cugo_count, cugo_size_count, prev_cugo, cugo_size
+        )
+        reformat_data.append(last_line)
+
+    # Map CUGO sizes to the data
+    for row in reformat_data:
+        cugo_number = row[8]  # CUGO_number is at index 8
+        row.append(cugo_size.get(cugo_number, 0))  # Add CUGO_size
+
+    return reformat_data
+
+
+def parse(tar_gz_path: str,
+          output_dir: str,
+          globdb_version: int,
+          force: bool = False):
+    output_path = ensure_path(output_dir, f"globdb_r{globdb_version}_cugo")
+
+    file_count = 0
+    columns = ["seqID", "parent_ID", "gene_start", "gene_end", "nuc_length",
+               "aa_length", "strand", "COG_ID", "CUGO_number", "CUGO_start", "CUGO_end", "CUGO_size"]
+
+    with open(output_path, 'w') as output_file:
+        # write header
+        output_file.write('\t'.join(columns) + '\n')
+
+        try:
+            with tarfile.open(tar_gz_path, 'r:gz') as tar:
+                members = tar.getmembers()
+                total_files = len([m for m in members if m.name.endswith('.gff') or m.name.endswith('.gff.gz')])
+
+                logger.info(f"Found {total_files} GFF files to process")
+
+                for member in members:
+                    if not (member.name.endswith('.gff') or member.name.endswith('.gff.gz')):
+                        continue
+
+                    file_count += 1
+
+                    file_obj = tar.extractfile(member)
+                    if file_obj is None:
+                        logger.warning(f"Could not extract {member.name}")
+                        continue
+
+                    try:
+                        # Handle gzipped files
+                        if member.name.endswith('.gz'):
+                            content = gzip.decompress(file_obj.read()).decode('utf-8')
+                        else:
+                            content = file_obj.read().decode('utf-8')
+
+                        # Parse and write directly to file
+                        file_data = parse_single_gff(content)
+
+                        for row in file_data:
+                            output_file.write('\t'.join(map(str, row)) + '\n')
+
+                    except Exception as e:
+                        logger.error(f"Error processing {member.name}: {str(e)}")
+                        continue
+
+                    # progress logging
+                    if file_count % 1000 == 0:
+                        logger.info(f"Processed {file_count}/{total_files} files")
+
+        except Exception as e:
+            logger.error(f"Error processing tar.gz file: {str(e)}")
+            raise
+
+    logger.info(f"Successfully processed {file_count} files. Output saved to {output_path}")
 
 # ===========================
 # CUGO CONTEXT PARSER

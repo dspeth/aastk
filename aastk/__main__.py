@@ -124,10 +124,12 @@ def main():
         ### PARSER FOR CUGO FUNCTIONALITIES AND WORKFLOW ###
         elif args.subparser_name == 'parse':
             parse(
-                gff_file_path=args.gff_path,
+                tar_gz_path=args.gff_path,
                 output_dir=args.output,
+                globdb_version=args.globdb_version,
                 force=args.force
             )
+
 
         elif args.subparser_name == 'context':
             context(
