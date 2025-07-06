@@ -352,11 +352,12 @@ def get_main_parser():
     with subparser(sub_parsers, 'parse', 'Parse GFF input file') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __gff_path(grp, required=True)
-            __tmhmm_dir(grp, required=True)
             __globdb_version(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __force(grp)
+            __tmhmm_dir(grp)
+
 
     with subparser(sub_parsers, 'context', 'Parse context information from CUGO input file') as parser:
         with mutex_group(parser, required=True) as grp:

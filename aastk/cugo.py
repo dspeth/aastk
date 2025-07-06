@@ -319,7 +319,11 @@ def get_file_id_from_gff_name(gff_name: str) -> str:
     return base_name
 
 
-def parse(tar_gz_path: str, tmhmm_tar_path: str, output_dir: str, globdb_version: int, force: bool = False):
+def parse(tar_gz_path: str,
+          tmhmm_tar_path: str = None,
+          output_dir: str = None,
+          globdb_version: int = None,
+          force: bool = False):
     output_path = ensure_path(output_dir, f"globdb_r{globdb_version}_cugo")
 
     file_count = 0
@@ -330,46 +334,61 @@ def parse(tar_gz_path: str, tmhmm_tar_path: str, output_dir: str, globdb_version
         output_file.write('\t'.join(columns) + '\n')
 
         try:
-            with tarfile.open(tar_gz_path, 'r:gz') as gff_tar, tarfile.open(tmhmm_tar_path, 'r:gz') as tmhmm_tar:
-                members = gff_tar.getmembers()
-                total_files = len([m for m in members if '_cog.gff' in m.name])
+            with tarfile.open(tar_gz_path, 'r:gz') as gff_tar:
+                tmhmm_tar = None
+                if tmhmm_tar_path:
+                    tmhmm_tar = tarfile.open(tmhmm_tar_path, 'r:gz')
 
-                logger.info(f"Found {total_files} GFF files to process")
+                try:
+                    members = gff_tar.getmembers()
+                    total_files = len([m for m in members if '_cog.gff' in m.name])
 
-                for member in members:
-                    if '_cog.gff' not in member.name:
-                        continue
+                    logger.info(f"Found {total_files} GFF files to process")
+                    if tmhmm_tar_path:
+                        logger.info("TMHMM data will be included")
+                    else:
+                        logger.info("TMHMM data will be skipped (no TMHMM tar file provided)")
 
-                    file_count += 1
+                    for member in members:
+                        if '_cog.gff' not in member.name:
+                            continue
 
-                    file_id = get_file_id_from_gff_name(member.name)
-                    file_tmhmm = get_tmhmm_data_for_file(tmhmm_tar, file_id)
+                        file_count += 1
 
-                    if not file_tmhmm:
-                        logger.warning(f"No TMHMM data found for {file_id}")
+                        file_id = get_file_id_from_gff_name(member.name)
+                        file_tmhmm = None
 
-                    file_obj = gff_tar.extractfile(member)
-                    if file_obj is None:
-                        logger.warning(f"Could not extract {member.name}")
-                        continue
+                        if tmhmm_tar:
+                            file_tmhmm = get_tmhmm_data_for_file(tmhmm_tar, file_id)
+                            if not file_tmhmm:
+                                logger.warning(f"No TMHMM data found for {file_id}")
 
-                    try:
-                        if member.name.endswith('.gz'):
-                            content = gzip.decompress(file_obj.read()).decode('utf-8')
-                        else:
-                            content = file_obj.read().decode('utf-8')
+                        file_obj = gff_tar.extractfile(member)
+                        if file_obj is None:
+                            logger.warning(f"Could not extract {member.name}")
+                            continue
 
-                        file_data = parse_single_gff_with_tmhmm(content, file_tmhmm)
+                        try:
+                            if member.name.endswith('.gz'):
+                                content = gzip.decompress(file_obj.read()).decode('utf-8')
+                            else:
+                                content = file_obj.read().decode('utf-8')
 
-                        for row in file_data:
-                            output_file.write('\t'.join(map(str, row)) + '\n')
+                            file_data = parse_single_gff_with_tmhmm(content, file_tmhmm)
 
-                    except Exception as e:
-                        logger.error(f"Error processing {member.name}: {str(e)}")
-                        continue
+                            for row in file_data:
+                                output_file.write('\t'.join(map(str, row)) + '\n')
 
-                    if file_count % 1000 == 0:
-                        logger.info(f"Processed {file_count}/{total_files} files")
+                        except Exception as e:
+                            logger.error(f"Error processing {member.name}: {str(e)}")
+                            continue
+
+                        if file_count % 1000 == 0:
+                            logger.info(f"Processed {file_count}/{total_files} files")
+
+                finally:
+                    if tmhmm_tar:
+                        tmhmm_tar.close()
 
         except Exception as e:
             logger.error(f"Error processing tar.gz file: {str(e)}")
