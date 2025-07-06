@@ -355,6 +355,7 @@ def get_main_parser():
             __globdb_version(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __force(grp)
 
     with subparser(sub_parsers, 'context', 'Parse context information from CUGO input file') as parser:
         with mutex_group(parser, required=True) as grp:
