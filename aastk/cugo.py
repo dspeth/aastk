@@ -319,10 +319,7 @@ def get_file_id_from_gff_name(gff_name: str) -> str:
     return base_name
 
 
-def parse(tar_gz_path: str,
-          tmhmm_tar_path: str = None,
-          output_dir: str = None,
-          globdb_version: int = None,
+def parse(tar_gz_path: str, tmhmm_tar_path: str = None, output_dir: str = None, globdb_version: int = None,
           force: bool = False):
     output_path = ensure_path(output_dir, f"globdb_r{globdb_version}_cugo")
 
@@ -335,6 +332,7 @@ def parse(tar_gz_path: str,
 
         try:
             with tarfile.open(tar_gz_path, 'r:gz') as gff_tar:
+                # Open TMHMM tar only if path is provided
                 tmhmm_tar = None
                 if tmhmm_tar_path:
                     tmhmm_tar = tarfile.open(tmhmm_tar_path, 'r:gz')
@@ -356,11 +354,13 @@ def parse(tar_gz_path: str,
                         file_count += 1
 
                         file_id = get_file_id_from_gff_name(member.name)
-                        file_tmhmm = None
+                        file_tmhmm = {}
 
                         if tmhmm_tar:
-                            file_tmhmm = get_tmhmm_data_for_file(tmhmm_tar, file_id)
-                            if not file_tmhmm:
+                            tmhmm_data = get_tmhmm_data_for_file(tmhmm_tar, file_id)
+                            if tmhmm_data:
+                                file_tmhmm = tmhmm_data
+                            else:
                                 logger.warning(f"No TMHMM data found for {file_id}")
 
                         file_obj = gff_tar.extractfile(member)
