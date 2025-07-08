@@ -170,7 +170,6 @@ def main():
                 metadata_protein=args.metadata_protein,
                 metadata_genome=args.metadata_genome,
                 force=args.force,
-                cugo_dir=args.cugo_dir
             )
 
         elif args.subparser_name == 'casm_plot':

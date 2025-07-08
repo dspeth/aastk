@@ -367,7 +367,6 @@ def casm(fasta: str,
          metadata_protein: str = None,
          metadata_genome: str = None,
          force: bool = False,
-         cugo_dir: str = False
          ):
 	logger.info("=== Starting CASM Analysis ===")
 	logger.info(f"Input FASTA: {fasta}")
