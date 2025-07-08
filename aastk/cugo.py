@@ -71,6 +71,106 @@ def extract_gene_info_with_tmhmm(line: list, tmhmm_dict: dict) -> tuple:
 
     return seqID, COG_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length, no_tmh
 
+def cugo_boundaries(direction: str,
+                    prev_direction: str,
+                    next_direction: str,
+                    parent: str,
+                    prev_parent: str,
+                    next_parent: str,
+                    cugo_count: int,
+                    cugo_size: dict,
+                    cugo_size_count: int,
+                    prev_cugo: int = None):
+    cugo_start, cugo_end = "NA", "NA"
+
+    # middle of CUGO
+    if (direction == prev_direction == next_direction) and (parent == prev_parent == next_parent):
+        cugo = prev_cugo
+        cugo_size_count += 1
+
+    # start of contig/scaffold
+    elif parent != prev_parent:
+        cugo = cugo_count
+        cugo_size_count = 1
+
+        if direction == "+":
+            cugo_start = "sequence_edge"
+            if parent != next_parent:
+                cugo_end = "sequence_edge"
+                cugo_size[cugo] = cugo_size_count
+                cugo_size_count = 0
+                cugo_count += 1
+            elif direction != next_direction:
+                cugo_end = "strand_change"
+                cugo_size[cugo] = cugo_size_count
+                cugo_size_count = 0
+                cugo_count += 1
+        else:  # direction == "-"
+            cugo_end = "sequence_edge"
+            if parent != next_parent:
+                cugo_start = "sequence_edge"
+                cugo_size[cugo] = cugo_size_count
+                cugo_size_count = 0
+                cugo_count += 1
+            elif direction != next_direction:
+                cugo_start = "strand_change"
+                cugo_size[cugo] = cugo_size_count
+                cugo_size_count = 0
+                cugo_count += 1
+
+    # end of contig/scaffold
+    elif parent != next_parent:
+        if direction == prev_direction:
+            cugo = prev_cugo
+            cugo_size_count += 1
+            if direction == "+":
+                cugo_end = "sequence_edge"
+            else:
+                cugo_start = "sequence_edge"
+            cugo_size[cugo] = cugo_size_count
+            cugo_size_count = 0
+            cugo_count += 1
+        else:
+            cugo = cugo_count
+            cugo_size_count = 1
+            if direction == "+":
+                cugo_start = "strand_change"
+                cugo_end = "sequence_edge"
+            else:
+                cugo_start = "sequence_edge"
+                cugo_end = "strand_change"
+            cugo_size[cugo] = cugo_size_count
+            cugo_size_count = 0
+            cugo_count += 1
+
+    # Strand change
+    elif direction != prev_direction or direction != next_direction:
+        if direction != prev_direction and direction == next_direction:
+            cugo = cugo_count
+            cugo_size_count = 1
+            if direction == "+":
+                cugo_start = "strand_change"
+            else:
+                cugo_end = "strand_change"
+        elif direction == prev_direction and direction != next_direction:
+            cugo = prev_cugo
+            cugo_size_count += 1
+            if direction == "+":
+                cugo_end = "strand_change"
+            else:
+                cugo_start = "strand_change"
+            cugo_size[cugo] = cugo_size_count
+            cugo_size_count = 0
+            cugo_count += 1
+        else:  # direction != prev_direction and direction != next_direction
+            cugo = cugo_count
+            cugo_size_count = 1
+            cugo_start = cugo_end = "strand_change"
+            cugo_size[cugo] = cugo_size_count
+            cugo_size_count = 0
+            cugo_count += 1
+
+    return cugo, cugo_start, cugo_end, cugo_count, cugo_size_count
 
 def parse_single_gff_with_tmhmm(gff_content: str, tmhmm_dict: dict) -> list:
     reformat_data = []
