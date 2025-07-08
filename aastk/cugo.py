@@ -241,11 +241,12 @@ def parse_single_gff_with_tmhmm(gff_content: str, tmhmm_dict: dict) -> list:
         seqID = row[0]
         parent_ID = row[1]
         aa_length = row[5]
+        strand = row[6]
         COG_ID = row[7]
         cugo_number = row[8]
         no_tmh = row[11]
 
-        final_data.append([seqID, parent_ID, aa_length, COG_ID, cugo_number, no_tmh])
+        final_data.append([seqID, parent_ID, aa_length, strand, COG_ID, cugo_number, no_tmh])
 
     return final_data
 
@@ -262,7 +263,7 @@ def parse(tar_gz_path: str, tmhmm_tar_path: str = None, output_dir: str = None, 
     output_path = ensure_path(output_dir, f"globdb_r{globdb_version}_cugo")
 
     file_count = 0
-    columns = ["seqID", "parent_ID", "aa_length", "COG_ID", "CUGO_number", "no_TMH"]
+    columns = ["seqID", "parent_ID", "aa_length", "strand", "COG_ID", "CUGO_number", "no_TMH"]
 
     with open(output_path, 'w') as output_file:
         output_file.write('\t'.join(columns) + '\n')
@@ -336,93 +337,85 @@ def parse(tar_gz_path: str, tmhmm_tar_path: str = None, output_dir: str = None, 
 # ===========================
 # CUGO CONTEXT PARSER
 # ===========================
-def context(protein_ids: str,
-            cugo_path: str,
+
+def context(protein_ids: Optional[str],
+            cugo_path: Path,
             cugo_range: int,
             output_dir: str,
             protein_name: str,
             force: bool = False,
-            fasta_path: str = None):
+            fasta_path: Optional[str] = None):
     log_file = ensure_path(output_dir, f"{protein_name}_missing_files.log", force=force)
     logging.basicConfig(
         filename=log_file,
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
+
+    # Load protein identifiers
     if fasta_path:
         sequences = read_fasta_to_dict(fasta_path)
-        protein_identifiers = sequences.keys()
-        genome_identifiers =  [parse_protein_identifier(protein_identifier) for protein_identifier in protein_identifiers]
-
+        protein_identifiers = list(sequences.keys())
     elif protein_ids:
         with open(protein_ids, 'r') as id_file:
             protein_identifiers = [line.strip() for line in id_file if line.strip()]
-            genome_identifiers = [parse_protein_identifier(protein_identifier) for protein_identifier in protein_identifiers]
-
     else:
         logger.error("Either 'fasta_path' or 'protein_ids' must be provided.")
         raise ValueError("You must provide either a FASTA file or a list of protein IDs.")
 
-    output_file = ensure_path(output_dir, protein_name + "_context.tsv", force=force)
+    output_file = ensure_path(output_dir, f"{protein_name}_context.tsv", force=force)
 
-    missing_files = []
+    # Load the single large CUGO file from tar.gz archive
+    with tarfile.open(cugo_path, "r:gz") as tar:
+        # Assumes the inner file is named like *.tsv, adjust if needed
+        inner_member = [m for m in tar.getmembers()][0]
+        with tar.extractfile(inner_member) as f:
+            df = pd.read_csv(f, sep="\t", na_filter=False)
+
+    # Set up results container
     results = None
+    protein_set = set(protein_identifiers)
 
+    # Filter for proteins of interest
+    target_df = df[df["seqID"].isin(protein_set)]
 
-    for index, id in enumerate(protein_identifiers):
-        cugo_tab_path = cugo_path / f"{genome_identifiers[index]}_cugo.gz"
+    if target_df.empty:
+        logging.warning("No target proteins found in the CUGO file.")
+        return
 
-        # check if CUGO file exists
-        if not cugo_tab_path.exists():
-            logging.warning(f"Missing CUGO file: {cugo_tab_path}")
-            missing_files.append(str(cugo_tab_path))
-            continue
+    for _, row in target_df.iterrows():
+        id = row["seqID"]
+        target_cugo = int(row["CUGO_number"])
+        target_parent = row["parent_ID"]
+        target_strand = row["strand"]
 
-        # try to read the gzipped file
-        try:
-            genome_cugo_df = pd.read_csv(cugo_tab_path, compression='gzip', sep='\t', na_filter=False)
-        except Exception as e:
-            logging.error(f"Error reading CUGO file {cugo_tab_path}: {str(e)}")
-            missing_files.append(str(cugo_tab_path))
-            continue
-
-        parse_df = genome_cugo_df
-
-        # in the CUGO tab we only care about our protein
-        target_select = parse_df[parse_df['seqID'] == id]
-        target_cugo = target_select["CUGO_number"].iloc[0]
-        target_parent = target_select["parent_ID"].iloc[0]
-        target_strand = target_select["strand"].iloc[0]
-
-        parent_df = parse_df[parse_df["parent_ID"] == target_parent]
-        cugo_context = parent_df[(parent_df["CUGO_number"] >= (target_cugo - cugo_range)) &
-                                 (parent_df["CUGO_number"] <= (target_cugo + cugo_range))]
+        # Get context window for this protein
+        parent_df = df[df["parent_ID"] == target_parent]
+        cugo_context = parent_df[
+            (parent_df["CUGO_number"] >= (target_cugo - cugo_range)) &
+            (parent_df["CUGO_number"] <= (target_cugo + cugo_range))
+        ]
         if target_strand == "-":
             cugo_context = cugo_context.iloc[::-1]
+
         cugo_context = cugo_context.reset_index(drop=True)
 
-        # Find the index of our target protein
+        # Find the index of the target
         target_index = cugo_context.index[cugo_context.seqID == id].item()
         cugo_context.index = cugo_context.index - target_index
-        # Transpose the data
         cugo_context = cugo_context.transpose()
 
-        # Store this protein's context data
+        # Store
         if results is None:
-            # First protein - initialize results
             results = cugo_context
         else:
-            # Concatenate with previous results
-            # Use outer join to handle all possible columns from different proteins
             results = pd.concat([results, cugo_context], join="outer", axis=0)
 
-        # If we have any results, save
+    # Save results
     if results is not None:
-        # Reset index and rename the index column
         results = results.reset_index().rename(columns={"index": "feat_type"})
-
-        # Save the results
         results.to_csv(output_file, sep="\t", index=False)
+
 
 # ======================================
 # FUNCTION DEFINITIONS FOR CUGO PLOTTING
