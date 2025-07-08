@@ -365,12 +365,8 @@ def context(protein_ids: Optional[str],
 
     output_file = ensure_path(output_dir, f"{protein_name}_context.tsv", force=force)
 
-    # Load the single large CUGO file from tar.gz archive
-    with tarfile.open(cugo_path, "r:gz") as tar:
-        # Assumes the inner file is named like *.tsv, adjust if needed
-        inner_member = [m for m in tar.getmembers()][0]
-        with tar.extractfile(inner_member) as f:
-            df = pd.read_csv(f, sep="\t", na_filter=False)
+    with gzip.open(cugo_path, "rt") as f:
+        df = pd.read_csv(f, sep="\t", na_filter=False)
 
     # Set up results container
     results = None
