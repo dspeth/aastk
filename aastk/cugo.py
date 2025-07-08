@@ -224,7 +224,7 @@ def get_tmhmm_data_for_file(tmhmm_tar: tarfile.TarFile, file_id: str) -> dict:
     return {}
 
 
-def extract_gene_info(line: list, tmhmm_dict: dict) -> tuple:
+def extract_gene_info_with_tmhmm(line: list, tmhmm_dict: dict) -> tuple:
     seqID = line[0]
     COG_ID = line[8].split(';')[0].split('=')[1] if 'ID=' in line[8] else ''
     parent = line[0]
@@ -239,7 +239,7 @@ def extract_gene_info(line: list, tmhmm_dict: dict) -> tuple:
     return seqID, COG_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length, no_tmh
 
 
-def parse_single_gff(gff_content: str, tmhmm_dict: dict) -> list:
+def parse_single_gff_with_tmhmm(gff_content: str, tmhmm_dict: dict) -> list:
     reformat_data = []
     cugo_size = {}
     cugo_count = prev_direction = prev_parent = prev_feat_type = prev_cugo = 0
@@ -267,7 +267,7 @@ def parse_single_gff(gff_content: str, tmhmm_dict: dict) -> list:
             prev_line = clean_line
             continue
 
-        seqID, COG_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length, no_tmh = extract_gene_info(
+        seqID, COG_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length, no_tmh = extract_gene_info_with_tmhmm(
             prev_line, tmhmm_dict)
 
         next_parent = clean_line[0]
@@ -279,7 +279,8 @@ def parse_single_gff(gff_content: str, tmhmm_dict: dict) -> list:
             cugo_count, cugo_size, cugo_size_count, prev_cugo
         )
 
-        reformat_data.append([seqID, parent, aa_length, COG_ID, cugo, no_tmh])
+        reformat_data.append([seqID, parent, gene_start, gene_end, nuc_length, aa_length,
+                              direction, COG_ID, cugo, cugo_start, cugo_end, no_tmh])
 
         prev_line = clean_line
         prev_direction = direction
@@ -287,7 +288,7 @@ def parse_single_gff(gff_content: str, tmhmm_dict: dict) -> list:
         prev_cugo = cugo
 
     if len(clean_line) == 9 and clean_line[2] == "CDS":
-        seqID, COG_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length, no_tmh = extract_gene_info(
+        seqID, COG_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length, no_tmh = extract_gene_info_with_tmhmm(
             clean_line, tmhmm_dict)
 
         cugo, cugo_start, cugo_end, cugo_count, cugo_size_count = cugo_boundaries(
@@ -296,11 +297,24 @@ def parse_single_gff(gff_content: str, tmhmm_dict: dict) -> list:
             cugo_count, cugo_size, cugo_size_count, prev_cugo
         )
 
-        reformat_data.append([seqID, parent, aa_length, COG_ID, cugo, no_tmh])
+        reformat_data.append([seqID, parent, gene_start, gene_end, nuc_length, aa_length,
+                              direction, COG_ID, cugo, cugo_start, cugo_end, no_tmh])
 
         cugo_size[cugo] = cugo_size_count
 
-    return reformat_data
+
+    final_data = []
+    for row in reformat_data:
+        seqID = row[0]
+        parent_ID = row[1]
+        aa_length = row[5]
+        COG_ID = row[7]
+        cugo_number = row[8]
+        no_tmh = row[11]
+
+        final_data.append([seqID, parent_ID, aa_length, COG_ID, cugo_number, no_tmh])
+
+    return final_data
 
 
 def get_file_id_from_gff_name(gff_name: str) -> str:
@@ -315,13 +329,14 @@ def parse(tar_gz_path: str, tmhmm_tar_path: str = None, output_dir: str = None, 
     output_path = ensure_path(output_dir, f"globdb_r{globdb_version}_cugo")
 
     file_count = 0
-    columns = ["seqID", "parent", "aa_length", "COG_ID", "cugo", "no_tmh"]
+    columns = ["seqID", "parent_ID", "aa_length", "COG_ID", "CUGO_number", "no_TMH"]
 
     with open(output_path, 'w') as output_file:
         output_file.write('\t'.join(columns) + '\n')
 
         try:
             with tarfile.open(tar_gz_path, 'r:gz') as gff_tar:
+                # Open TMHMM tar only if path is provided
                 tmhmm_tar = None
                 if tmhmm_tar_path:
                     tmhmm_tar = tarfile.open(tmhmm_tar_path, 'r:gz')
@@ -363,7 +378,7 @@ def parse(tar_gz_path: str, tmhmm_tar_path: str = None, output_dir: str = None, 
                             else:
                                 content = file_obj.read().decode('utf-8')
 
-                            file_data = parse_single_gff(content, file_tmhmm)
+                            file_data = parse_single_gff_with_tmhmm(content, file_tmhmm)
 
                             for row in file_data:
                                 output_file.write('\t'.join(map(str, row)) + '\n')
