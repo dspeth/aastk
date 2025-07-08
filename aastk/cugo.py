@@ -23,174 +23,6 @@ logging.basicConfig(
 )
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 logging.getLogger("PIL").setLevel(logging.INFO)
-# ========================================
-# FUNCTION DEFINITIONS FOR CUGO GFF PARSER
-# ========================================
-
-# --- Gene Info Extraction ---
-def extract_gene_info(line):
-    """
-    Extracts gene info from a GFF line
-    Args:
-        line (list): A tab-separated line from GFF file split into fields
-
-    Returns:
-        tuple: (seqID, COG_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length)
-        seqID (str): Sequence identifier, cleaned by replacing ___ with _
-        COG_ID (str): COG identifier or "NA" if not present
-        parent (str): Parent sequence/contig identifier
-        direction (str): Strand direction ("+" or "-")
-        gene_start (str): Start position of the gene
-        gene_end (str): End position of the gene
-        nuc_length (int): Nucleotide length of the gene
-        aa_length (int): Amino acid length (nucleotide length / 3)
-    """
-    annotation = line[8].split(';')
-    seqID = annotation[0].split('=')[1].replace('__', '_')
-    COG_ID = annotation[1].split('=')[1] if len(annotation) > 1 else 'NA'
-    parent = line[0]
-    direction = line[6]
-    gene_start = line[3]
-    gene_end = line[4]
-    nuc_length = abs(int(gene_end) - int(gene_start)) + 1
-    aa_length = int(nuc_length / 3)
-    return seqID, COG_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length
-
-def cugo_boundaries(direction: str,
-                    prev_direction: str,
-                    next_direction: str,
-                    parent: str,
-                    prev_parent: str,
-                    next_parent: str,
-                    cugo_count: int,
-                    cugo_size: dict,
-                    cugo_size_count: int,
-                    prev_cugo: int = None):
-    cugo_start, cugo_end = "NA", "NA"
-
-    # middle of CUGO
-    if (direction == prev_direction == next_direction) and (parent == prev_parent == next_parent):
-        cugo = prev_cugo
-        cugo_size_count += 1
-
-    # start of contig/scaffold
-    elif parent != prev_parent:
-        cugo = cugo_count
-        cugo_size_count = 1
-
-        if direction == "+":
-            cugo_start = "sequence_edge"
-            if parent != next_parent:
-                cugo_end = "sequence_edge"
-                cugo_size[cugo] = cugo_size_count
-                cugo_size_count = 0
-                cugo_count += 1
-            elif direction != next_direction:
-                cugo_end = "strand_change"
-                cugo_size[cugo] = cugo_size_count
-                cugo_size_count = 0
-                cugo_count += 1
-        else:  # direction == "-"
-            cugo_end = "sequence_edge"
-            if parent != next_parent:
-                cugo_start = "sequence_edge"
-                cugo_size[cugo] = cugo_size_count
-                cugo_size_count = 0
-                cugo_count += 1
-            elif direction != next_direction:
-                cugo_start = "strand_change"
-                cugo_size[cugo] = cugo_size_count
-                cugo_size_count = 0
-                cugo_count += 1
-
-    # end of contig/scaffold
-    elif parent != next_parent:
-        if direction == prev_direction:
-            cugo = prev_cugo
-            cugo_size_count += 1
-            if direction == "+":
-                cugo_end = "sequence_edge"
-            else:
-                cugo_start = "sequence_edge"
-            cugo_size[cugo] = cugo_size_count
-            cugo_size_count = 0
-            cugo_count += 1
-        else:
-            cugo = cugo_count
-            cugo_size_count = 1
-            if direction == "+":
-                cugo_start = "strand_change"
-                cugo_end = "sequence_edge"
-            else:
-                cugo_start = "sequence_edge"
-                cugo_end = "strand_change"
-            cugo_size[cugo] = cugo_size_count
-            cugo_size_count = 0
-            cugo_count += 1
-
-    # Strand change
-    elif direction != prev_direction or direction != next_direction:
-        if direction != prev_direction and direction == next_direction:
-            cugo = cugo_count
-            cugo_size_count = 1
-            if direction == "+":
-                cugo_start = "strand_change"
-            else:
-                cugo_end = "strand_change"
-        elif direction == prev_direction and direction != next_direction:
-            cugo = prev_cugo
-            cugo_size_count += 1
-            if direction == "+":
-                cugo_end = "strand_change"
-            else:
-                cugo_start = "strand_change"
-            cugo_size[cugo] = cugo_size_count
-            cugo_size_count = 0
-            cugo_count += 1
-        else:  # direction != prev_direction and direction != next_direction
-            cugo = cugo_count
-            cugo_size_count = 1
-            cugo_start = cugo_end = "strand_change"
-            cugo_size[cugo] = cugo_size_count
-            cugo_size_count = 0
-            cugo_count += 1
-
-    return cugo, cugo_start, cugo_end, cugo_count, cugo_size_count
-
-def process_last_gene(line,
-                      prev_direction: str,
-                      prev_parent: str,
-                      cugo_count: int,
-                      cugo_size_count: int,
-                      prev_cugo: int,
-                      cugo_size: dict):
-    seqID, COG_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length = extract_gene_info(line)
-    cugo_start, cugo_end = "NA", "NA"
-
-    if (direction == prev_direction) and (parent == prev_parent):
-        cugo = prev_cugo
-        cugo_size_count += 1
-        cugo_size[cugo] = cugo_size_count
-        if direction == "+":
-            cugo_end = "sequence_edge"
-        else:
-            cugo_start = "sequence_edge"
-    elif parent != prev_parent:
-        cugo = cugo_count
-        cugo_size_count = 1
-        cugo_size[cugo] = cugo_size_count
-        cugo_start = cugo_end = "sequence_edge"
-    elif direction != prev_direction:
-        cugo = cugo_count
-        cugo_size_count = 1
-        cugo_size[cugo] = cugo_size_count
-        if direction == "+":
-            cugo_start, cugo_end = "strand_change", "sequence_edge"
-        else:
-            cugo_start, cugo_end = "sequence_edge", "strand_change"
-
-    return [seqID, parent, gene_start, gene_end, nuc_length, aa_length,
-            direction, COG_ID, cugo, cugo_start, cugo_end], cugo_size
 
 # ===========================
 # CUGO GFF PARSER
@@ -225,14 +57,15 @@ def get_tmhmm_data_for_file(tmhmm_tar: tarfile.TarFile, file_id: str) -> dict:
 
 
 def extract_gene_info_with_tmhmm(line: list, tmhmm_dict: dict) -> tuple:
-    seqID = line[0]
-    COG_ID = line[8].split(';')[0].split('=')[1] if 'ID=' in line[8] else ''
+    annotation = line[8].split(';')
+    seqID = annotation[0].split('=')[1].replace('__', '_')
+    COG_ID = annotation[1].split('=')[1] if len(annotation) > 1 else 'NA'
     parent = line[0]
-    direction = 1 if line[6] == '+' else -1
-    gene_start = int(line[3])
-    gene_end = int(line[4])
-    nuc_length = gene_end - gene_start + 1
-    aa_length = nuc_length // 3
+    direction = line[6]
+    gene_start = line[3]
+    gene_end = line[4]
+    nuc_length = abs(int(gene_end) - int(gene_start)) + 1
+    aa_length = int(nuc_length / 3)
 
     no_tmh = tmhmm_dict.get(COG_ID, 0)
 
