@@ -12,6 +12,8 @@ from typing import Optional
 from pathlib import Path
 import yaml
 import sys
+import tarfile
+import gzip
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -21,28 +23,40 @@ logging.basicConfig(
 )
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 logging.getLogger("PIL").setLevel(logging.INFO)
-# ========================================
-# FUNCTION DEFINITIONS FOR CUGO GFF PARSER
-# ========================================
 
-# --- Gene Info Extraction ---
-def extract_gene_info(line):
-    """
-    Extracts gene info from a GFF line
-    Args:
-        line (list): A tab-separated line from GFF file split into fields
+# ===========================
+# CUGO GFF PARSER
+# ===========================
+def get_tmhmm_data_for_file(tmhmm_tar: tarfile.TarFile, file_id: str) -> dict:
+    tmhmm_filename = f"{file_id}_tmhmm_clean.gz"
 
-    Returns:
-        tuple: (seqID, COG_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length)
-        seqID (str): Sequence identifier, cleaned by replacing ___ with _
-        COG_ID (str): COG identifier or "NA" if not present
-        parent (str): Parent sequence/contig identifier
-        direction (str): Strand direction ("+" or "-")
-        gene_start (str): Start position of the gene
-        gene_end (str): End position of the gene
-        nuc_length (int): Nucleotide length of the gene
-        aa_length (int): Amino acid length (nucleotide length / 3)
-    """
+    for member in tmhmm_tar.getmembers():
+        if member.name.endswith(tmhmm_filename):
+            file_obj = tmhmm_tar.extractfile(member)
+            if file_obj is None:
+                return {}
+
+            try:
+                content = gzip.decompress(file_obj.read()).decode('utf-8')
+                file_tmhmm = {}
+
+                for line in content.strip().split('\n'):
+                    if line.startswith('prot_ID'):
+                        continue
+                    parts = line.strip().split('\t')
+                    if len(parts) >= 2:
+                        prot_id = parts[0]
+                        no_tmh = int(parts[1])
+                        file_tmhmm[prot_id] = no_tmh
+
+                return file_tmhmm
+            except Exception:
+                return {}
+
+    return {}
+
+
+def extract_gene_info_with_tmhmm(line: list, tmhmm_dict: dict) -> tuple:
     annotation = line[8].split(';')
     seqID = annotation[0].split('=')[1].replace('__', '_')
     COG_ID = annotation[1].split('=')[1] if len(annotation) > 1 else 'NA'
@@ -52,7 +66,10 @@ def extract_gene_info(line):
     gene_end = line[4]
     nuc_length = abs(int(gene_end) - int(gene_start)) + 1
     aa_length = int(nuc_length / 3)
-    return seqID, COG_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length
+
+    no_tmh = tmhmm_dict.get(COG_ID, 0)
+
+    return seqID, COG_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length, no_tmh
 
 def cugo_boundaries(direction: str,
                     prev_direction: str,
@@ -155,47 +172,7 @@ def cugo_boundaries(direction: str,
 
     return cugo, cugo_start, cugo_end, cugo_count, cugo_size_count
 
-def process_last_gene(line,
-                      prev_direction: str,
-                      prev_parent: str,
-                      cugo_count: int,
-                      cugo_size_count: int,
-                      prev_cugo: int,
-                      cugo_size: dict):
-    seqID, COG_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length = extract_gene_info(line)
-    cugo_start, cugo_end = "NA", "NA"
-
-    if (direction == prev_direction) and (parent == prev_parent):
-        cugo = prev_cugo
-        cugo_size_count += 1
-        cugo_size[cugo] = cugo_size_count
-        if direction == "+":
-            cugo_end = "sequence_edge"
-        else:
-            cugo_start = "sequence_edge"
-    elif parent != prev_parent:
-        cugo = cugo_count
-        cugo_size_count = 1
-        cugo_size[cugo] = cugo_size_count
-        cugo_start = cugo_end = "sequence_edge"
-    elif direction != prev_direction:
-        cugo = cugo_count
-        cugo_size_count = 1
-        cugo_size[cugo] = cugo_size_count
-        if direction == "+":
-            cugo_start, cugo_end = "strand_change", "sequence_edge"
-        else:
-            cugo_start, cugo_end = "sequence_edge", "strand_change"
-
-    return [seqID, parent, gene_start, gene_end, nuc_length, aa_length,
-            direction, COG_ID, cugo, cugo_start, cugo_end], cugo_size
-
-# ===========================
-# CUGO GFF PARSER
-# ===========================
-def parse(gff_file_path: str,
-          output_dir: str,
-          force: bool = False):
+def parse_single_gff_with_tmhmm(gff_content: str, tmhmm_dict: dict) -> list:
     reformat_data = []
     cugo_size = {}
     cugo_count = prev_direction = prev_parent = prev_feat_type = prev_cugo = 0
@@ -203,183 +180,238 @@ def parse(gff_file_path: str,
     prev_line = None
     cds_count = 0
 
-    # also implement reading directly from gzip - check if unpacked file is there, otherwise read
-    # from gzip directly;
-    # name eventual output file
-    identifier = gff_file_path.split('.')[0].rsplit("_", 1)[0] + '_cugo.tsv'
-    output_path = ensure_path(output_dir, identifier, force=force)
+    lines = gff_content.strip().split('\n')
 
-    try:
-        with open(gff_file_path, "r") as GFF:
-            for line_count, line in enumerate(GFF, 1):
-                clean_line = line.strip().split("\t")
+    for line_count, line in enumerate(lines, 1):
+        clean_line = line.strip().split("\t")
 
-                # skip invalid lines and non-CDS features
-                if len(clean_line) != 9:
-                    continue
+        if len(clean_line) != 9:
+            continue
 
-                feat_type = clean_line[2]
-                if feat_type == "CDS":
-                    cds_count += 1
+        feat_type = clean_line[2]
+        if feat_type == "CDS":
+            cds_count += 1
 
-                if feat_type != "CDS" and prev_feat_type != "CDS":
-                    continue
-                prev_feat_type = feat_type
+        if feat_type != "CDS" and prev_feat_type != "CDS":
+            continue
+        prev_feat_type = feat_type
 
-                # initialize with first valid line
-                if prev_line is None:
-                    prev_line = clean_line
-                    continue
+        if prev_line is None:
+            prev_line = clean_line
+            continue
 
-                # extract information from current line
-                seqID, COG_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length = extract_gene_info(
-                    prev_line)
+        seqID, COG_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length, no_tmh = extract_gene_info_with_tmhmm(
+            prev_line, tmhmm_dict)
 
-                # get context
-                next_parent = clean_line[0]
-                next_direction = clean_line[6]
+        next_parent = clean_line[0]
+        next_direction = clean_line[6]
 
-                # determine CUGO membership
-                cugo, cugo_start, cugo_end, cugo_count, cugo_size_count = cugo_boundaries(
-                    direction, prev_direction, next_direction,
-                    parent, prev_parent, next_parent,
-                    cugo_count, cugo_size, cugo_size_count, prev_cugo
-                )
-
-                # add to results
-                reformat_data.append([seqID, parent, gene_start, gene_end, nuc_length, aa_length,
-                                      direction, COG_ID, cugo, cugo_start, cugo_end])
-
-                # update for next iteration
-                prev_line = clean_line
-                prev_direction = direction
-                prev_parent = parent
-                prev_cugo = cugo
-
-            # process last line if it's valid
-            if len(clean_line) == 9 and clean_line[2] == "CDS":
-                last_line, cugo_size = process_last_gene(
-                    clean_line, prev_direction, prev_parent,
-                    cugo_count, cugo_size_count, prev_cugo, cugo_size
-                )
-                reformat_data.append(last_line)
-
-        # create dataframe
-        gff_cugo = pd.DataFrame(
-            reformat_data,
-            columns=["seqID", "parent_ID", "gene_start", "gene_end", "nuc_length",
-                     "aa_length", "strand", "COG_ID", "CUGO_number", "CUGO_start", "CUGO_end"]
+        cugo, cugo_start, cugo_end, cugo_count, cugo_size_count = cugo_boundaries(
+            direction, prev_direction, next_direction,
+            parent, prev_parent, next_parent,
+            cugo_count, cugo_size, cugo_size_count, prev_cugo
         )
-        gff_cugo["CUGO_size"] = gff_cugo["CUGO_number"].map(cugo_size)
 
-        gff_cugo.to_csv(output_path, sep="\t", index=False)
+        reformat_data.append([seqID, parent, gene_start, gene_end, nuc_length, aa_length,
+                              direction, COG_ID, cugo, cugo_start, cugo_end, no_tmh])
 
-        return gff_cugo
+        prev_line = clean_line
+        prev_direction = direction
+        prev_parent = parent
+        prev_cugo = cugo
 
-    except Exception as e:
-        raise Exception(f"Error processing GFF file: {str(e)}")
+    if len(clean_line) == 9 and clean_line[2] == "CDS":
+        seqID, COG_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length, no_tmh = extract_gene_info_with_tmhmm(
+            clean_line, tmhmm_dict)
+
+        cugo, cugo_start, cugo_end, cugo_count, cugo_size_count = cugo_boundaries(
+            direction, prev_direction, 0,
+            parent, prev_parent, "",
+            cugo_count, cugo_size, cugo_size_count, prev_cugo
+        )
+
+        reformat_data.append([seqID, parent, gene_start, gene_end, nuc_length, aa_length,
+                              direction, COG_ID, cugo, cugo_start, cugo_end, no_tmh])
+
+        cugo_size[cugo] = cugo_size_count
+
+
+    final_data = []
+    for row in reformat_data:
+        seqID = row[0]
+        parent_ID = row[1]
+        aa_length = row[5]
+        strand = row[6]
+        COG_ID = row[7]
+        cugo_number = row[8]
+        no_tmh = row[11]
+
+        final_data.append([seqID, parent_ID, aa_length, strand, COG_ID, cugo_number, no_tmh])
+
+    return final_data
+
+
+def get_file_id_from_gff_name(gff_name: str) -> str:
+    base_name = Path(gff_name).name
+    if '_cog.gff' in base_name:
+        return base_name.split('_cog.gff')[0]
+    return base_name
+
+
+def parse(tar_gz_path: str, tmhmm_tar_path: str = None, output_dir: str = None, globdb_version: int = None,
+          force: bool = False):
+    output_path = ensure_path(output_dir, f"globdb_r{globdb_version}_cugo")
+
+    file_count = 0
+    columns = ["seqID", "parent_ID", "aa_length", "strand", "COG_ID", "CUGO_number", "no_TMH"]
+
+    with open(output_path, 'w') as output_file:
+        output_file.write('\t'.join(columns) + '\n')
+
+        try:
+            with tarfile.open(tar_gz_path, 'r:gz') as gff_tar:
+                # Open TMHMM tar only if path is provided
+                tmhmm_tar = None
+                if tmhmm_tar_path:
+                    tmhmm_tar = tarfile.open(tmhmm_tar_path, 'r:gz')
+
+                try:
+                    members = gff_tar.getmembers()
+                    total_files = len([m for m in members if '_cog.gff' in m.name])
+
+                    logger.info(f"Found {total_files} GFF files to process")
+                    if tmhmm_tar_path:
+                        logger.info("TMHMM data will be included")
+                    else:
+                        logger.info("TMHMM data will be skipped (no TMHMM tar file provided)")
+
+                    for member in members:
+                        if '_cog.gff' not in member.name:
+                            continue
+
+                        file_count += 1
+
+                        file_id = get_file_id_from_gff_name(member.name)
+                        file_tmhmm = {}
+
+                        if tmhmm_tar:
+                            tmhmm_data = get_tmhmm_data_for_file(tmhmm_tar, file_id)
+                            if tmhmm_data:
+                                file_tmhmm = tmhmm_data
+                            else:
+                                logger.warning(f"No TMHMM data found for {file_id}")
+
+                        file_obj = gff_tar.extractfile(member)
+                        if file_obj is None:
+                            logger.warning(f"Could not extract {member.name}")
+                            continue
+
+                        try:
+                            if member.name.endswith('.gz'):
+                                content = gzip.decompress(file_obj.read()).decode('utf-8')
+                            else:
+                                content = file_obj.read().decode('utf-8')
+
+                            file_data = parse_single_gff_with_tmhmm(content, file_tmhmm)
+
+                            for row in file_data:
+                                output_file.write('\t'.join(map(str, row)) + '\n')
+
+                        except Exception as e:
+                            logger.error(f"Error processing {member.name}: {str(e)}")
+                            continue
+
+                        if file_count % 1000 == 0:
+                            logger.info(f"Processed {file_count}/{total_files} files")
+
+                finally:
+                    if tmhmm_tar:
+                        tmhmm_tar.close()
+
+        except Exception as e:
+            logger.error(f"Error processing tar.gz file: {str(e)}")
+            raise
+
+    logger.info(f"Successfully processed {file_count} files. Output saved to {output_path}")
 
 # ===========================
 # CUGO CONTEXT PARSER
 # ===========================
-def context(protein_ids: str,
-            cugo_dir: str,
-            tmhmm_dir: str,
+
+def context(protein_ids: Optional[str],
+            cugo_path: Path,
             cugo_range: int,
             output_dir: str,
             protein_name: str,
             force: bool = False,
-            fasta_path: str = None):
+            fasta_path: Optional[str] = None):
     log_file = ensure_path(output_dir, f"{protein_name}_missing_files.log", force=force)
     logging.basicConfig(
         filename=log_file,
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
+
+    # Load protein identifiers
     if fasta_path:
         sequences = read_fasta_to_dict(fasta_path)
-        protein_identifiers = sequences.keys()
-        genome_identifiers =  [parse_protein_identifier(protein_identifier) for protein_identifier in protein_identifiers]
-
+        protein_identifiers = list(sequences.keys())
     elif protein_ids:
         with open(protein_ids, 'r') as id_file:
             protein_identifiers = [line.strip() for line in id_file if line.strip()]
-            genome_identifiers = [parse_protein_identifier(protein_identifier) for protein_identifier in protein_identifiers]
-
     else:
         logger.error("Either 'fasta_path' or 'protein_ids' must be provided.")
         raise ValueError("You must provide either a FASTA file or a list of protein IDs.")
 
-    output_file = ensure_path(output_dir, protein_name + "_context.tsv", force=force)
+    output_file = ensure_path(output_dir, f"{protein_name}_context.tsv", force=force)
 
-    missing_files = []
+    with gzip.open(cugo_path, "rt") as f:
+        df = pd.read_csv(f, sep="\t", na_filter=False)
+
+    # Set up results container
     results = None
+    protein_set = set(protein_identifiers)
 
-    cugo_dir = Path(cugo_dir)
+    # Filter for proteins of interest
+    target_df = df[df["seqID"].isin(protein_set)]
 
-    for index, id in enumerate(protein_identifiers):
-        cugo_tab_path = cugo_dir / f"{genome_identifiers[index]}_cugo.gz"
+    if target_df.empty:
+        logging.warning("No target proteins found in the CUGO file.")
+        return
 
-        # check if CUGO file exists
-        if not cugo_tab_path.exists():
-            logging.warning(f"Missing CUGO file: {cugo_tab_path}")
-            missing_files.append(str(cugo_tab_path))
-            continue
+    for _, row in target_df.iterrows():
+        id = row["seqID"]
+        target_cugo = int(row["CUGO_number"])
+        target_parent = row["parent_ID"]
+        target_strand = row["strand"]
 
-        # try to read the gzipped file
-        try:
-            genome_cugo_df = pd.read_csv(cugo_tab_path, compression='gzip', sep='\t', na_filter=False)
-        except Exception as e:
-            logging.error(f"Error reading CUGO file {cugo_tab_path}: {str(e)}")
-            missing_files.append(str(cugo_tab_path))
-            continue
-
-        # process TMHMM file if provided
-        if tmhmm_dir:
-            tmhmm_file = Path(tmhmm_dir) / f"{genome_identifiers[index]}_tmhmm_clean"
-            if tmhmm_file.exists():
-                genome_tmhmm_df = pd.read_csv(tmhmm_file, sep="\t", na_filter=False)
-                parse_df = pd.merge(genome_cugo_df, genome_tmhmm_df, on="prot_ID", how="left")
-            else:
-                parse_df = genome_cugo_df
-        else:
-            parse_df = genome_cugo_df
-
-        # in the CUGO tab we only care about our protein
-        target_select = parse_df[parse_df['seqID'] == id]
-        target_cugo = target_select["CUGO_number"].iloc[0]
-        target_parent = target_select["parent_ID"].iloc[0]
-        target_strand = target_select["strand"].iloc[0]
-
-        parent_df = parse_df[parse_df["parent_ID"] == target_parent]
-        cugo_context = parent_df[(parent_df["CUGO_number"] >= (target_cugo - cugo_range)) &
-                                 (parent_df["CUGO_number"] <= (target_cugo + cugo_range))]
+        # Get context window for this protein
+        parent_df = df[df["parent_ID"] == target_parent]
+        cugo_context = parent_df[
+            (parent_df["CUGO_number"] >= (target_cugo - cugo_range)) &
+            (parent_df["CUGO_number"] <= (target_cugo + cugo_range))
+        ]
         if target_strand == "-":
             cugo_context = cugo_context.iloc[::-1]
+
         cugo_context = cugo_context.reset_index(drop=True)
 
-        # Find the index of our target protein
+        # Find the index of the target
         target_index = cugo_context.index[cugo_context.seqID == id].item()
         cugo_context.index = cugo_context.index - target_index
-        # Transpose the data
         cugo_context = cugo_context.transpose()
 
-        # Store this protein's context data
+        # Store
         if results is None:
-            # First protein - initialize results
             results = cugo_context
         else:
-            # Concatenate with previous results
-            # Use outer join to handle all possible columns from different proteins
             results = pd.concat([results, cugo_context], join="outer", axis=0)
 
-        # If we have any results, save
+    # Save results
     if results is not None:
-        # Reset index and rename the index column
         results = results.reset_index().rename(columns={"index": "feat_type"})
-
-        # Save the results
         results.to_csv(output_file, sep="\t", index=False)
+
 
 # ======================================
 # FUNCTION DEFINITIONS FOR CUGO PLOTTING

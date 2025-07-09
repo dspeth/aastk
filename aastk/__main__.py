@@ -124,16 +124,18 @@ def main():
         ### PARSER FOR CUGO FUNCTIONALITIES AND WORKFLOW ###
         elif args.subparser_name == 'parse':
             parse(
-                gff_file_path=args.gff_path,
+                tar_gz_path=args.gff_path,
+                tmhmm_tar_path=args.tmhmm_dir,
                 output_dir=args.output,
+                globdb_version=args.globdb_version,
                 force=args.force
             )
+
 
         elif args.subparser_name == 'context':
             context(
                 protein_ids=args.protein_ids,
-                cugo_dir=args.cugo_dir,
-                tmhmm_dir=args.tmhmm_dir,
+                cugo_path=args.cugo_path,
                 cugo_range=args.cugo_range,
                 output_dir=args.output,
                 protein_name=args.protein_name,
@@ -167,8 +169,15 @@ def main():
                 exaggeration=args.exaggeration,
                 metadata_protein=args.metadata_protein,
                 metadata_genome=args.metadata_genome,
+                matrix_path=args.matrix_path,
+                matrix_metadata_path=args.metadata_matrix,
+                early_clust_path=args.early_clust,
+                full_clust_path=args.full_clust,
                 force=args.force,
-                cugo_dir=args.cugo_dir
+                matrix=args.matrix, # this is __casm_matrix in cli.py
+                embed=args.embed,
+                plot=args.plot,
+                all=args.all
             )
 
         elif args.subparser_name == 'casm_plot':
