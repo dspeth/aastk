@@ -169,7 +169,15 @@ def main():
                 exaggeration=args.exaggeration,
                 metadata_protein=args.metadata_protein,
                 metadata_genome=args.metadata_genome,
+                matrix_path=args.matrix_path,
+                matrix_metadata_path=args.metadata_matrix,
+                early_clust_path=args.early_clust,
+                full_clust_path=args.full_clust,
                 force=args.force,
+                matrix=args.matrix, # this is __casm_matrix in cli.py
+                embed=args.embed,
+                plot=args.plot,
+                all=args.all
             )
 
         elif args.subparser_name == 'casm_plot':

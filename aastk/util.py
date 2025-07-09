@@ -30,7 +30,7 @@ def determine_file_type(file_path):
         else:
             raise ValueError(f"Unrecognized file type in {file_path}")
 
-def ensure_path(path: str, target: Optional[str] = None, force: bool = False):
+def ensure_path(path: Optional[str] = None, target: Optional[str] = None, force: bool = False):
     path = Path(path) if path else Path('.')
     final_path = path / target if target else path
 
