@@ -44,20 +44,27 @@ def build_protein_db(protein_name: str,
         Raises:
             RuntimeError: If the DIAMOND database creation fails.
     """
-    # check for db_dir
+    # ===============================
+    # Database path setup
+    # ===============================
     db_path = ensure_path(db_dir, f"{protein_name}_seed_db", force=force)
 
     # log the path
     logger.info(f"Building DIAMOND database for {protein_name} at {db_path}")
 
-    # construct diamond command and output it for control
+
+    # =======================================
+    # DIAMOND makedb command construction
+    # =======================================
     cmd = ["diamond", "makedb",
            "--in", seed_fasta,
            "-d", db_path,
            "-p", str(threads)]
     logger.debug(f"Running command: {' '.join(cmd)}")
 
-    #try running the subprocess for the Diamond makedb command
+    # ===============================
+    # Execute DIAMOND makedb
+    # ===============================
     try:
         result = subprocess.run(cmd, check=True)
         logger.debug(f"DIAMOND makedb output: {result.stdout}")
@@ -97,10 +104,15 @@ def search_protein_db(db_path: str,
     Returns:
         output_path: Path to tabular BLAST output file.
     """
-    # create output file paths
+    # ===============================
+    # Output file path setup
+    # ===============================
     output_path = ensure_path(output_dir, f"{protein_name}_hits.txt", force=force)
     column_info_path = ensure_path(output_dir, f"{protein_name}_columns.json", force=force)
 
+    # =======================================================
+    # DIAMOND blastp output file column configuration
+    # =======================================================
     # define the output columns of interest
     columns = ["qseqid", "sseqid", "pident", "qlen", "slen", "length", "mismatch", "gapopen", "qstart", "qend",
                "sstart", "send", "evalue", "bitscore", "score"]
@@ -112,6 +124,9 @@ def search_protein_db(db_path: str,
 
     logger.info(f"Saved column information to {column_info_path}")
 
+    # ===============================
+    # Parameter setup
+    # ===============================
     # check for sensitivity, if None set to default --fast
     sensitivity_param = f"--{sensitivity}" if sensitivity else "--fast"
 
@@ -119,6 +134,9 @@ def search_protein_db(db_path: str,
     logger.info(f"Output path: {output_path}")
     logger.info(f"Using parameters: sensitivity={sensitivity_param}, block={block}, chunk={chunk}")
 
+    # =======================================
+    # DIAMOND blastp command construction
+    # =======================================
     try:
         # create blastp db search command
         cmd = ["diamond", "blastp",
@@ -138,7 +156,9 @@ def search_protein_db(db_path: str,
 
         logger.debug(f"Running command: {' '.join(cmd)}")
 
-        # run diamond blastp
+    # =======================================
+    # Execute DIAMOND blastp search
+    # =======================================
         subprocess.run(cmd, check=True)
 
 
@@ -171,24 +191,32 @@ def extract_matching_sequences(protein_name: str,
     Returns:
         out_fasta: Path to output FASTA file.
     """
-    # create output filepaths
+    # ===============================
+    # Output file setup
+    # ===============================
     out_fasta = ensure_path(output_dir, f"{protein_name}_matched.fasta", force=force)
     stats_path = ensure_path(output_dir, f"{protein_name}_matched.stats", force=force)
 
-    # extract unique keys (query IDs) from the specified column of the BLAST tab file
+    # =========================================
+    # Extract matching IDs from BLAST results
+    # =========================================
     matching_ids = extract_unique_keys(blast_tab, key_column)
     logger.info(f"Extracted {len(matching_ids)} unique matching sequence IDs")
 
-    # determine file type (fasta or fastq)
+    # ===============================
+    # Input file type detection
+    # ===============================
     file_type = determine_file_type(query_path)
     logger.info(f"Determined input file type: {file_type}")
 
+    # ======================================
+    # Extract and write matching sequences
+    # ======================================
     # keep track of number of sequences written to the output file; set up zero count
     sequences_written = 0
 
-    # Open the output file for writing
     with open(out_fasta, "w") as out:
-        # Use the appropriate generator based on the file type
+        # use the appropriate generator based on the file type
         if file_type == "fasta":
             logger.info(f"Processing FASTA format from {query_path}")
             for header, sequence in write_fa_matches(query_path, matching_ids):
@@ -205,7 +233,9 @@ def extract_matching_sequences(protein_name: str,
 
         logger.info(f"Successfully wrote {sequences_written} matching sequences to {out_fasta}")
 
-    # also add seqkit stats output file to target dir
+    # ===============================
+    # Generate sequence statistics
+    # ===============================
     cmd = ["seqkit", "stats",
             out_fasta,
             "-o", stats_path,
@@ -215,6 +245,7 @@ def extract_matching_sequences(protein_name: str,
     subprocess.run(cmd, check=True)
 
     return out_fasta, stats_path
+
 
 def calculate_max_scores(protein_name: str,
                          extracted: str,
@@ -234,9 +265,14 @@ def calculate_max_scores(protein_name: str,
     Returns:
         max_scores: Dictionary of protein headers and their max scores.
     """
-    # create output file path
+    # ===============================
+    # Output file setup
+    # ===============================
     out_file = ensure_path(output_dir, f"{protein_name}_max_scores.tsv", force=force)
 
+    # ============================================================
+    # BLOSUM matrix choice validation and BLOSUM diagonals setup
+    # ============================================================
     valid_matrices = ["BLOSUM45", "BLOSUM62"]
 
     # check if valid matrix was chosen
@@ -259,29 +295,36 @@ def calculate_max_scores(protein_name: str,
 
     logger.info(f"Calculating max scores using {matrix} matrix")
 
-    # read the fasta file containing matched sequences as obtained via pasr extract
+    # ===============================
+    # Read input sequences
+    # ===============================
     sequences = read_fasta_to_dict(extracted)
     logger.info(f"Read {len(sequences)} sequences from {extracted}")
 
-    # calculate the max scores
+    # ===============================
+    # Calculate max scores
+    # ===============================
     max_scores = {}
     for header, sequence in sequences.items():
         score = 0
         for amino_acid in sequence:
-            aa = amino_acid.upper() # just to make sure that we have consistency
+            aa = amino_acid.upper()  # just to make sure that we have consistency
             if aa in blosum_diagonals[matrix]:
                 score += blosum_diagonals[matrix][amino_acid]
             else:
                 logger.warning(f"Unknown amino acid '{amino_acid}' in sequence {header}")
         max_scores[header] = score
 
-    # write the results for each sequence to specified output file
+    # ===============================
+    # Write results to output file
+    # ===============================
     with open(out_file, 'w') as out:
         out.write("Protein_id\tmax_score\n")
         for header, score in max_scores.items():
             out.write(f"{header}\t{score}\n")
 
     logger.info(f"Successfully wrote max scores to {out_file}")
+
     return out_file
 
 def blast_score_ratio(protein_name: str,
@@ -308,13 +351,18 @@ def blast_score_ratio(protein_name: str,
     Returns:
         bsr_output (str): Path to the output file with BSR values.
     """
-    # create output filepath
+    # ===============================
+    # Output file setup
+    # ===============================
     bsr_file = ensure_path(output_dir, f"{protein_name}_bsr.tsv", force=force)
 
     logger.info(f"Computing blast score ratio (BSR) for {protein_name}")
     logger.info(f"Using blast tab file: {blast_tab}")
     logger.info(f"Using max scores file: {max_scores_path}")
 
+    # ===============================================================================================
+    # Determination of BLAST output column indices to be used for retrieval of relevant parameters
+    # ===============================================================================================
     # retrieve indices for essential columns from column info file if path is provided
     if column_info_path and Path(column_info_path).exists():
         try:
@@ -346,7 +394,9 @@ def blast_score_ratio(protein_name: str,
                        f"Please enter path to column info file or pass "
                        f"the index of the score column in your BLAST tabular output")
 
-    # parse the TSV file containing theoretical max scores
+    # ===============================
+    # Load max scores data
+    # ===============================
     max_scores = {}
     with open(max_scores_path) as tsv:
         header = tsv.readline()
@@ -357,7 +407,9 @@ def blast_score_ratio(protein_name: str,
 
     logger.info(f"Loaded {len(max_scores)} max scores")
 
-    # process blast tab file and calculate BSR
+    # ===============================
+    # Process BLAST results and calculate BSR
+    # ===============================
     processed_count = 0
     error_count = 0
 
@@ -398,14 +450,11 @@ def blast_score_ratio(protein_name: str,
                 out.write(f"{parts[0]}\t{parts[1]}\t{pident:.2f}\t{qlen}\t{raw_score:.1f}\t{max_score:.1f}\t{bsr:.4f}\n")
                 processed_count += 1
 
-
             except (KeyError, ValueError, IndexError) as e:
-
                 logger.warning(f"Line {line_num}: Error processing '{line.strip()}': {e}")
                 if isinstance(e, IndexError):
                     logger.warning(
                         f"Line {line_num}: Tried to access column {score_column} but line only has {len(parts)} columns")
-
                 error_count += 1
 
     logger.info(f"Successfully processed {processed_count} entries and wrote BSR to {bsr_file}")
@@ -433,7 +482,9 @@ def plot_bsr(protein_name: str,
     Returns:
         Path to the output plot.
     """
-    # Determine and create output file path
+    # ===============================
+    # Output file path setup
+    # ===============================
     if update:
         out_graph = ensure_path(output_dir, f'{protein_name}_updated_bsr.png', force=force)
     else:
@@ -441,6 +492,9 @@ def plot_bsr(protein_name: str,
 
     logger.info(f"Creating BSR scatter plot for {protein_name}")
 
+    # ===============================
+    # Data loading and validation
+    # ===============================
     try:
         bsr_df = pd.read_csv(bsr_file, sep='\t', header=0)
 
@@ -450,6 +504,9 @@ def plot_bsr(protein_name: str,
             if col not in bsr_df.columns:
                 raise ValueError(f"Required column '{col}' not found in BSR data")
 
+        # ===============================
+        # Histogram binning setup
+        # ===============================
         # set bin width for flanking histograms
         bin_width = 10
 
@@ -469,6 +526,9 @@ def plot_bsr(protein_name: str,
         binned_counts['x'] = bin_mid(binned_counts['max_score_bin'])
         binned_counts['y'] = bin_mid(binned_counts['score_bin'])
 
+        # ===============================
+        # Plot layout and scatter plot
+        # ===============================
         # create plot layout
         fig, axs = plt.subplot_mosaic(
             [['histx', '.'],
@@ -500,6 +560,9 @@ def plot_bsr(protein_name: str,
         cbar = fig.colorbar(scatter, cax=cb_ax)
         cbar.set_label('% sequence identity')
 
+        # ===============================
+        # Histogram creation
+        # ===============================
         # histogram data using binned_counts with proper axis alignment
         # top histogram (histx) - sum counts for each x position, align x-axis with scatter
         x_hist = binned_counts.groupby('x', observed=True)['counts'].sum()
@@ -521,6 +584,9 @@ def plot_bsr(protein_name: str,
         max_count = y_hist.values.max() if len(y_hist) > 0 else 100
         axs['histy'].set_xticks(range(0, int(max_count) + 50, 50))
 
+        # ===============================
+        # Threshold lines (update mode)
+        # ===============================
         # plot the parameters from the metadata yaml file in case of update
         if update:
             try:
@@ -546,6 +612,9 @@ def plot_bsr(protein_name: str,
                 y_vals = bsr_min * x_vals
                 axs['scatter'].plot(x_vals, y_vals, color='black', linestyle='--', linewidth=1.0)
 
+        # ===============================
+        # Save plot and cleanup
+        # ===============================
         fig.savefig(out_graph, dpi=300)
         plt.close(fig)
 
@@ -555,6 +624,7 @@ def plot_bsr(protein_name: str,
     except Exception as e:
         logger.error(f"Error creating BSR plot: {e}")
         raise RuntimeError(f"Failed to create BSR plot: {e}") from e
+
 
 def metadata(selfmin: int,
              selfmax: int,
@@ -578,9 +648,15 @@ def metadata(selfmin: int,
     Returns:
         Path to the metadata file.
     """
+    # ===============================
+    # Output file path setup
+    # ===============================
     yaml_path = ensure_path(output_dir, f"{protein_name}.yaml", force=force)
     logger.info(f"Writing metadata for {protein_name}")
 
+    # ===============================
+    # Parameter collection
+    # ===============================
     params = {
         "protein_name": protein_name,
         "selfmin": selfmin,
@@ -591,6 +667,10 @@ def metadata(selfmin: int,
 
     # remove None values
     params = {k: v for k, v in params.items() if v is not None}
+
+    # ===============================
+    # Write YAML file
+    # ===============================
     yaml_str = yaml.dump(params)
 
     with open(yaml_path, "w") as f:
@@ -598,7 +678,6 @@ def metadata(selfmin: int,
 
     logger.info(f"Successfully wrote metadata to {yaml_path}")
     return yaml_path
-
 
 def select(yaml_path: str,
            matched_fasta: str,
@@ -631,6 +710,9 @@ def select(yaml_path: str,
     """
     logger.info("Starting sequence subsetting based on thresholds")
 
+    # ===============================
+    # Parameter validation
+    # ===============================
     # check mutual exclusivity of yaml_path and params
     if yaml_path is not None and params:
         raise ValueError(
@@ -641,6 +723,9 @@ def select(yaml_path: str,
 
     created_yaml_path = None
 
+    # ===============================
+    # Threshold loading/validation
+    # ===============================
     if params:
         # validate required parameters when using params=True
         if selfmin is None or selfmax is None:
@@ -694,12 +779,18 @@ def select(yaml_path: str,
         if protein_name is None:
             raise ValueError("protein_name must be specified in the YAML file")
 
+    # ===============================
+    # Output file path setup
+    # ===============================
     # create output file path
     output_file = f"{protein_name}_matched_update.faa"
     stats_file = f"{protein_name}_matched_update.stats"
     output_path = ensure_path(output_dir, output_file, force=force)
     stats_path = ensure_path(output_dir, stats_file, force=force)
 
+    # ===============================
+    # Data loading and filtering
+    # ===============================
     # load BSR table
     bsr_df = pd.read_csv(bsr_table, sep='\t')
 
@@ -720,6 +811,9 @@ def select(yaml_path: str,
     # extract sequence IDs kept after filtering
     filtered_ids = set(filtered['qseqid'])
 
+    # ===============================
+    # Sequence filtering and writing
+    # ===============================
     # load matched FASTA
     sequences = read_fasta_to_dict(matched_fasta)
 
@@ -736,6 +830,9 @@ def select(yaml_path: str,
     logger.info(f"Filtered sequences written to {output_path}: "
                 f"{kept} sequences out of {len(sequences)} original sequences")
 
+    # ===============================
+    # Statistics generation
+    # ===============================
     # generate seqkit stats for the filtered fasta file
     cmd = ["seqkit", "stats",
            output_path,
@@ -781,6 +878,9 @@ def pasr(protein_name: str,
         yaml_path (str): Path to metadata yaml file
         force (bool): If true, existing files/directories in output path are overwritten
     """
+    # ===============================
+    # Parameter validation and setup
+    # ===============================
     if update and not yaml_path:
         logger.error("YAML path is required if update is True")
         exit()
@@ -793,21 +893,33 @@ def pasr(protein_name: str,
     # store all the output paths in a dictionary
     results = {}
 
+    # ===============================
+    # Database building
+    # ===============================
     try:
         logger.info("Building protein database")
         db_path = build_protein_db(protein_name, seed_fasta, threads, output_dir, force=force)
         results['db_path'] = db_path
 
+        # ===============================
+        # Database search
+        # ===============================
         logger.info("Searching protein database")
         search_output, column_info_path = search_protein_db(db_path, query_fasta, protein_name, threads, output_path, sensitivity, block, chunk, force=force)
         results['search_output'] = search_output
         results['column_info_path'] = column_info_path
 
+        # ===============================
+        # Sequence extraction
+        # ===============================
         logger.info("Extracting matching sequences")
         matched_fasta, stats_path = extract_matching_sequences(protein_name, search_output, query_fasta, output_path, key_column, force=force)
         results['matched_fasta'] = matched_fasta
         results['stats_path'] = stats_path
 
+        # ===============================
+        # Score calculations
+        # ===============================
         logger.info("Calculating max scores")
         max_scores = calculate_max_scores(protein_name, matched_fasta, matrix_name, output_path, force=force)
         results['max_scores'] = max_scores
@@ -816,10 +928,16 @@ def pasr(protein_name: str,
         bsr_file = blast_score_ratio(protein_name, search_output, max_scores, output_path, key_column, column_info_path, score_column=None, force=force)
         results['bsr_file'] = bsr_file
 
+        # ===============================
+        # Visualization
+        # ===============================
         logger.info("Creating BSR plot")
         bsr_plot = plot_bsr(protein_name, bsr_file, output_path, yaml_path, force=force, update=False)
         results['bsr_plot'] = bsr_plot
 
+        # ===============================
+        # Update workflow (optional)
+        # ===============================
         if update:
             logger.info("Running update for specified data")
             subset_fasta, update_stats_path = select(yaml_path, matched_fasta, bsr_file, output_dir, force=force)
