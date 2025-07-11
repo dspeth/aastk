@@ -156,7 +156,39 @@ def main():
                 y_range=args.y_range
             )
 
-        ### PARSER FOR ASM_CLUST FUNCTIONALITIES AND WORKFLOW ###
+        ### PARSER FOR CASM FUNCTIONALITIES AND WORKFLOW ###
+        elif args.subparser_name == 'matrix':
+            matrix(
+                fasta=args.fasta,
+                output=args.output,
+                subset=args.subset,
+                subset_size=args.subset_size,
+                threads=args.threads,
+                force=args.force
+            )
+
+        elif args.subparser_name == 'cluster':
+            cluster(
+                matrix_path=args.matrix_path,
+                matrix_metadata_path=args.metadata_matrix,
+                output=args.output,
+                perplexity=args.perplexity,
+                iterations=args.iterations,
+                exaggeration=args.exagerration,
+                threads=args.threads,
+                metadata_protein=args.metadata_protein,
+                metadata_genome=args.metadata_genome,
+                force=args.force
+            )
+
+
+        elif args.subparser_name == 'casm_plot':
+            casm_plot(
+                early_clust_path=args.early_clust,
+                full_clust_path=args.full_clust,
+                output=args.output
+            )
+
         elif args.subparser_name == 'casm':
             casm(
                 fasta=args.fasta,
@@ -169,22 +201,9 @@ def main():
                 exaggeration=args.exaggeration,
                 metadata_protein=args.metadata_protein,
                 metadata_genome=args.metadata_genome,
-                matrix_path=args.matrix_path,
-                matrix_metadata_path=args.metadata_matrix,
-                early_clust_path=args.early_clust,
-                full_clust_path=args.full_clust,
                 force=args.force,
-                matrix=args.matrix, # this is __casm_matrix in cli.py
-                embed=args.embed,
-                plot=args.plot,
-                all=args.all
             )
 
-        elif args.subparser_name == 'casm_plot':
-            casm_plot(
-                tsv_file=args.tsv,
-                output=args.output
-            )
     except Exception as e:
         logger.error(f"Error executing command: {e}")
         return 1
