@@ -50,6 +50,10 @@ def __create_yaml(group, required=False):
     group.add_argument('--create_yaml', action='store_true', required=required,
                        help='Create metadata yaml file from command line parameters')
 
+def __context_path(group, required=False):
+    group.add_argument('-c', '--context_path', type=str, required=required,
+                       help='Path to CUGO context file')
+
 def __cugo(group, required=False):
     group.add_argument('--cugo', action='store_true', required=required,
                        help='Generate CUGO plot')
@@ -386,7 +390,7 @@ def get_main_parser():
 
     with subparser(sub_parsers, 'cugo_plot', 'Plot CUGO context') as parser:
         with arg_group(parser, 'Required arguments') as grp:
-            __cugo_path(grp, required=True)
+            __context_path(grp, required=True)
             __flank_lower(grp, required=True)
             __flank_upper(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
@@ -396,6 +400,8 @@ def get_main_parser():
             __all(grp)
             __bin_width(grp)
             __y_range(grp)
+            __output(grp)
+            __force(grp)
 
     with subparser(sub_parsers, 'matrix', 'Create alignment matrix for tSNE embedding and DBSCAN clustering') as parser:
         with mutex_group(parser, required=True) as grp:

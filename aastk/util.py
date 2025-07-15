@@ -7,6 +7,13 @@ import shutil
 
 logger = logging.getLogger(__name__)
 
+def bin_mid(bin_series):
+	return bin_series.apply(lambda b: (b.left + b.right) / 2)
+
+def count_fasta_sequences(fasta_path: str) -> int:
+	with open(fasta_path, 'r') as f:
+		return sum(1 for line in f if line.startswith('>'))
+
 def determine_dataset_name(file: str, splitter:str, part: int):
 	dataset = file.split(splitter)[part]
 	return dataset
@@ -48,16 +55,6 @@ def ensure_path(path: Optional[str] = None, target: Optional[str] = None, force:
 	path.mkdir(parents=True, exist_ok=True)
 
 	return str(final_path)
-
-def bin_mid(bin_series):
-	return bin_series.apply(lambda b: (b.left + b.right) / 2)
-
-def count_fasta_sequences(fasta_path: str) -> int:
-	with open(fasta_path, 'r') as f:
-		return sum(1 for line in f if line.startswith('>'))
-
-def extract_cog_info(df: pd.DataFrame, feat_type=str):
-	return df.loc[df["feat_type"] == feat_type]
 
 def extract_unique_keys(file_path, column_index=0):
 	"""
