@@ -397,6 +397,7 @@ def get_main_parser():
             __bin_width(grp)
             __y_range(grp)
 
+
     with subparser(sub_parsers, 'matrix', 'Create alignment matrix for tSNE embedding and DBSCAN clustering') as parser:
         with mutex_group(parser, required=True) as grp:
             __subset(grp)
