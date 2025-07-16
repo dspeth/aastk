@@ -344,7 +344,7 @@ def blast_score_ratio(protein_name: str,
         max_scores_path (str): Path to TSV file with max scores (headers: Protein_id, max_score).
         output_dir (str): Directory to save the BSR results.
         key_column (int): Column index in blast_tab to use for matching. (Default: 0 for 'qseqid')
-        column_info_path (str): Path to file containing column names for the blast tabular ouput file to retrieve index of the score column
+        column_info_path (str): Path to file containing column names for the blast tabular output file to retrieve index of the score column
         score column (int): Index of blast tabular output file's score column
         force (bool): If true, existing files/directories in output path are overwritten
 

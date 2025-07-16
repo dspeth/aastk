@@ -814,11 +814,7 @@ def context(protein_ids: Optional[str],
         with open(protein_ids, 'r') as id_file:
             protein_identifiers = [line.strip() for line in id_file if line.strip()]
     else:
-        logger.error('Either '
-        fasta_path
-        ' or '
-        protein_ids
-        ' must be provided.')
+        logger.error('Either "fasta_path" or "protein_ids" must be provided.')
         raise ValueError('You must provide either a FASTA file or a list of protein IDs.')
 
     # load cugo data
