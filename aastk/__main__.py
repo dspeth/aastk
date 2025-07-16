@@ -94,7 +94,7 @@ def main():
                 yaml_path=args.yaml,
                 matched_fasta=args.matched,
                 bsr_table=args.bsr,
-                output_dir=args.ouput,
+                output_dir=args.output,
                 selfmin=args.selfmin,
                 selfmax=args.selfmax,
                 dbmin=args.dbmin,
@@ -145,15 +145,18 @@ def main():
 
         elif args.subparser_name == 'cugo_plot':
             cugo_plot(
-                cugo_path=args.cugo_path,
+                context_path=args.context_path,
+
                 flank_lower=args.flank_lower,
                 flank_upper=args.flank_upper,
                 top_n=args.top_n,
+                output=args.output,
                 cugo=args.cugo,
                 size=args.size,
                 all_plots=args.all,
                 bin_width=args.bin_width,
-                y_range=args.y_range
+                y_range=args.y_range,
+                force=args.force
             )
 
         ### PARSER FOR CASM FUNCTIONALITIES AND WORKFLOW ###

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from .util import determine_file_type, ensure_path, extract_unique_keys, read_fasta_to_dict, write_fa_matches, write_fq_matches, bin_mid
+from .util import *
 
 import subprocess
 import matplotlib.pyplot as plt
@@ -29,20 +29,20 @@ def build_protein_db(protein_name: str,
                      db_dir: str,
                      force: bool = False):
     """
-        Builds a DIAMOND protein database from a seed FASTA file.
+    Builds a DIAMOND protein database from a seed FASTA file.
 
-        Args:
-            protein_name (str): Name of the protein for the database.
-            seed_fasta (str): Path to the FASTA file containing seed sequences.
-            threads (int): Number of threads to use.
-            db_dir (str): Directory where the database should be stored. (Default: current working directory)
-            force (bool): If true, existing files/directories in output path are overwritten
+    Args:
+        protein_name (str): Name of the protein for the database.
+        seed_fasta (str): Path to the FASTA file containing seed sequences.
+        threads (int): Number of threads to use.
+        db_dir (str): Directory where the database should be stored. (Default: current working directory)
+        force (bool): If true, existing files/directories in output path are overwritten
 
-        Returns:
-            db_path: Path to DIAMOND protein database.
+    Returns:
+        db_path: Path to DIAMOND protein database.
 
-        Raises:
-            RuntimeError: If the DIAMOND database creation fails.
+    Raises:
+        RuntimeError: If the DIAMOND database creation fails.
     """
     # ===============================
     # Database path setup
@@ -344,7 +344,7 @@ def blast_score_ratio(protein_name: str,
         max_scores_path (str): Path to TSV file with max scores (headers: Protein_id, max_score).
         output_dir (str): Directory to save the BSR results.
         key_column (int): Column index in blast_tab to use for matching. (Default: 0 for 'qseqid')
-        column_info_path (str): Path to file containing column names for the blast tabular ouput file to retrieve index of the score column
+        column_info_path (str): Path to file containing column names for the blast tabular output file to retrieve index of the score column
         score column (int): Index of blast tabular output file's score column
         force (bool): If true, existing files/directories in output path are overwritten
 
