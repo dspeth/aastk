@@ -49,6 +49,9 @@ def ensure_path(path: Optional[str] = None, target: Optional[str] = None, force:
 
     return str(final_path)
 
+def bin_mid(bin_series):
+    return bin_series.apply(lambda b: (b.left + b.right) / 2)
+
 def extract_cog_info(df: pd.DataFrame, feat_type=str):
     return df.loc[df["feat_type"] == feat_type]
 

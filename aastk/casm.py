@@ -10,8 +10,7 @@ import pandas as pd
 import openTSNE
 from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
-import yaml
-import re
+
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -55,6 +54,9 @@ def fasta_subsample(fasta: str,
 	logger.info(f"Successfully created subset FASTA with {len(subset_dict)} sequences")
 	return output_path
 
+def count_fasta_sequences(fasta_path: str) -> int:
+    with open(fasta_path, 'r') as f:
+        return sum(1 for line in f if line.startswith('>'))
 
 def run_diamond_alignment(fasta: str,
                           align_subset: str,
@@ -206,7 +208,7 @@ def build_alignment_matrix_split(align_file: str,
 		json.dump(metadata, file, indent=2)
 	logger.info(f"Matrix metadata saved to: {metadata_file}")
 
-	return matrix, queries, targets
+	return matrix, queries, targets, matrix_file, metadata_file
 
 def load_alignment_matrix_from_file(matrix_path: str,
                                     metadata_path: str):
@@ -343,7 +345,7 @@ def tsne_embedding(matrix: np.ndarray,
 
 	return early_tsv, final_tsv, early_filename,final_filename
 
-def casm_plot(tsv_file: str,
+def plot_clusters(tsv_file: str,
               output: str,
               ):
 	logger.info(f"Creating t-SNE plot from: {tsv_file}")
@@ -405,6 +407,85 @@ def casm_plot(tsv_file: str,
 		logger.info(f"Plot saved to: {output_file}")
 	plt.show()
 
+def matrix(fasta: str,
+           output: str,
+           subset: str,
+           subset_size: int,
+           threads: int,
+           force: bool = False
+           ):
+	logger.info("=== Starting Matrix Construction ===")
+	logger.info(f"Input FASTA: {fasta}")
+	logger.info(f"Output basename: {output}")
+	logger.info(f"Threads: {threads}")
+	if subset:
+		logger.info(f"Using provided subset: {subset}")
+		subset_fasta = subset
+		subset_size = count_fasta_sequences(subset_fasta)
+	else:
+		logger.info("Creating random subset from input FASTA")
+		subset_fasta = fasta_subsample(fasta, output, subset_size, force=force)
+
+	logger.info("=== Phase 1: DIAMOND Alignment ===")
+	align_output = run_diamond_alignment(fasta, subset_fasta, subset_size, threads)
+
+	logger.info("=== Phase 2: Matrix Construction ===")
+	_, _, _, matrix_file, metadata_file = build_alignment_matrix_split(align_output, output, force)
+
+	return matrix_file, metadata_file
+
+
+def cluster(matrix_path: str,
+          matrix_metadata_path: str,
+          output: str,
+          perplexity: int = 50,
+          iterations: int = 500,
+          exaggeration: int = 6,
+          threads: int = 1,
+          metadata_protein: str = None,
+          metadata_genome: str = None,
+          force: bool = False):
+	logger.info("=== Starting t-SNE Embedding ===")
+	logger.info(f"Matrix file: {matrix_path}")
+	logger.info(f"Metadata file: {matrix_metadata_path}")
+	if output:
+		logger.info(f"Output basename: {output}")
+
+	matrix, queries, targets = load_alignment_matrix_from_file(matrix_path, matrix_metadata_path)
+	early_tsv, final_tsv, early_filename, final_filename =tsne_embedding(matrix=matrix,
+															             queries=queries,
+															             basename=output,
+															             perplexity=perplexity,
+															             iterations=iterations,
+															             exaggeration=exaggeration,
+															             threads=threads,
+															             metadata_protein=metadata_protein,
+														                 metadata_genome=metadata_genome,
+														                 force=force
+													    	             )
+
+	logger.info("=== t-SNE Embedding Completed ===")
+	return early_filename, final_filename
+
+
+def casm_plot(early_clust_path: str,
+         full_clust_path: str,
+         output: str):
+	logger.info("=== Starting Plot Generation ===")
+	logger.info(f"Early clustering file: {early_clust_path}")
+	logger.info(f"Full clustering file: {full_clust_path}")
+	logger.info(f"Output basename: {output}")
+
+	# Generate plots
+	logger.info("Generating early clustering plot")
+	plot_clusters(early_clust_path, output=f"{output}_early")
+
+	logger.info("Generating full clustering plot")
+	plot_clusters(full_clust_path, output=f"{output}_final")
+
+	logger.info("=== Plot Generation Completed ===")
+
+
 def casm(fasta: str,
          output: str,
          subset: str,
@@ -415,116 +496,71 @@ def casm(fasta: str,
          exaggeration: int = 6,
          metadata_protein: str = None,
          metadata_genome: str = None,
-         matrix_path: str = None,
-         matrix_metadata_path: str = None,
-         early_clust_path: str = None,
-         full_clust_path: str = None,
-         force: bool = False,
-         matrix: bool = False,
-         embed: bool = False,
-         plot: bool = False,
-         all: bool = False
-         ):
-	if matrix and not fasta:
-		logger.error("No input fasta provided. Alignment matrix can not be created.")
-		exit()
+         force: bool = False):
+	"""
+	Run complete CASM analysis pipeline.
 
-	if embed:
-		if not matrix_path:
-			logger.error("No input matrix file provided. No TSNE embedding possible")
-			exit()
-		if not matrix_metadata_path:
-			logger.error("No input matrix metadata file provided. No TSNE embedding possible")
-			exit()
+	Args:
+		fasta (str): Path to input FASTA file
+		output (str): Output basename
+		subset (str, optional): Path to subset FASTA file. If None, creates random subset
+		subset_size (int): Size of subset for alignment
+		threads (int): Number of threads
+		perplexity (int): t-SNE perplexity parameter
+		iterations (int): Number of optimization iterations
+		exaggeration (int): Early exaggeration parameter
+		metadata_protein (str, optional): Path to protein metadata file
+		metadata_genome (str, optional): Path to genome metadata file
+		force (bool): Force overwrite existing files
 
-	if plot:
-		if not early_clust_path:
-			logger.error("No input early clustering TSV provided. Plotting not possible.")
-			exit()
-		if not full_clust_path:
-			logger.error("No input full clustering TSV provided. Plotting not possible.")
-			exit()
+	Returns:
+		dict: Paths to all generated files
+	"""
+	logger.info("=== Starting Complete CASM Analysis ===")
+	logger.info(f"Input FASTA: {fasta}")
+	logger.info(f"Output basename: {output}")
+	logger.info(f"Subset size: {subset_size}")
+	logger.info(f"Threads: {threads}")
 
-	if all and not fasta:
-		logger.error("No input fasta provided. Full casm workflow not possible.")
-		exit()
+	# Phase 1: Matrix construction
+	logger.info("=== Phase 1: Matrix Construction ===")
+	matrix_file, metadata_file = matrix(fasta=fasta,
+										output=output,
+										subset=subset,
+										subset_size=subset_size,
+										threads=threads,
+										force=force
+									    )
 
-	if all:
-		logger.info("=== Starting CASM Analysis ===")
-		logger.info(f"Input FASTA: {fasta}")
-		logger.info(f"Output basename: {output}")
-		logger.info(f"Subset size: {subset_size}")
-		logger.info(f"Threads: {threads}")
+	# Phase 2: t-SNE embedding
+	logger.info("=== Phase 2: t-SNE Embedding ===")
+	early_filename, final_filename = cluster(
+		matrix_path=matrix_file,
+		matrix_metadata_path=metadata_file,
+		output=output,
+		perplexity=perplexity,
+		iterations=iterations,
+		exaggeration=exaggeration,
+		threads=threads,
+		metadata_protein=metadata_protein,
+		metadata_genome=metadata_genome,
+		force=force
+	)
 
-		if subset:
-			logger.info(f"Using provided subset: {subset}")
-			subset_fasta = subset
-		else:
-			logger.info("Creating random subset from input FASTA")
-			subset_fasta = fasta_subsample(fasta, output, subset_size, force=force)
+	# Phase 3: Plot generation
+	logger.info("=== Phase 3: Plot Generation ===")
+	casm_plot(
+		early_clust_path=early_filename,
+		full_clust_path=final_filename,
+		output=output
+	)
 
-		logger.info("=== Phase 1: DIAMOND Alignment ===")
-		align_output = run_diamond_alignment(fasta, subset_fasta, subset_size, threads)
+	logger.info("=== Complete CASM Analysis Completed ===")
 
-		logger.info("=== Phase 2: Matrix Construction ===")
-		matrix, queries, targets = build_alignment_matrix_split(align_output, output, force)
-
-		logger.info("=== Phase 3: t-SNE Embedding ===")
-		_, _, early_filename, final_filename = tsne_embedding(matrix=matrix,
-		                                                      queries=queries,
-		                                                      basename=output,
-		                                                      perplexity=perplexity,
-		                                                      iterations=iterations,
-		                                                      exaggeration=exaggeration,
-		                                                      threads=threads,
-		                                                      metadata_protein=metadata_protein,
-		                                                      metadata_genome=metadata_genome,
-		                                                      force=force
-		                                                      )
-
-		logger.info("=== Phase 4: Generating plots for early and full clustering ===")
-		casm_plot(early_filename, output=output)
-		casm_plot(final_filename, output=output)
-
-		logger.info("=== CASM Analysis Completed ===")
-
-	elif matrix:
-		logger.info("=== Starting Matrix Construction ===")
-		logger.info(f"Input FASTA: {fasta}")
-		logger.info(f"Output basename: {output}")
-		logger.info(f"Subset size: {subset_size}")
-		logger.info(f"Threads: {threads}")
-
-		if subset:
-			logger.info(f"Using provided subset: {subset}")
-			subset_fasta = subset
-		else:
-			logger.info("Creating random subset from input FASTA")
-			subset_fasta = fasta_subsample(fasta, output, subset_size, force=force)
-
-		logger.info("=== Phase 1: DIAMOND Alignment ===")
-		align_output = run_diamond_alignment(fasta, subset_fasta, subset_size, threads)
-
-		logger.info("=== Phase 2: Matrix Construction ===")
-		build_alignment_matrix_split(align_output, output, force)
-
-	elif embed:
-		logger.info("=== t-SNE Embedding ===")
-		matrix, queries, targets = load_alignment_matrix_from_file(matrix_path, matrix_metadata_path)
-		tsne_embedding(matrix=matrix,
-                       queries=queries,
-                       basename=output,
-                       perplexity=perplexity,
-                       iterations=iterations,
-                       exaggeration=exaggeration,
-                       threads=threads,
-                       metadata_protein=metadata_protein,
-                       metadata_genome=metadata_genome,
-		               force=force
-                       )
-
-	elif plot:
-		logger.info("=== Generating plots for early and full clustering ===")
-		casm_plot(early_clust_path, output=output)
-		casm_plot(full_clust_path, output=output)
+	return {
+		"matrix_file": matrix_file,
+		"metadata_file": metadata_file,
+		"early_embedding": early_filename,
+		"final_embedding": final_filename
+	}
 
