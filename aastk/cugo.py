@@ -376,7 +376,7 @@ def get_file_id_from_gff_name(gff_name: str) -> str:
 # FUNCTION DEFINITIONS FOR CUGO PLOTTING
 # ======================================
 def load_cugo_context(path: str):
-    return pd.read_csv(path, sep='\t', na_values=, keep_default_na=False)
+    return pd.read_csv(path, sep='\t', na_values='', keep_default_na=False)
 
 def extract_flanking_window(df: pd.DataFrame, lower: int, upper: int):
     flank_list = list(range(lower, upper + 1))
