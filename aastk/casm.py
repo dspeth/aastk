@@ -2,7 +2,7 @@ import json
 
 from .util import *
 
-import sys
+import logging
 import random
 import numpy as np
 import subprocess
@@ -11,8 +11,7 @@ import openTSNE
 from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
 
-
-
+logger = logging.getLogger(__name__)
 
 def fasta_subsample(fasta: str,
                     output_dir: str,

@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
 from pathlib import Path
 from typing import Optional
-import pandas as pd
-import logging
 import shutil
-
-logger = logging.getLogger(__name__)
 
 def bin_mid(bin_series):
 	return bin_series.apply(lambda b: (b.left + b.right) / 2)

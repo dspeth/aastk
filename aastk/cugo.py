@@ -15,6 +15,8 @@ import sys
 import tarfile
 import gzip
 
+logger = logging.getLogger(__name__)
+
 # ===========================
 # CUGO GFF PARSER
 # ===========================

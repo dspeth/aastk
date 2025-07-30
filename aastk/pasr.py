@@ -6,12 +6,12 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import yaml
 import logging
-import sys
 import json
 from pathlib import Path
 import numpy as np
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
+logger = logging.getLogger(__name__)
 
 def build_protein_db(protein_name: str,
                      seed_fasta: str,
@@ -65,7 +65,7 @@ def build_protein_db(protein_name: str,
         _, stderr = proc.communicate()
 
         if stderr:
-            logger.error(stderr)
+            logger.log(99, stderr)
 
     except subprocess.CalledProcessError as e:
         logger.error(f"Error in building the DIAMOND database: {e}")
@@ -132,6 +132,9 @@ def search_protein_db(db_path: str,
     logger.info(f"Output path: {output_path}")
     logger.info(f"Using parameters: sensitivity={sensitivity_param}, block={block}, chunk={chunk}")
 
+    # =======================================
+    # DIAMOND blastp command construction
+    # =======================================
     cmd = ["diamond", "blastp",
            "-d", db_path,
            "-q", query_path,
@@ -149,12 +152,9 @@ def search_protein_db(db_path: str,
 
     logger.debug(f"Running command: {' '.join(cmd)}")
     # =======================================
-    # DIAMOND blastp command construction
-    # =======================================
-    try:
-    # =======================================
     # Execute DIAMOND blastp search
     # =======================================
+    try:
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,
