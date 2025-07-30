@@ -9,7 +9,7 @@ def logger_setup(silent: bool = False):
 
 	logger = logging.getLogger()
 	if silent:
-		logger.setLevel(logging.CRITICAL + 1)  # Unterdrückt alle normalen Logs
+		logger.setLevel(logging.CRITICAL + 1)
 	else:
 		logger.setLevel(logging.INFO)
 
