@@ -2,6 +2,10 @@
 from pathlib import Path
 from typing import Optional
 import shutil
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def bin_mid(bin_series):
 	return bin_series.apply(lambda b: (b.left + b.right) / 2)

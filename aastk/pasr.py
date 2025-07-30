@@ -164,7 +164,7 @@ def search_protein_db(db_path: str,
         _, stderr = proc.communicate()
 
         if stderr:
-            logger.error(stderr)
+            logger.log(99, stderr)
     except subprocess.CalledProcessError as e:
 
         logger.error(f"Error in DIAMOND blastp search: {e}")
@@ -194,6 +194,8 @@ def extract_matching_sequences(protein_name: str,
     Returns:
         out_fasta: Path to output FASTA file.
     """
+    print("DEBUG: Starting extract_matching_sequences")
+    print(f"DEBUG: 'logger' in globals(): {'logger' in globals()}")
     # ===============================
     # Output file setup
     # ===============================
