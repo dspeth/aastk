@@ -12,14 +12,6 @@ from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
 
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.DEBUG,  # or logging.INFO if you want less verbosity
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    stream=sys.stdout
-)
-logging.getLogger('matplotlib').setLevel(logging.WARNING)
-logging.getLogger("PIL").setLevel(logging.INFO)
 
 
 def fasta_subsample(fasta: str,
@@ -38,12 +30,10 @@ def fasta_subsample(fasta: str,
     Returns:
         output_path: Path to output subset fasta file
     """
-    logger.info(f"Starting FASTA subsampling from {fasta}")
     dataset = determine_dataset_name(fasta, '.', 0)
     output_file = f"{dataset}_subsample.faa"
     output_path = ensure_path(output_dir, output_file, force=force)
 
-    logger.debug(f"Reading FASTA file: {fasta}")
     sequences = read_fasta_to_dict(fasta)
     total_sequences = len(sequences)
     logger.info(f"Total sequences in FASTA: {total_sequences}")
@@ -53,17 +43,14 @@ def fasta_subsample(fasta: str,
             f"Requested subset size ({subset_size}) is larger than total sequences ({total_sequences}). Using all sequences.")
         subset_size = total_sequences
 
-    logger.info(f"Randomly sampling {subset_size} sequences from {total_sequences}")
     subset_keys = random.sample(list(sequences.keys()), subset_size)
     subset_dict = {k: sequences[k] for k in subset_keys}
 
-    logger.debug(f"Writing subset to: {output_path}")
     with open(output_path, 'w') as f:
         for header, seq in subset_dict.items():
             f.write(f">{header}\n")
             f.write(f'{seq}\n')
 
-    logger.info(f"Successfully created subset FASTA with {len(subset_dict)} sequences")
     return output_path
 
 def run_diamond_alignment(fasta: str,

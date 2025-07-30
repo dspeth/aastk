@@ -15,15 +15,6 @@ import sys
 import tarfile
 import gzip
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.DEBUG,  # or logging.INFO if you want less verbosity
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    stream=sys.stdout
-)
-logging.getLogger('matplotlib').setLevel(logging.WARNING)
-logging.getLogger('PIL').setLevel(logging.INFO)
-
 # ===========================
 # CUGO GFF PARSER
 # ===========================

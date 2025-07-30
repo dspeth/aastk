@@ -13,16 +13,6 @@ import numpy as np
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 
-# default logger writes to log file needs implementing
-logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    stream=sys.stdout
-)
-logging.getLogger('matplotlib').setLevel(logging.WARNING)
-logging.getLogger("PIL").setLevel(logging.INFO)
-
 def build_protein_db(protein_name: str,
                      seed_fasta: str,
                      threads: int,
@@ -60,14 +50,22 @@ def build_protein_db(protein_name: str,
            "--in", seed_fasta,
            "-d", db_path,
            "-p", str(threads)]
-    logger.debug(f"Running command: {' '.join(cmd)}")
+    logger.info(f"Running command: {' '.join(cmd)}")
 
     # ===============================
     # Execute DIAMOND makedb
     # ===============================
     try:
-        result = subprocess.run(cmd, check=True)
-        logger.debug(f"DIAMOND makedb output: {result.stdout}")
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        _, stderr = proc.communicate()
+
+        if stderr:
+            logger.error(stderr)
 
     except subprocess.CalledProcessError as e:
         logger.error(f"Error in building the DIAMOND database: {e}")
@@ -134,34 +132,39 @@ def search_protein_db(db_path: str,
     logger.info(f"Output path: {output_path}")
     logger.info(f"Using parameters: sensitivity={sensitivity_param}, block={block}, chunk={chunk}")
 
+    cmd = ["diamond", "blastp",
+           "-d", db_path,
+           "-q", query_path,
+           "-p", str(threads),
+           "-o", output_path,
+           "-k", str(1),
+           "--matrix", "blosum45",
+           "--masking", str(0),
+           "--outfmt", str(6), *columns,
+           "-b", str(block),
+           "-c", str(chunk),
+           "--min-score", str(50),
+           "--comp-based-stats", str(0),
+           sensitivity_param]
+
+    logger.debug(f"Running command: {' '.join(cmd)}")
     # =======================================
     # DIAMOND blastp command construction
     # =======================================
     try:
-        # create blastp db search command
-        cmd = ["diamond", "blastp",
-               "-d", db_path,
-               "-q", query_path,
-               "-p", str(threads),
-               "-o", output_path,
-               "-k", str(1),
-               "--matrix", "blosum45",
-               "--masking", str(0),
-               "--outfmt", str(6), *columns,
-               "-b", str(block),
-               "-c", str(chunk),
-               "--min-score", str(50),
-               "--comp-based-stats", str(0),
-               sensitivity_param]
-
-        logger.debug(f"Running command: {' '.join(cmd)}")
-
     # =======================================
     # Execute DIAMOND blastp search
     # =======================================
-        subprocess.run(cmd, check=True)
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        _, stderr = proc.communicate()
 
-
+        if stderr:
+            logger.error(stderr)
     except subprocess.CalledProcessError as e:
 
         logger.error(f"Error in DIAMOND blastp search: {e}")
@@ -345,7 +348,7 @@ def blast_score_ratio(protein_name: str,
         output_dir (str): Directory to save the BSR results.
         key_column (int): Column index in blast_tab to use for matching. (Default: 0 for 'qseqid')
         column_info_path (str): Path to file containing column names for the blast tabular output file to retrieve index of the score column
-        score column (int): Index of blast tabular output file's score column
+        score_column (int): Index of blast tabular output file's score column
         force (bool): If true, existing files/directories in output path are overwritten
 
     Returns:

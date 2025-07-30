@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 
+import logging
+from .log import logger_setup
 from aastk.cli import get_main_parser
 from aastk.pasr import *
 from aastk.cugo import *
 from aastk.casm import *
 
 def main():
+    logger = logger_setup()
+
     parser = get_main_parser()
     args = parser.parse_args()
 
