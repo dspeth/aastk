@@ -8,10 +8,10 @@ from aastk.cugo import *
 from aastk.casm import *
 
 def main():
-    logger = logger_setup()
-
     parser = get_main_parser()
     args = parser.parse_args()
+
+    logger = logger_setup(silent=args.silent)
 
     # If no subcommand is specified, print help
     if not args.subparser_name:

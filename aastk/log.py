@@ -3,12 +3,16 @@ import sys
 from datetime import datetime
 
 
-def logger_setup():
+def logger_setup(silent: bool = False):
 	timestamp = datetime.now().isoformat(timespec='seconds').replace(":", "-")
 	subprocess_log_filename = f"aastk-subprocesses-{timestamp}.log"
 
 	logger = logging.getLogger()
-	logger.setLevel(logging.INFO)
+	if silent:
+		logger.setLevel(logging.CRITICAL + 1)  # Unterdrückt alle normalen Logs
+	else:
+		logger.setLevel(logging.INFO)
+
 	logger.handlers.clear()
 
 	# StreamHandler to print INFO level messages to stdout
@@ -18,7 +22,7 @@ def logger_setup():
 	console_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
 
 	# FileHandler to write custom level messages (for subprocesses) to file
-	file_handler = logging.FileHandler(subprocess_log_filename)
+	file_handler = logging.FileHandler(subprocess_log_filename, delay=True)
 	file_handler.setLevel(99)
 	file_handler.setFormatter(logging.Formatter('%(asctime)s SUBPROCESS %(message)s'))
 
