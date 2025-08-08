@@ -259,7 +259,6 @@ def get_main_parser():
     ### PARSER FOR PASR FUNCTIONALITIES AND WORKFLOW ###
     with subparser(sub_parsers, 'build', 'Build DIAMOND database from seed sequence(s)') as parser:
         with arg_group(parser, 'Required arguments') as grp:
-            __protein_name(grp, required=True)
             __seed(grp, required=True)
             __db(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
@@ -270,7 +269,6 @@ def get_main_parser():
         with arg_group(parser, 'Required arguments') as grp:
             __db(grp, required=True),
             __query(grp, required=True),
-            __protein_name(grp, required=True),
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __threads(grp)
@@ -281,17 +279,15 @@ def get_main_parser():
 
     with subparser(sub_parsers, 'extract', 'Extract reads that have DIAMOND hits against custom database') as parser:
         with arg_group(parser, 'Required arguments') as grp:
-            __protein_name(grp, required=True)
             __tabular(grp, required=True),
             __query(grp, required=True),
-            __output(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
+            __output(grp)
             __key_column(grp)
             __force(grp)
 
     with subparser(sub_parsers, 'calculate', 'Calculate max scores for extracted sequences using BLOSUM matrix') as parser:
         with arg_group(parser, 'Required arguments') as grp:
-            __protein_name(grp, required=True)
             __extracted(grp, required=True)
             __matrix(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
@@ -303,7 +299,6 @@ def get_main_parser():
             __column_info_path(grp)
             __score_column(grp)
         with arg_group(parser, 'Required arguments') as grp:
-            __protein_name(grp, required=True)
             __tabular(grp, required=True)
             __max_scores(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
@@ -321,17 +316,21 @@ def get_main_parser():
             __update(grp)
             __yaml(grp)
 
-    with subparser(sub_parsers, 'metadata', 'Create a metadata file for dataset update') as parser:
+    with subparser(sub_parsers, 'metadata', 'Create a metadata file for dataset update', ) as parser:
+        # for consistent naming of analysis files; it is unlikely that users will create metadata without access to one of these files
+        with mutex_group(parser, required=True) as grp:
+            __seed(grp)
+            __bsr(grp)
         with mutex_group(parser, required=True) as grp:
             __dbmin(grp)
             __bsr_cutoff(grp)
         with arg_group(parser, 'Required arguments') as grp:
             __selfmax(grp, required=True)
             __selfmin(grp, required=True)
-            __protein_name(grp)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __force(grp)
+
 
     with subparser(sub_parsers, 'select', 'Select target sequences in accordance with metadata cutoffs') as parser:
         with mutex_group(parser, required=True) as grp:
@@ -353,7 +352,6 @@ def get_main_parser():
     with subparser(sub_parsers, 'pasr', 'PASR: protein alignment score ratio') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __matrix(grp, required=True)
-            __protein_name(grp, required=True)
             __query(grp, required=True)
             __seed(grp, required=True)
         with arg_group(parser, 'Optional') as grp:

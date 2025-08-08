@@ -10,6 +10,12 @@ logger = logging.getLogger(__name__)
 def bin_mid(bin_series):
 	return bin_series.apply(lambda b: (b.left + b.right) / 2)
 
+def check_dependency_availability(command: str):
+	if shutil.which(command) is None:
+		logger.error(f"Command not found in PATH: {command}")
+		raise FileNotFoundError(f"Command not found in PATH: {command}")
+
+
 def count_fasta_sequences(fasta_path: str) -> int:
 	with open(fasta_path, 'r') as f:
 		return sum(1 for line in f if line.startswith('>'))

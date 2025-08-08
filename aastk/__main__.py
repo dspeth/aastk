@@ -23,17 +23,15 @@ def main():
         if args.subparser_name == 'build':
             db_path = build_protein_db(
                 db_dir=args.db,
-                protein_name=args.protein_name,
                 seed_fasta=args.seed,
                 threads=args.threads,
                 force=args.force
             )
 
         elif args.subparser_name == 'search':
-            search_results = search_protein_db(
+            search_protein_db(
                 db_path=args.db,
                 query_path=args.query,
-                protein_name=args.protein_name,
                 output_dir=args.output,
                 threads=args.threads,
                 sensitivity=args.sensitivity,
@@ -44,7 +42,6 @@ def main():
 
         elif args.subparser_name == 'extract':
             extract_matching_sequences(
-                protein_name=args.protein_name,
                 blast_tab=args.tabular,
                 query_path=args.query,
                 output_dir=args.output,
@@ -54,7 +51,6 @@ def main():
 
         elif args.subparser_name == 'calculate':
             calculate_max_scores(
-                protein_name=args.protein_name,
                 extracted=args.extracted,
                 matrix=args.matrix,
                 output_dir=args.output
@@ -62,7 +58,6 @@ def main():
 
         elif args.subparser_name == 'bsr':
             blast_score_ratio(
-                protein_name=args.protein_name,
                 blast_tab=args.tabular,
                 max_scores_path=args.max_scores,
                 output_dir=args.output,
@@ -74,7 +69,6 @@ def main():
 
         elif args.subparser_name == 'pasr_plot':
             plot_bsr(
-                protein_name=args.protein_name,
                 bsr_file=args.bsr,
                 output_dir=args.output,
                 yaml_path=args.yaml,
@@ -89,7 +83,6 @@ def main():
                 dbmin=args.dbmin,
                 bsr=args.bsr_cutoff,
                 output_dir=args.output,
-                protein_name=args.protein_name,
                 force=args.force
             )
 
@@ -103,7 +96,6 @@ def main():
                 selfmax=args.selfmax,
                 dbmin=args.dbmin,
                 bsr=args.bsr_cutoff,
-                protein_name=args.protein_name,
                 force=args.force,
                 create_yaml=args.create_yaml,
                 params=args.params
@@ -111,7 +103,6 @@ def main():
 
         elif args.subparser_name == 'pasr':
             pasr(
-                protein_name=args.protein_name,
                 seed_fasta=args.seed,
                 query_fasta=args.query,
                 matrix_name=args.matrix,
@@ -150,7 +141,6 @@ def main():
         elif args.subparser_name == 'cugo_plot':
             cugo_plot(
                 context_path=args.context_path,
-
                 flank_lower=args.flank_lower,
                 flank_upper=args.flank_upper,
                 top_n=args.top_n,
