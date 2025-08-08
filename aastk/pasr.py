@@ -988,7 +988,7 @@ def pasr(seed_fasta: str,
     # ===============================
     try:
         logger.info("Building protein database")
-        db_path = build_protein_db(protein_name, seed_fasta, threads, output_dir, force=force)
+        db_path = build_protein_db(seed_fasta, threads, output_dir, force=force)
         results['db_path'] = db_path
 
         # ===============================
