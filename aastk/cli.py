@@ -170,10 +170,6 @@ def __perplexity(group, required=False):
     group.add_argument('-p', '--perplexity', type=int, default=50, required=required,
                        help='Perplexity value for tSNE clustering')
 
-def __protein_name(group, required=False):
-    group.add_argument('-p', '--protein_name', type=str, default=None, required=required,
-                       help='Name of protein of interest')
-
 def __protein_ids(group, required=False):
     group.add_argument('-p', '--protein_ids', type=str, required=required,
                        help='Path to file containing list of protein IDs')
@@ -308,7 +304,6 @@ def get_main_parser():
 
     with subparser(sub_parsers, 'pasr_plot', 'Plot the Blast Score Ratio of query sequences against the DIAMOND database') as parser:
         with arg_group(parser, 'Required arguments') as grp:
-            __protein_name(grp, required=True)
             __bsr(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
@@ -377,13 +372,10 @@ def get_main_parser():
 
 
     with subparser(sub_parsers, 'context', 'Parse context information from CUGO input file') as parser:
-        with mutex_group(parser, required=True) as grp:
-            __protein_ids(grp)
-            __fasta(grp)
         with arg_group(parser, 'Required arguments') as grp:
+            __fasta(grp, required=True)
             __cugo_path(grp, required=True)
             __cugo_range(grp, required=True)
-            __protein_name(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __tmhmm_dir(grp)

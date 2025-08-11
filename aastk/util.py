@@ -152,7 +152,7 @@ def write_fa_matches(seq_file, ids):
 				sequence += line
 
 		if matching:
-			yield (header, sequence)
+			yield header, sequence
 
 
 def write_fq_matches(seq_file, ids):
@@ -185,5 +185,5 @@ def write_fq_matches(seq_file, ids):
 			elif line_count == 4:
 				line_count = 0  # Reset after each fastq record
 				if matching:
-					yield (header, sequence)
+					yield header, sequence
 

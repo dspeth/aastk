@@ -11,7 +11,6 @@ from matplotlib.cm import ScalarMappable, get_cmap
 from typing import Optional
 from pathlib import Path
 import yaml
-import sys
 import tarfile
 import gzip
 
@@ -767,48 +766,44 @@ def parse(tar_gz_path: str,
     logger.info(f'Successfully processed {file_count} files. Output saved to {output_path}')
 
 
-def context(protein_ids: Optional[str],
+def context(fasta_path: str,
             cugo_path: Path,
             cugo_range: int,
             output_dir: str,
-            protein_name: str,
             force: bool = False,
-            fasta_path: Optional[str] = None):
+            ):
     """
     Extract genomic context windows around target proteins from CUGO data.
 
     Args:
-        protein_ids: Path to file containing protein IDs
+        fasta_path: Path to FASTA file
         cugo_path: Path to CUGO file
         cugo_range: Range around target protein for context
         output_dir: Directory for output files
-        protein_name: Name for output files
-        force: Whether to overwrite existing files
-        fasta_path: Optional path to FASTA file
+        force: If true, existing files are overwritten
 
     Returns:
         str: Path to output context file
     """
-    log_file = ensure_path(output_dir, f'{protein_name}_missing_files.log', force=force)
-    logging.basicConfig(
-        filename=log_file,
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s'
-    )
-
     # load protein identifiers from fasta or id file
     if fasta_path:
-        dataset_name = determine_dataset_name(fasta_path, '.', 0)
-        output_file = ensure_path(output_dir, f'{dataset_name}_context.tsv', force=force)
+        protein_name = determine_dataset_name(fasta_path, '.', 0)
+        output_file = ensure_path(output_dir, f'{protein_name}_context.tsv', force=force)
         sequences = read_fasta_to_dict(fasta_path)
         protein_identifiers = list(sequences.keys())
-    elif protein_ids:
-        output_file = ensure_path(output_dir, f'{protein_name}_context.tsv', force=force)
-        with open(protein_ids, 'r') as id_file:
-            protein_identifiers = [line.strip() for line in id_file if line.strip()]
+
+        # setup special log file
+        log_file = ensure_path(output_dir, f'{protein_name}_missing_files.log', force=force)
+        logging.basicConfig(
+            filename=log_file,
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s'
+        )
     else:
-        logger.error('Either "fasta_path" or "protein_ids" must be provided.')
+        logger.error('Path to input FASTA file must be provided.')
         raise ValueError('You must provide either a FASTA file or a list of protein IDs.')
+
+
 
     # load cugo data
     with gzip.open(cugo_path, 'rt') as f:
@@ -1015,7 +1010,7 @@ def cugo(protein_ids: Optional[str],
         force=force
     )
 
-    # Determine plot file path
+    # determine plot file path
     dataset_name = context_file.removesuffix('_context.tsv')
     plot_file = f"{dataset_name}_cugo.png"
 

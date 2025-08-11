@@ -129,11 +129,9 @@ def main():
 
         elif args.subparser_name == 'context':
             context(
-                protein_ids=args.protein_ids,
                 cugo_path=args.cugo_path,
                 cugo_range=args.cugo_range,
                 output_dir=args.output,
-                protein_name=args.protein_name,
                 force=args.force,
                 fasta_path=args.fasta
             )
