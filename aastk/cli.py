@@ -130,6 +130,10 @@ def __key_column(group, required=False):
     group.add_argument('-k', '--key_column', type=int, default=0, required=required,
                        help='Column index in the BLAST tab file to pull unique IDs from (default is 0)')
 
+def __large(group, required=False):
+    group.add_argument('--large', action='store_true', required=required,
+                       help='Handle large datasets for CASM clustering')
+
 def __matched(group, required=False):
     group.add_argument('-m', '--matched', type=str, required=required,
                        help='FASTA file containing matched sequences from previous PASR run')
@@ -177,6 +181,10 @@ def __protein_ids(group, required=False):
 def __query(group, required=False):
     group.add_argument('-q', '--query', type=str, default=None, required=required,
                        help='Path to query FASTA')
+
+def __sample_size(group, required=False):
+    group.add_argument('-s', '--sample_size', type=int, default=10000, required=required,
+                       help='Sample size for large dataset downsampling')
 
 def __score_column(group, required=False):
     group.add_argument('-s', '--score_column', type=int, default=None, required=required,
@@ -378,7 +386,6 @@ def get_main_parser():
             __cugo_range(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
-            __tmhmm_dir(grp)
             __force(grp)
 
     with subparser(sub_parsers, 'cugo_plot', 'Plot CUGO context') as parser:
@@ -396,6 +403,23 @@ def get_main_parser():
             __output(grp)
             __force(grp)
 
+
+
+    with subparser(sub_parsers, 'cugo', 'CUGO: Co-localized gene organization') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __fasta(grp, required=True)
+            __cugo_path(grp, required=True)
+            __cugo_range(grp, required=True)
+            __context_path(grp, required=True)
+            __flank_lower(grp, required=True)
+            __flank_upper(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
+            __force(grp)
+            __top_n(grp)
+            __bin_width(grp)
+            __y_range(grp)
+            __output(grp)
 
     with subparser(sub_parsers, 'matrix', 'Create alignment matrix for tSNE embedding and DBSCAN clustering') as parser:
         with mutex_group(parser, required=True) as grp:
@@ -421,6 +445,8 @@ def get_main_parser():
             __metadata_protein(grp)
             __metadata_genome(grp)
             __force(grp)
+            __large(grp)
+            __sample_size(grp)
 
 
     with subparser(sub_parsers, 'casm_plot', 'Plot CASM .tsv output files') as parser:
@@ -449,6 +475,9 @@ def get_main_parser():
             __full_clust(grp)
             __matrix_path(grp)
             __metadata_matrix(grp)
+            __large(grp)
+            __sample_size(grp)
+
 
 
     return main_parser

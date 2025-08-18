@@ -767,7 +767,7 @@ def parse(tar_gz_path: str,
 
 
 def context(fasta_path: str,
-            cugo_path: Path,
+            cugo_path: str,
             cugo_range: int,
             output_dir: str,
             force: bool = False,
@@ -950,27 +950,23 @@ def cugo_plot(context_path: str,
 # CUGO COMMAND LINE WORKFLOW
 # ======================================
 
-def cugo(protein_ids: Optional[str],
-         cugo_path: Path,
+def cugo(cugo_path: str,
          cugo_range: int,
+         fasta_path: str,
          output_dir: str,
-         protein_name: str,
          flank_lower: int,
          flank_upper: int,
          top_n: int,
          force: bool = False,
-         fasta_path: Optional[str] = None,
          bin_width: int = 10,
          y_range: int = None):
     """
     Complete CUGO workflow: generate context data and create comprehensive plots.
 
     Args:
-        protein_ids: Path to file containing protein IDs
         cugo_path: Path to CUGO file
         cugo_range: Range around target protein for context
         output_dir: Directory for output files
-        protein_name: Name for output files
         flank_lower: Lower flank boundary for plotting
         flank_upper: Upper flank boundary for plotting
         top_n: Number of top COGs to display
@@ -984,13 +980,11 @@ def cugo(protein_ids: Optional[str],
     """
     # generate context data
     context_file = context(
-        protein_ids=protein_ids,
+        fasta_path=fasta_path,
         cugo_path=cugo_path,
         cugo_range=cugo_range,
         output_dir=output_dir,
-        protein_name=protein_name,
         force=force,
-        fasta_path=fasta_path
     )
 
     if context_file is None:

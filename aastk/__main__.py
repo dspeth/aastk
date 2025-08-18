@@ -129,11 +129,11 @@ def main():
 
         elif args.subparser_name == 'context':
             context(
+                fasta_path=args.fasta,
                 cugo_path=args.cugo_path,
                 cugo_range=args.cugo_range,
                 output_dir=args.output,
                 force=args.force,
-                fasta_path=args.fasta
             )
 
         elif args.subparser_name == 'cugo_plot':
@@ -149,6 +149,20 @@ def main():
                 bin_width=args.bin_width,
                 y_range=args.y_range,
                 force=args.force
+            )
+
+        elif args.subparser_name == 'cugo':
+            cugo(
+                cugo_path=args.cugo_path,
+                cugo_range=args.cugo_range,
+                fasta_path=args.fasta,
+                output_dir=args.output,
+                flank_lower=args.flank_lower,
+                flank_upper=args.flank_upper,
+                top_n=args.top_n,
+                force=args.force,
+                bin_width=args.bin_width,
+                y_range=args.y_range
             )
 
         ### PARSER FOR CASM FUNCTIONALITIES AND WORKFLOW ###
@@ -173,7 +187,9 @@ def main():
                 threads=args.threads,
                 metadata_protein=args.metadata_protein,
                 metadata_genome=args.metadata_genome,
-                force=args.force
+                force=args.force,
+                large=args.large,
+                sample_size=args.sample_size
             )
 
 
@@ -197,6 +213,8 @@ def main():
                 metadata_protein=args.metadata_protein,
                 metadata_genome=args.metadata_genome,
                 force=args.force,
+                large=args.large,
+                sample_size=args.sample_size
             )
 
     except Exception as e:
