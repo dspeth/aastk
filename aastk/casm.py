@@ -10,6 +10,7 @@ import pandas as pd
 import openTSNE
 from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
+import gc
 
 logger = logging.getLogger(__name__)
 
@@ -440,7 +441,6 @@ def tsne_embedding_large(matrix: np.ndarray,
     sample_indices = np.sort(sample_indices)
 
     sample_matrix = matrix[sample_indices]
-    sample_queries = [queries[i] for i in sample_indices]
 
     logger.info(f"Sample matrix shape: {sample_matrix.shape}")
 
@@ -470,10 +470,6 @@ def tsne_embedding_large(matrix: np.ndarray,
 
     # Step 4: Transform full dataset for early embedding
     logger.info("Transforming full dataset using early embedding")
-    full_affinities = openTSNE.affinity.Multiscale(matrix,
-                                                   perplexities=[20, perplexity],
-                                                   metric="cosine",
-                                                   n_jobs=threads)
 
     # Transform the full dataset
     early_embedding_full = tsne_embed.transform(matrix)
@@ -497,6 +493,12 @@ def tsne_embedding_large(matrix: np.ndarray,
     early_filename = ensure_path(target=f"{basename}_tsne_early_clust.tsv", force=force)
     early_df.to_csv(early_filename, sep="\t", index=False)
     logger.info(f"Early embedding saved to: {early_filename}")
+
+    del early_embedding_full
+    del early_df
+
+    gc.collect()
+
 
     # step 7: continue optimization on sample for final embedding
     logger.info("Starting final optimization on sample")
