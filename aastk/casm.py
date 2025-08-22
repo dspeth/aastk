@@ -502,15 +502,11 @@ def tsne_embedding_large(matrix: np.ndarray,
 
     # step 7: continue optimization on sample for final embedding
     logger.info("Starting final optimization on sample")
-    tsne_embed.optimize(n_iter=iterations,
-                        momentum=0.8,
-                        inplace=True,
-                        n_jobs=threads)
+    tsne_full = tsne_embed.prepare_partial(matrix)
+    final_embedding_full = tsne_full.optimize(n_iter=iterations, inplace=False)
+
     logger.info("Final optimization on sample completed")
 
-    # step 8: transform full dataset for final embedding
-    logger.info("Transforming full dataset using final embedding")
-    final_embedding_full = tsne_embed.transform(matrix)
 
     # step 9: save final embedding (using same cluster labels from early embedding)
     logger.debug("Saving final embedding results")
@@ -642,7 +638,7 @@ def matrix(fasta: str,
        subset_fasta = fasta_subsample(fasta, output, subset_size, force=force)
 
     logger.info("=== Phase 1: DIAMOND Alignment ===")
-    align_output = run_diamond_alignment(fasta, subset_fasta, subset_size, threads)
+    align_output = run_diamond_alignment(fasta, subset_fasta, subset_size, threads, force=force)
 
     logger.info("=== Phase 2: Matrix Construction ===")
     _, _, _, matrix_file, metadata_file = build_alignment_matrix_split(align_output, output, force)
@@ -726,7 +722,8 @@ def cluster(matrix_path: str,
 
 def casm_plot(early_clust_path: str,
         full_clust_path: str,
-        output: str):
+        output: str,
+        force: bool = False):
     """
     Generate t-SNE cluster visualization plots for early and final embeddings.
 
@@ -749,10 +746,10 @@ def casm_plot(early_clust_path: str,
 
     # Generate plots
     logger.info("Generating early clustering plot")
-    plot_clusters(early_clust_path, output=f"{output}_early")
+    plot_clusters(early_clust_path, output=f"{output}_early", force=force)
 
     logger.info("Generating full clustering plot")
-    plot_clusters(full_clust_path, output=f"{output}_final")
+    plot_clusters(full_clust_path, output=f"{output}_final", force=force)
 
     logger.info("=== Plot Generation Completed ===")
 
@@ -828,7 +825,8 @@ def casm(fasta: str,
     casm_plot(
         early_clust_path=early_filename,
         full_clust_path=final_filename,
-        output=output
+        output=output,
+        force=force
     )
 
     logger.info("=== Complete CASM Analysis Completed ===")
