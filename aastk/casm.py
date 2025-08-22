@@ -404,7 +404,7 @@ def tsne_embedding(matrix: np.ndarray,
                                           metadata_genome,
                                           )
 
-    final_filename = ensure_path(target=f"{basename}_tsne_embed.tsv", force=force)
+    final_filename = ensure_path(target=f"{basename}_tsne_final_clust.tsv", force=force)
     final_df.to_csv(final_filename, sep="\t", index=False)
     logger.info(f"Final embedding saved to: {final_filename}")
 
@@ -503,7 +503,7 @@ def tsne_embedding_large(matrix: np.ndarray,
     # step 7: continue optimization on sample for final embedding
     logger.info("Starting final optimization on sample")
     tsne_full = tsne_embed.prepare_partial(matrix)
-    final_embedding_full = tsne_full.optimize(n_iter=iterations, inplace=False)
+    final_embedding_full = tsne_full.optimize(n_iter=iterations, inplace=True)
 
     logger.info("Final optimization on sample completed")
 
@@ -517,7 +517,7 @@ def tsne_embedding_large(matrix: np.ndarray,
                                           metadata_protein,
                                           metadata_genome)
 
-    final_filename = ensure_path(target=f"{basename}_tsne_embed.tsv", force=force)
+    final_filename = ensure_path(target=f"{basename}_tsne_final_clust.tsv", force=force)
     final_df.to_csv(final_filename, sep="\t", index=False)
     logger.info(f"Final embedding saved to: {final_filename}")
 
@@ -593,9 +593,15 @@ def plot_clusters(tsv_file: str,
 
     plt.tight_layout()
 
+    if 'early_clust' in tsv_file:
+        prefix = tsv_file.replace('_tsne_early_clust.tsv', '')
+    elif 'final_clust' in tsv_file:
+        prefix = tsv_file.replace('_tsne_final_clust.tsv', '')
+    else:
+        raise ValueError(f"Unexpected TSV filename: {tsv_file}")
 
-    suffix = "_tsne_clusters.png"
-    output_file = ensure_path(output, suffix, force=force)
+    filename = f'{prefix}_tsne_clusters.png'
+    output_file = ensure_path(output, filename, force=force)
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     logger.info(f"Plot saved to: {output_file}")
 
@@ -746,10 +752,10 @@ def casm_plot(early_clust_path: str,
 
     # Generate plots
     logger.info("Generating early clustering plot")
-    plot_clusters(early_clust_path, output=f"{output}_early", force=force)
+    plot_clusters(early_clust_path, output=output, force=force)
 
     logger.info("Generating full clustering plot")
-    plot_clusters(full_clust_path, output=f"{output}_final", force=force)
+    plot_clusters(full_clust_path, output=output, force=force)
 
     logger.info("=== Plot Generation Completed ===")
 
