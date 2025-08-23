@@ -419,100 +419,101 @@ def large_scale_tsne_embedding(
     exaggeration: int,
     threads: int,
     sample_size: int = 10000,
+    batch_size: int = 5000,
     metadata_protein: str = None,
     metadata_genome: str = None,
     force: bool = False,
     random_state: int = 42,
 ):
     """
-    Large-scale t-SNE embedding with sample-first strategy and DBSCAN clustering.
-    Uses PerplexityBasedNN (not Multiscale) for scalability.
+    Large-scale t-SNE embedding with batch-wise prepare_partial.
+    Uses PerplexityBasedNN for scalability.
 
-    Saves early (exaggerated) and final embeddings with cluster labels to TSV files.
+    Saves early and final embeddings with cluster labels to TSV files.
+    Uses explicit deletion and garbage collection to reduce memory usage.
     """
-
+    matrix = matrix.astype(np.float32)
     n_samples = matrix.shape[0]
-    logger.info("Starting large-scale t-SNE embedding process")
-    logger.info(f"Matrix shape: {matrix.shape}")
-    logger.info(f"Perplexity: {perplexity}, Iterations: {iterations}, Exaggeration: {exaggeration}")
-    logger.info(f"Using {threads} threads")
-    logger.info(f"Sample size for large dataset strategy: {sample_size}")
 
-    # Small dataset → use standard approach
+    logger.info("Starting large-scale t-SNE embedding process")
+    logger.info(f"Matrix shape: {matrix.shape}, dtype: {matrix.dtype}")
+    logger.info(f"Perplexity: {perplexity}, Iterations: {iterations}, Exaggeration: {exaggeration}")
+    logger.info(f"Using {threads} threads, Sample size: {sample_size}, Batch size: {batch_size}")
+
     if n_samples <= sample_size:
         logger.info("Dataset within sample_size threshold, using standard t-SNE")
         return tsne_embedding(matrix, queries, basename, perplexity, iterations,
                               exaggeration, threads, metadata_protein, metadata_genome, force)
 
-    # Step 1: Sample representative subset
-    logger.info(f"Creating representative sample of {sample_size} from {n_samples} samples")
+    # --- Step 1: sample ---
     rng = np.random.default_rng(random_state)
     sample_indices = np.sort(rng.choice(n_samples, sample_size, replace=False))
     sample_matrix = matrix[sample_indices]
-    logger.info(f"Sample matrix shape: {sample_matrix.shape}")
 
-    # Step 2: Fit t-SNE on sample
-    logger.info("Computing affinities on sample")
     sample_affinities = openTSNE.affinity.PerplexityBasedNN(
         sample_matrix, perplexity=perplexity, n_jobs=threads, random_state=random_state
     )
-
-    logger.info("Initializing t-SNE with PCA on sample")
     pca_init = openTSNE.initialization.pca(sample_matrix, random_state=random_state)
 
-    tsne_sample = openTSNE.TSNE(
-        n_jobs=threads, verbose=True, random_state=random_state
-    ).fit(affinities=sample_affinities, initialization=pca_init)
+    tsne_sample = openTSNE.TSNE(n_jobs=threads, verbose=True, random_state=random_state)\
+                    .fit(affinities=sample_affinities, initialization=pca_init)
 
-    # Step 3: Place all points using prepare_partial (preserves order!)
-    logger.info("Placing all points into the embedding using prepare_partial")
-    init_full = tsne_sample.prepare_partial(
-        matrix,
-        initialization='median',
-        k=1
-    )
+    del sample_matrix, sample_affinities, pca_init
+    gc.collect()
 
-    # Step 4: Build affinities for full dataset
-    logger.info("Computing affinities for full dataset")
+    # optional stabilization
+    tsne_sample = openTSNE.TSNEEmbedding(tsne_sample, n_jobs=threads, dof=1, learning_rate="auto")
+    tsne_sample.optimize(n_iter=max(50, iterations // 10), exaggeration=exaggeration, momentum=0.5, inplace=True)
+    tsne_sample.optimize(n_iter=max(50, iterations // 10), momentum=0.8, inplace=True)
+
+    # --- Step 2: batch-wise placement of all points ---
+    logger.info(f"Placing all points in batches of {batch_size}")
+    all_coords = []
+    for start in range(0, n_samples, batch_size):
+        end = min(start + batch_size, n_samples)
+        batch = matrix[start:end]
+        batch_coords = np.asarray(tsne_sample.prepare_partial(batch, initialization="median", k=1))
+        all_coords.append(batch_coords)
+        del batch, batch_coords
+        gc.collect()
+    init_full_coords = np.vstack(all_coords)
+    del all_coords, tsne_sample
+    gc.collect()
+
+    # --- Step 3: full affinities ---
     full_affinities = openTSNE.affinity.PerplexityBasedNN(
         matrix, perplexity=perplexity, n_jobs=threads, random_state=random_state
     )
 
-    # Step 5: Optimize with exaggeration (early stage)
-    logger.info(f"Starting early optimization with exaggeration={exaggeration}")
-    embedding = openTSNE.TSNEEmbedding(
-        init_full, full_affinities, n_jobs=threads, dof=1, learning_rate="auto"
-    )
+    # --- Step 4: early optimization ---
+    embedding = openTSNE.TSNEEmbedding(init_full_coords, full_affinities, n_jobs=threads,
+                                       dof=1, learning_rate="auto")
+    del init_full_coords, full_affinities
+    gc.collect()
+
     embedding.optimize(n_iter=iterations, exaggeration=exaggeration, momentum=0.5, inplace=True)
-    logger.info("Early optimization completed")
 
-    # Step 6: DBSCAN clustering on early embedding
-    logger.info("Performing DBSCAN clustering on early embedding")
+    # --- Step 5: DBSCAN clustering ---
     clustering = DBSCAN(eps=1, min_samples=10).fit(embedding)
-    n_clusters = len(set(clustering.labels_)) - (1 if -1 in clustering.labels_ else 0)
-    n_noise = list(clustering.labels_).count(-1)
-    logger.info(f"DBSCAN clustering results: {n_clusters} clusters, {n_noise} noise points")
 
-    # Step 7: Save early embedding
-    early_df = create_embedding_dataframe(
-        embedding, queries, clustering.labels_, ["tsne1", "tsne2"], metadata_protein, metadata_genome
-    )
-    early_filename = ensure_path(target=f"{basename}_tsne_early_clust.tsv", force=force)
+    # --- Step 6: save early embedding ---
+    early_df = create_embedding_dataframe(embedding, queries, clustering.labels_,
+                                          ["tsne1", "tsne2"], metadata_protein, metadata_genome)
+    early_filename = ensure_path(f"{basename}_tsne_early_clust.tsv", force=force)
     early_df.to_csv(early_filename, sep="\t", index=False)
-    logger.info(f"Early embedding saved to: {early_filename}")
+    del early_df
+    gc.collect()
 
-    # Step 8: Final optimization (non-exaggerated)
-    logger.info("Starting final optimization")
+    # --- Step 7: final optimization ---
     embedding.optimize(n_iter=iterations, momentum=0.8, inplace=True)
-    logger.info("Final optimization completed")
 
-    # Step 9: Save final embedding
-    final_df = create_embedding_dataframe(
-        embedding, queries, clustering.labels_, ["tsne1", "tsne2"], metadata_protein, metadata_genome
-    )
-    final_filename = ensure_path(target=f"{basename}_tsne_final_clust.tsv", force=force)
+    # --- Step 8: save final embedding ---
+    final_df = create_embedding_dataframe(embedding, queries, clustering.labels_,
+                                          ["tsne1", "tsne2"], metadata_protein, metadata_genome)
+    final_filename = ensure_path(f"{basename}_tsne_final_clust.tsv", force=force)
     final_df.to_csv(final_filename, sep="\t", index=False)
-    logger.info(f"Final embedding saved to: {final_filename}")
+    del final_df, embedding
+    gc.collect()
 
     return early_filename, final_filename
 
