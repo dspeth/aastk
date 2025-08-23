@@ -410,6 +410,11 @@ def tsne_embedding(matrix: np.ndarray,
 
     return early_filename, final_filename
 
+import numpy as np
+import openTSNE
+from sklearn.cluster import DBSCAN
+import gc
+
 def large_scale_tsne_embedding(
     matrix: np.ndarray,
     queries: list,
@@ -488,7 +493,7 @@ def large_scale_tsne_embedding(
     # --- Step 4: early optimization ---
     embedding = openTSNE.TSNEEmbedding(init_full_coords, full_affinities, n_jobs=threads,
                                        dof=1, learning_rate="auto")
-    del init_full_coords, full_affinities
+    del init_full_coords
     gc.collect()
 
     embedding.optimize(n_iter=iterations, exaggeration=exaggeration, momentum=0.5, inplace=True)
@@ -512,10 +517,13 @@ def large_scale_tsne_embedding(
                                           ["tsne1", "tsne2"], metadata_protein, metadata_genome)
     final_filename = ensure_path(f"{basename}_tsne_final_clust.tsv", force=force)
     final_df.to_csv(final_filename, sep="\t", index=False)
-    del final_df, embedding
+
+    # cleanup
+    del final_df, embedding, full_affinities, matrix
     gc.collect()
 
     return early_filename, final_filename
+
 
 
 
