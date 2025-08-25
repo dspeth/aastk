@@ -264,8 +264,8 @@ def create_embedding_file(output_file: str,
                           ):
     logger.info(f"Creating embedding TSV with {len(queries)} proteins")
 
-    loci = [prot_id.astype(str).str.rsplit("_", n=1).str[1] for prot_id in queries]
-    genome_ids = [prot_id.astype(str).str.rsplit("_", n=1).str[0] for prot_id in queries]
+    loci = [prot_id.rsplit("_", 1)[1] for prot_id in queries]
+    genome_ids = [prot_id.rsplit("_", 1)[0] for prot_id in queries]
 
     with open(output_file, "w", encoding="utf-8") as f:
         base_cols = ["prot_ID", "locus_nr", "genome_ID"] + col_names + ["cluster"]
