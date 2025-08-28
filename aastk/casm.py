@@ -10,7 +10,6 @@ import pandas as pd
 import openTSNE
 from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
-import gc
 
 logger = logging.getLogger(__name__)
 
