@@ -19,59 +19,32 @@ logger = logging.getLogger(__name__)
 # ===========================
 # CUGO GFF PARSER
 # ===========================
-def get_tmhmm_data_for_file(tmhmm_tar: tarfile.TarFile,
-                            file_id: str):
-    """
-    Retrieves TMHMM data for a given protein ID from a tar archive.
+def index_tmhmm_tar(tmhmm_tar: tarfile.TarFile) -> dict:
+    """Builds an index mapping file_id -> TarInfo for TMHMM files."""
+    index = {}
+    for m in tmhmm_tar.getmembers():
+        if m.isfile() and m.name.endswith("_tmhmm_clean.gz"):
+            file_id = os.path.basename(m.name).replace("_tmhmm_clean.gz", "")
+            index[file_id] = m
+    return index
 
-    Args:
-        tmhmm_tar (tarfile.TarFile): opened tar file containing tmhmm prediction files
-        file_id (str): identifier to construct target filename '{file_id}_tmhmm_clean.gz'
-
-    Returns:
-        dict: mapping of protein ids to transmembrane helix counts
-    """
-    # construct expected filename within tar archive
-    tmhmm_filename = f'{file_id}_tmhmm_clean.gz'
-
-    # search through all members in tar archive
-    for member in tmhmm_tar.getmembers():
-        # check if this member matches target filename
-        if member.name.endswith(tmhmm_filename):
-            # extract file object from tar archive
-            file_obj = tmhmm_tar.extractfile(member)
-            if file_obj is None:
-                # file exists but couldn't be extracted
-                return {}
-
-            try:
-                # decompress gzipped content and decode to string
-                content = gzip.decompress(file_obj.read()).decode('utf-8')
-                file_tmhmm = {}
-
-                # parse each line of tmhmm output file
-                for line in content.strip().split('\n'):
-                    # skip header line
-                    if line.startswith('prot_ID'):
-                        continue
-
-                    # split tab-separated values
-                    parts = line.strip().split('\t')
-
-                    # ensure we have at least protein id and tmh count
-                    if len(parts) >= 2:
-                        prot_id = parts[0]  # protein identifier
-                        no_tmh = int(parts[1])  # number of transmembrane helices
-                        file_tmhmm[prot_id] = no_tmh
-
-                return file_tmhmm
-
-            except Exception:
-                # handle parsing errors
-                return {}
-
-    # return empty dict if target file not found
-    return {}
+def read_tmhmm_file(tmhmm_tar: tarfile.TarFile, member: tarfile.TarInfo) -> dict:
+    """Extracts TMHMM predictions from a single tar member."""
+    file_obj = tmhmm_tar.extractfile(member)
+    if not file_obj:
+        return {}
+    try:
+        content = gzip.decompress(file_obj.read()).decode("utf-8")
+    except OSError:
+        content = file_obj.read().decode("utf-8")
+    file_tmhmm = {}
+    for line in content.splitlines():
+        if line.startswith("prot_ID"):
+            continue
+        parts = line.split("\t")
+        if len(parts) >= 2:
+            file_tmhmm[parts[0]] = int(parts[1])
+    return file_tmhmm
 
 
 def extract_gene_info(line: list, tmhmm_dict: dict) -> tuple:
@@ -687,83 +660,75 @@ def parse(tar_gz_path: str,
         globdb_version: Version number for output file naming
         force: Whether to overwrite existing files
     """
-    output_path = ensure_path(output_dir, f'globdb_r{globdb_version}_cugo', force=force)
+    output_path = ensure_path(output_dir, f"globdb_r{globdb_version}_cugo", force=force)
 
     file_count = 0
-    columns = ['seqID', 'parent_ID', 'aa_length', 'strand', 'COG_ID', 'CUGO_number', 'no_TMH']
+    columns = ["seqID", "parent_ID", "aa_length", "strand", "COG_ID", "CUGO_number", "no_TMH"]
 
-    with open(output_path, 'w') as output_file:
-        output_file.write('\t'.join(columns) + '\n')
+    with open(output_path, "w") as output_file:
+        output_file.write("\t".join(columns) + "\n")
 
         try:
-            with tarfile.open(tar_gz_path, 'r:gz') as gff_tar:
-                # open tmhmm tar only if path is provided
+            with tarfile.open(tar_gz_path, "r:gz") as gff_tar:
                 tmhmm_tar = None
+                tmhmm_index = {}
+
                 if tmhmm_tar_path:
-                    tmhmm_tar = tarfile.open(tmhmm_tar_path, 'r:gz')
+                    tmhmm_tar = tarfile.open(tmhmm_tar_path, "r:gz")
+                    tmhmm_index = index_tmhmm_tar(tmhmm_tar)
 
                 try:
                     members = gff_tar.getmembers()
-                    total_files = len([m for m in members if '_cog.gff' in m.name])
+                    total_files = len([m for m in members if m.isfile() and m.name.endswith("_cog.gff")])
 
-                    logger.info(f'Found {total_files} GFF files to process')
-                    if tmhmm_tar_path:
-                        logger.info('TMHMM data will be included')
-                    else:
-                        logger.info('TMHMM data will be skipped (no TMHMM tar file provided)')
+                    logger.info(f"Found {total_files} GFF files to process")
+                    logger.info("TMHMM data will be included" if tmhmm_tar else "TMHMM data will be skipped")
 
                     for member in members:
-                        if '_cog.gff' not in member.name:
+                        if not member.isfile() or not member.name.endswith("_cog.gff"):
                             continue
 
                         file_count += 1
-
-                        # extract file id and get corresponding tmhmm data
-                        file_id = get_file_id_from_gff_name(member.name)
+                        file_id = get_file_id_from_gff_name(os.path.basename(member.name))
                         file_tmhmm = {}
 
-                        if tmhmm_tar:
-                            tmhmm_data = get_tmhmm_data_for_file(tmhmm_tar, file_id)
-                            if tmhmm_data:
-                                file_tmhmm = tmhmm_data
-                            else:
-                                logger.warning(f'No TMHMM data found for {file_id}')
+                        if tmhmm_tar and file_id in tmhmm_index:
+                            file_tmhmm = read_tmhmm_file(tmhmm_tar, tmhmm_index[file_id])
+                            if not file_tmhmm:
+                                logger.warning(f"No TMHMM data parsed for {file_id}")
 
-                        # extract and process gff file
                         file_obj = gff_tar.extractfile(member)
-                        if file_obj is None:
-                            logger.warning(f'Could not extract {member.name}')
+                        if not file_obj:
+                            logger.warning(f"Could not extract {member.name}")
                             continue
 
                         try:
-                            # handle compressed files
-                            if member.name.endswith('.gz'):
-                                content = gzip.decompress(file_obj.read()).decode('utf-8')
+                            if member.name.endswith(".gz"):
+                                content = gzip.decompress(file_obj.read()).decode("utf-8")
                             else:
-                                content = file_obj.read().decode('utf-8')
+                                content = file_obj.read().decode("utf-8")
 
                             file_data = parse_single_gff(content, file_tmhmm)
 
-                            # write parsed data to output
                             for row in file_data:
-                                output_file.write('\t'.join(map(str, row)) + '\n')
+                                output_file.write("\t".join(map(str, row)) + "\n")
 
                         except Exception as e:
-                            logger.error(f'Error processing {member.name}: {str(e)}')
+                            logger.error(f"Error processing {member.name}: {e}")
                             continue
 
                         if file_count % 1000 == 0:
-                            logger.info(f'Processed {file_count}/{total_files} files')
+                            logger.info(f"Processed {file_count}/{total_files} files")
 
                 finally:
                     if tmhmm_tar:
                         tmhmm_tar.close()
 
         except Exception as e:
-            logger.error(f'Error processing tar.gz file: {str(e)}')
+            logger.error(f"Error processing tar.gz file: {e}")
             raise
 
-    logger.info(f'Successfully processed {file_count} files. Output saved to {output_path}')
+    logger.info(f"Successfully processed {file_count} files. Output saved to {output_path}")
 
 
 def context(fasta_path: str,
