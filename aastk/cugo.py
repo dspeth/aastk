@@ -348,18 +348,11 @@ def process_gff_file(filepath: str):
         return []
 
 
-def process_tmhmm_file(args):
-    tmhmm_tar_path, tmhmm_filepath = args
+def process_tmhmm_file(tmhmm_filepath):
     try:
-        with tarfile.open(tmhmm_tar_path, 'r:gz') as tmhmm_tar:
-            file_obj = tmhmm_tar.extractfile(tmhmm_filepath)
-            if file_obj is None:
-                return []
-
-            content = file_obj.read().decode('utf-8')
+        with open(tmhmm_filepath, 'r') as f:
             tmhmm_data = []
-
-            for line in content.strip().splitlines():
+            for line in f:
                 if line.startswith('prot_ID'):
                     continue
                 parts = line.strip().split('\t')
@@ -371,9 +364,8 @@ def process_tmhmm_file(args):
                         no_tmh = 0
                     tmhmm_data.append((prot_id, no_tmh))
         return tmhmm_data
-    except Exception as e:
+    except Exception:
         return []
-
 
 def export_to_tsv(db_path: str, output_tsv: str):
     """Export merged data from SQLite to TSV"""
@@ -422,7 +414,6 @@ def parse(gff_tar_path: str,
 
     logger.info(f"Using {n_processes} threads")
 
-
     if output_dir is None:
         output_dir = '.'
 
@@ -440,6 +431,9 @@ def parse(gff_tar_path: str,
     tmhmm_files = list(tempdir.rglob("*_tmhmm_clean"))
 
     logger.info(f"Found {len(gff_files)} GFF files and {len(tmhmm_files)} TMHMM files")
+
+    conn = setup_database(db_path)
+    conn.close()
 
     conn = sqlite3.connect(db_path)
     gff_args = [str(f) for f in gff_files]  # list of file paths
