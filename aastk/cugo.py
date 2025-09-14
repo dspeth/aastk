@@ -432,7 +432,7 @@ def parse(gff_tar_path: str,
         shutil.rmtree(tempdir)
     tempdir.mkdir(parents=True, exist_ok=True)
 
-    #subprocess.run(["tar", "-xzf", gff_tar_path, "-C", str(tempdir)], check=True)
+    subprocess.run(["tar", "-xzf", gff_tar_path, "-C", str(tempdir)], check=True)
     if tmhmm_tar_path:
         subprocess.run(["tar", "-xzf", tmhmm_tar_path, "-C", str(tempdir)], check=True)
 
