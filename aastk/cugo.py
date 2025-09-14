@@ -19,32 +19,59 @@ logger = logging.getLogger(__name__)
 # ===========================
 # CUGO GFF PARSER
 # ===========================
-def index_tmhmm_tar(tmhmm_tar: tarfile.TarFile) -> dict:
-    """Builds an index mapping file_id -> TarInfo for TMHMM files."""
+
+def build_tmhmm_index(tmhmm_tar: tarfile.TarFile) -> dict:
     index = {}
-    for m in tmhmm_tar.getmembers():
-        if m.isfile() and m.name.endswith("_tmhmm_clean.gz"):
-            file_id = os.path.basename(m.name).replace("_tmhmm_clean.gz", "")
-            index[file_id] = m
+    for member in tmhmm_tar.getmembers():
+        if member.isfile() and member.name.endswith("_tmhmm_clean"):
+            path = Path(member.name)
+            prefix = path.stem.removesuffix("_tmhmm_clean")
+            index[prefix] = str(path)
     return index
 
-def read_tmhmm_file(tmhmm_tar: tarfile.TarFile, member: tarfile.TarInfo) -> dict:
-    """Extracts TMHMM predictions from a single tar member."""
-    file_obj = tmhmm_tar.extractfile(member)
-    if not file_obj:
+def get_tmhmm_data_for_file(tmhmm_tar: tarfile.TarFile,
+                            file_id: str):
+    """
+    Retrieves TMHMM data for a given protein ID from a tar archive.
+
+    Args:
+        tmhmm_tar (tarfile.TarFile): opened tar file containing tmhmm prediction files
+        file_id (str): identifier to construct target filename '{file_id}_tmhmm_clean.gz'
+
+    Returns:
+        dict: mapping of protein ids to transmembrane helix counts
+    """
+    # build/cache the index on the function object
+    if not hasattr(get_tmhmm_data_for_file, "_tmhmm_index"):
+        get_tmhmm_data_for_file._tmhmm_index = build_tmhmm_index(tmhmm_tar)
+
+    tmhmm_index = get_tmhmm_data_for_file._tmhmm_index
+    tmhmm_filename = f"{file_id}_tmhmm_clean"
+    member = tmhmm_index.get(file_id)
+    if not member:
         return {}
+
+    file_obj = tmhmm_tar.extractfile(member)
+    if file_obj is None:
+        return {}
+
     try:
-        content = gzip.decompress(file_obj.read()).decode("utf-8")
-    except OSError:
-        content = file_obj.read().decode("utf-8")
-    file_tmhmm = {}
-    for line in content.splitlines():
-        if line.startswith("prot_ID"):
-            continue
-        parts = line.split("\t")
-        if len(parts) >= 2:
-            file_tmhmm[parts[0]] = int(parts[1])
-    return file_tmhmm
+        content = file_obj.read().decode('utf-8')
+        file_tmhmm = {}
+
+        for line in content.strip().splitlines():
+            if line.startswith('prot_ID'):
+                continue
+            parts = line.strip().split('\t')
+            if len(parts) >= 2:
+                prot_id = parts[0].replace('___', '__')
+                no_tmh = int(parts[1])
+                file_tmhmm[prot_id] = no_tmh
+
+        return file_tmhmm
+    except Exception as e:
+        print(f"Error parsing {tmhmm_filename}: {e}")
+        return {}
 
 
 def extract_gene_info(line: list, tmhmm_dict: dict) -> tuple:
@@ -82,7 +109,7 @@ def extract_gene_info(line: list, tmhmm_dict: dict) -> tuple:
     aa_length = int(nuc_length / 3)  # amino acid length
 
     # get transmembrane helix count from tmhmm data
-    no_tmh = tmhmm_dict.get(COG_ID, 0)
+    no_tmh = tmhmm_dict.get(seqID, 0)
 
     return seqID, COG_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length, no_tmh
 
@@ -335,6 +362,244 @@ def get_file_id_from_gff_name(gff_name: str) -> str:
     if '_cog.gff' in base_name:
         return base_name.split('_cog.gff')[0]
     return base_name
+
+
+def extract_tmhmm_column(tmhmm_tar: tarfile.TarFile, tmhmm_filepath: str):
+    """Extract just the no_TMH values in order from TMHMM file"""
+    file_obj = tmhmm_tar.extractfile(tmhmm_filepath)
+    if file_obj is None:
+        return []
+
+    try:
+        content = file_obj.read().decode('utf-8')
+        tmh_values = []
+
+        for line in content.strip().splitlines():
+            if line.startswith('prot_ID'):
+                continue
+            parts = line.strip().split('\t')
+            if len(parts) >= 2:
+                try:
+                    no_tmh = int(parts[1])
+                    tmh_values.append(no_tmh)
+                except ValueError:
+                    tmh_values.append(0)  # Default for invalid values
+
+        return tmh_values
+    except Exception as e:
+        print(f"Error parsing {tmhmm_filepath}: {e}")
+        return []
+
+
+def parse_single_gff_with_tmh_column(gff_content: str, tmh_values: list) -> list:
+    """
+    Modified version that takes pre-extracted TMH values in order
+    """
+    reformat_data = []
+    cugo_size = {}
+    cugo_count = prev_direction = prev_parent = prev_feat_type = prev_cugo = 0
+    cugo_size_count = 0
+    prev_line = None
+    cds_count = 0
+    tmh_index = 0  # Track position in TMH values
+
+    lines = gff_content.strip().split('\n')
+
+    for line_count, line in enumerate(lines, 1):
+        clean_line = line.strip().split('\t')
+
+        if len(clean_line) != 9:
+            continue
+
+        feat_type = clean_line[2]
+        if feat_type == 'CDS':
+            cds_count += 1
+
+        if feat_type != 'CDS' and prev_feat_type != 'CDS':
+            continue
+        prev_feat_type = feat_type
+
+        if prev_line is None:
+            prev_line = clean_line
+            continue
+
+        # Extract gene info (without TMH lookup)
+        seqID, COG_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length = extract_gene_info_no_tmh(
+            prev_line)
+
+        # Get TMH value by index instead of lookup
+        no_tmh = 0
+        if tmh_index < len(tmh_values):
+            no_tmh = tmh_values[tmh_index]
+            tmh_index += 1
+
+        next_parent = clean_line[0]
+        next_direction = clean_line[6]
+
+        cugo, cugo_start, cugo_end, cugo_count, cugo_size_count = cugo_boundaries(
+            direction, prev_direction, next_direction,
+            parent, prev_parent, next_parent,
+            cugo_count, cugo_size, cugo_size_count, prev_cugo
+        )
+
+        reformat_data.append([seqID, parent, gene_start, gene_end, nuc_length, aa_length,
+                              direction, COG_ID, cugo, cugo_start, cugo_end, no_tmh])
+
+        prev_line = clean_line
+        prev_direction = direction
+        prev_parent = parent
+        prev_cugo = cugo
+
+    # Handle last line
+    if len(clean_line) == 9 and clean_line[2] == 'CDS':
+        seqID, COG_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length = extract_gene_info_no_tmh(
+            clean_line)
+
+        no_tmh = 0
+        if tmh_index < len(tmh_values):
+            no_tmh = tmh_values[tmh_index]
+
+        cugo, cugo_start, cugo_end, cugo_count, cugo_size_count = cugo_boundaries(
+            direction, prev_direction, None,
+            parent, prev_parent, None,
+            cugo_count, cugo_size, cugo_size_count, prev_cugo
+        )
+
+        reformat_data.append([seqID, parent, gene_start, gene_end, nuc_length, aa_length,
+                              direction, COG_ID, cugo, cugo_start, cugo_end, no_tmh])
+
+        cugo_size[cugo] = cugo_size_count
+
+    # Extract final data
+    final_data = []
+    for row in reformat_data:
+        seqID = row[0]
+        parent_ID = row[1]
+        aa_length = row[5]
+        strand = row[6]
+        COG_ID = row[7]
+        cugo_number = row[8]
+        no_tmh = row[11]
+
+        final_data.append([seqID, parent_ID, aa_length, strand, COG_ID, cugo_number, no_tmh])
+
+    return final_data
+
+
+def extract_gene_info_no_tmh(line: list) -> tuple:
+    """Modified version without TMH lookup"""
+    annotation = line[8].split(';')
+    seqID = annotation[0].split('=')[1].replace('__', '_')
+    COG_ID = annotation[1].split('=')[1] if len(annotation) > 1 else 'NA'
+
+    parent = line[0]
+    direction = line[6]
+    gene_start = line[3]
+    gene_end = line[4]
+
+    nuc_length = abs(int(gene_end) - int(gene_start)) + 1
+    aa_length = int(nuc_length / 3)
+
+    return seqID, COG_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length
+
+
+def parse(tar_gz_path: str,
+          tmhmm_tar_path: str = None,
+          output_dir: str = None,
+          globdb_version: int = None,
+          force: bool = False):
+    """
+    Bulk column approach - extract TMH values as ordered lists
+    """
+    output_path = ensure_path(output_dir, f'globdb_r{globdb_version}_cugo', force=force)
+
+    file_count = 0
+    columns = ['seqID', 'parent_ID', 'aa_length', 'strand', 'COG_ID', 'CUGO_number', 'no_TMH']
+
+    with open(output_path, 'w') as output_file:
+        output_file.write('\t'.join(columns) + '\n')
+
+        try:
+            with tarfile.open(tar_gz_path, 'r:gz') as gff_tar:
+                tmhmm_tar = None
+                if tmhmm_tar_path:
+                    tmhmm_tar = tarfile.open(tmhmm_tar_path, 'r:gz')
+
+                try:
+                    # Build sorted file lists for ordered processing
+                    gff_files = [(extract_genome_id(m.name), m.name) for m in gff_tar.getmembers()
+                                 if '_cog.gff' in m.name]
+                    gff_files.sort(key=lambda x: x[0])
+
+                    tmhmm_files = []
+                    if tmhmm_tar:
+                        tmhmm_files = [(extract_genome_id(m.name), m.name) for m in tmhmm_tar.getmembers()
+                                       if '_tmhmm_clean' in m.name]
+                        tmhmm_files.sort(key=lambda x: x[0])
+
+                    logger.info(f'Found {len(gff_files)} GFF files to process')
+                    if tmhmm_tar_path:
+                        logger.info(f'Found {len(tmhmm_files)} TMHMM files')
+
+                    for i, (gff_genome_id, gff_filepath) in enumerate(gff_files):
+                        file_count += 1
+
+                        # Extract TMH column for this genome
+                        tmh_values = []
+                        if tmhmm_tar and i < len(tmhmm_files):
+                            tmhmm_genome_id, tmhmm_filepath = tmhmm_files[i]
+                            if gff_genome_id == tmhmm_genome_id:
+                                tmh_values = extract_tmhmm_column(tmhmm_tar, tmhmm_filepath)
+                            else:
+                                logger.error(f'Genome ID mismatch: {gff_genome_id} vs {tmhmm_genome_id}')
+
+                        # Process GFF file
+                        file_obj = gff_tar.extractfile(gff_filepath)
+                        if file_obj is None:
+                            logger.warning(f'Could not extract {gff_filepath}')
+                            continue
+
+                        try:
+                            if gff_filepath.endswith('.gz'):
+                                content = gzip.decompress(file_obj.read()).decode('utf-8')
+                            else:
+                                content = file_obj.read().decode('utf-8')
+
+                            # Use modified parser with TMH column
+                            file_data = parse_single_gff_with_tmh_column(content, tmh_values)
+
+                            # Write data
+                            for row in file_data:
+                                output_file.write('\t'.join(map(str, row)) + '\n')
+
+                        except Exception as e:
+                            logger.error(f'Error processing {gff_filepath}: {str(e)}')
+                            continue
+
+                        if file_count % 10 == 0:
+                            logger.info(f'Processed {file_count}/{len(gff_files)} files')
+
+                finally:
+                    if tmhmm_tar:
+                        tmhmm_tar.close()
+
+        except Exception as e:
+            logger.error(f'Error processing tar.gz file: {str(e)}')
+            raise
+
+    logger.info(f'Successfully processed {file_count} files. Output saved to {output_path}')
+
+
+def extract_genome_id(filename: str) -> str:
+    """Extract genome ID from filename"""
+    path = Path(filename)
+    base = path.name
+    if '_cog.gff' in base:
+        return base.split('_cog.gff')[0]
+    elif '_tmhmm_clean' in base:
+        return base.split('_tmhmm_clean')[0]
+    return base
+
 
 
 # ======================================
@@ -644,93 +909,6 @@ def plot_size_per_position(context_path: str,
 # ======================================
 # CUGO COMMAND LINE TOOLS
 # ======================================
-
-def parse(tar_gz_path: str,
-          tmhmm_tar_path: str = None,
-          output_dir: str = None,
-          globdb_version: int = None,
-          force: bool = False):
-    """
-    Parse GFF files from tar.gz archive and extract genomic features with optional TMHMM data.
-
-    Args:
-        tar_gz_path: Path to compressed tar.gz file containing GFF files
-        tmhmm_tar_path: Path to TMHMM tar.gz file for transmembrane helix data
-        output_dir: Directory for output files
-        globdb_version: Version number for output file naming
-        force: Whether to overwrite existing files
-    """
-    output_path = ensure_path(output_dir, f"globdb_r{globdb_version}_cugo", force=force)
-
-    file_count = 0
-    columns = ["seqID", "parent_ID", "aa_length", "strand", "COG_ID", "CUGO_number", "no_TMH"]
-
-    with open(output_path, "w") as output_file:
-        output_file.write("\t".join(columns) + "\n")
-
-        try:
-            with tarfile.open(tar_gz_path, "r:gz") as gff_tar:
-                tmhmm_tar = None
-                tmhmm_index = {}
-
-                if tmhmm_tar_path:
-                    tmhmm_tar = tarfile.open(tmhmm_tar_path, "r:gz")
-                    tmhmm_index = index_tmhmm_tar(tmhmm_tar)
-
-                try:
-                    members = gff_tar.getmembers()
-                    total_files = len([m for m in members if m.isfile() and m.name.endswith("_cog.gff")])
-
-                    logger.info(f"Found {total_files} GFF files to process")
-                    logger.info("TMHMM data will be included" if tmhmm_tar else "TMHMM data will be skipped")
-
-                    for member in members:
-                        if not member.isfile() or not member.name.endswith("_cog.gff"):
-                            continue
-
-                        file_count += 1
-                        file_id = get_file_id_from_gff_name(os.path.basename(member.name))
-                        file_tmhmm = {}
-
-                        if tmhmm_tar and file_id in tmhmm_index:
-                            file_tmhmm = read_tmhmm_file(tmhmm_tar, tmhmm_index[file_id])
-                            if not file_tmhmm:
-                                logger.warning(f"No TMHMM data parsed for {file_id}")
-
-                        file_obj = gff_tar.extractfile(member)
-                        if not file_obj:
-                            logger.warning(f"Could not extract {member.name}")
-                            continue
-
-                        try:
-                            if member.name.endswith(".gz"):
-                                content = gzip.decompress(file_obj.read()).decode("utf-8")
-                            else:
-                                content = file_obj.read().decode("utf-8")
-
-                            file_data = parse_single_gff(content, file_tmhmm)
-
-                            for row in file_data:
-                                output_file.write("\t".join(map(str, row)) + "\n")
-
-                        except Exception as e:
-                            logger.error(f"Error processing {member.name}: {e}")
-                            continue
-
-                        if file_count % 1000 == 0:
-                            logger.info(f"Processed {file_count}/{total_files} files")
-
-                finally:
-                    if tmhmm_tar:
-                        tmhmm_tar.close()
-
-        except Exception as e:
-            logger.error(f"Error processing tar.gz file: {e}")
-            raise
-
-    logger.info(f"Successfully processed {file_count} files. Output saved to {output_path}")
-
-
 def context(fasta_path: str,
             cugo_path: str,
             cugo_range: int,
