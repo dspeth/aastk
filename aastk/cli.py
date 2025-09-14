@@ -385,7 +385,6 @@ def get_main_parser():
             __output(grp)
             __force(grp)
             __tmhmm_dir(grp)
-            __threads(grp)
             __db_path(grp)
             __cleanup_db(grp)
 

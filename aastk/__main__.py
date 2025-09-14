@@ -125,7 +125,6 @@ def main():
                 globdb_version=args.globdb_version,
                 force=args.force,
                 db_path=args.db_path,
-                n_processes=args.threads,
                 cleanup_db=args.cleanup
             )
 
