@@ -119,11 +119,14 @@ def main():
         ### PARSER FOR CUGO FUNCTIONALITIES AND WORKFLOW ###
         elif args.subparser_name == 'parse':
             parse(
-                tar_gz_path=args.gff_path,
+                gff_tar_path=args.gff_path,
                 tmhmm_tar_path=args.tmhmm_dir,
                 output_dir=args.output,
                 globdb_version=args.globdb_version,
-                force=args.force
+                force=args.force,
+                db_path=args.db_path,
+                n_processes=args.threads,
+                cleanup_db=args.cleanup
             )
 
 

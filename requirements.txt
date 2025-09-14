@@ -1,0 +1,8 @@
+pandas~=2.2.3
+numpy~=2.2.5
+openTSNE~=1.0.2
+matplotlib~=3.10.1
+scikit-learn~=1.6.1
+PyYAML~=6.0.2
+tqdm~=4.67.1
+aastk~=0.0.1
