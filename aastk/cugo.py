@@ -428,13 +428,13 @@ def parse(gff_tar_path: str,
 
     output_path = Path(output_dir)
     tempdir = output_path / 'tempdir'
-    #if tempdir.exists():
-     #   shutil.rmtree(tempdir)
-    #tempdir.mkdir(parents=True, exist_ok=True)
+    if tempdir.exists():
+        shutil.rmtree(tempdir)
+    tempdir.mkdir(parents=True, exist_ok=True)
 
     #subprocess.run(["tar", "-xzf", gff_tar_path, "-C", str(tempdir)], check=True)
-    #if tmhmm_tar_path:
-     #   subprocess.run(["tar", "-xzf", tmhmm_tar_path, "-C", str(tempdir)], check=True)
+    if tmhmm_tar_path:
+        subprocess.run(["tar", "-xzf", tmhmm_tar_path, "-C", str(tempdir)], check=True)
 
     gff_files = list(tempdir.rglob("*_cog.gff.gz"))
     tmhmm_files = list(tempdir.rglob("*_tmhmm_clean"))
