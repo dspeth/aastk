@@ -369,9 +369,10 @@ def process_tmhmm_file(tmhmm_filepath):
 
 def export_to_tsv(db_path: str, output_tsv: str):
     """Export merged data from SQLite to TSV"""
+    import sqlite3
     conn = sqlite3.connect(db_path)
 
-    # Join GFF and TMHMM data
+    # Sort by first and second numeric part of seqID
     query = '''
         SELECT 
             g.seqID,
@@ -383,17 +384,15 @@ def export_to_tsv(db_path: str, output_tsv: str):
             COALESCE(t.no_tmh, 0) as no_TMH
         FROM gff_data g
         LEFT JOIN tmhmm_data t ON g.seqID = t.seqID
-        ORDER BY g.seqID
+        ORDER BY 
+            CAST(SUBSTR(g.seqID, INSTR(g.seqID, '_')+1, INSTR(g.seqID, '__') - INSTR(g.seqID, '_') - 1) AS INTEGER),
+            CAST(SUBSTR(g.seqID, INSTR(g.seqID, '__')+2) AS INTEGER)
     '''
 
     cursor = conn.execute(query)
 
-    # Write TSV
     with open(output_tsv, 'w') as f:
-        # Header
         f.write('seqID\tparent_ID\taa_length\tstrand\tCOG_ID\tCUGO_number\tno_TMH\n')
-
-        # Data
         for row in cursor:
             f.write('\t'.join(map(str, row)) + '\n')
 
