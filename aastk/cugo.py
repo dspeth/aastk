@@ -372,40 +372,30 @@ def export_to_tsv(db_path: str, output_tsv: str):
     conn = sqlite3.connect(db_path)
 
     query = '''
-            SELECT 
-                SUBSTR(g.seqID, 1, INSTR(g.seqID, '_') - 1) AS prefix_text,
-                CAST(
-                    SUBSTR(
-                        g.seqID,
-                        INSTR(g.seqID, '_') + 1,
-                        INSTR(g.seqID, '__') - INSTR(g.seqID, '_') - 1
-                    ) AS INTEGER
-                ) AS prefix_num,
-                CAST(SUBSTR(g.seqID, INSTR(g.seqID, '__') + 2) AS INTEGER) AS suffix_num,
-
-                g.seqID,
-                g.parent_ID,
-                g.aa_length,
-                g.strand,
-                g.COG_ID,
-                g.cugo_number,
-                COALESCE(t.no_tmh, 0) as no_TMH
-            FROM gff_data g
-            LEFT JOIN tmhmm_data t ON g.seqID = t.seqID
-            ORDER BY
-                prefix_text,
-                prefix_num,
-                suffix_num
-        '''
+        SELECT 
+            g.seqID,
+            g.parent_ID,
+            g.aa_length,
+            g.strand,
+            g.COG_ID,
+            g.cugo_number,
+            COALESCE(t.no_tmh, 0) as no_TMH
+        FROM gff_data g
+        LEFT JOIN tmhmm_data t ON g.seqID = t.seqID
+        ORDER BY
+            SUBSTR(g.seqID, 1, INSTR(g.seqID, '_') - 1),  -- prefix_text
+            CAST(SUBSTR(g.seqID, INSTR(g.seqID, '_') + 1, INSTR(g.seqID, '__') - INSTR(g.seqID, '_') - 1) AS INTEGER),  -- prefix_num
+            CAST(SUBSTR(g.seqID, INSTR(g.seqID, '__') + 2) AS INTEGER)  -- suffix_num
+    '''
 
     cursor = conn.execute(query)
     with open(output_tsv, 'w') as f:
-        f.write(
-            'prefix_text\tprefix_num\tsuffix_num\tseqID\tparent_ID\taa_length\tstrand\tCOG_ID\tCUGO_number\tno_TMH\n')
+        f.write('seqID\tparent_ID\taa_length\tstrand\tCOG_ID\tCUGO_number\tno_TMH\n')
         for row in cursor:
             f.write('\t'.join(map(str, row)) + '\n')
 
     conn.close()
+
 
 def parse(gff_tar_path: str,
           tmhmm_tar_path: str = None,
