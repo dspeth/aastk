@@ -11,10 +11,8 @@ from matplotlib.cm import ScalarMappable, get_cmap
 from typing import Optional
 from pathlib import Path
 import yaml
-import tarfile
 import gzip
 import sqlite3
-import multiprocessing as mp
 from tqdm import tqdm
 import subprocess
 
@@ -75,7 +73,7 @@ def extract_gene_info(line: list) -> tuple:
     """
     # parse annotation field (9th column) for sequence and COG identifiers
     annotation = line[8].split(';')
-    seqID = annotation[0].split('=')[1].replace('__', '_')
+    seqID = annotation[0].split('=')[1]
     COG_ID = annotation[1].split('=')[1] if len(annotation) > 1 else 'NA'
 
     # extract basic genomic coordinates and features
@@ -357,7 +355,7 @@ def process_tmhmm_file(tmhmm_filepath):
                     continue
                 parts = line.strip().split('\t')
                 if len(parts) >= 2:
-                    prot_id = parts[0].replace('___', '__')
+                    prot_id = parts[0]
                     try:
                         no_tmh = int(parts[1])
                     except ValueError:
