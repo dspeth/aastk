@@ -15,6 +15,8 @@ import gzip
 import sqlite3
 from tqdm import tqdm
 import subprocess
+from collections import defaultdict
+import csv
 
 logger = logging.getLogger(__name__)
 
@@ -547,7 +549,8 @@ def plot_top_cogs_per_position(
     """
     # load context data and extract cog information
     cont = pd.read_csv(context_path, sep='\t', na_values='', keep_default_na=False)
-    extract = cont.loc[cont['COG_ID'] == 'COG_ID']
+    print(cont)
+    extract = cont.loc[cont['feat_type'] == 'COG_ID']
 
     # load cog color mapping
     script_dir = Path(__file__).resolve().parent
@@ -780,33 +783,90 @@ def plot_size_per_position(context_path: str,
 # ======================================
 # CUGO COMMAND LINE TOOLS
 # ======================================
+def process_target_context(target_id, parent_id, target_cugo, strand, cugo_range,
+                           context_data, headers, seq_idx):
+    """Build context window for a single target protein."""
+    if parent_id not in context_data:
+        return []
+
+    # Get rows in CUGO number order
+    parent_rows = sorted(context_data[parent_id], key=lambda x: int(x[headers.index('CUGO_number')]))
+
+    # Filter to exact range
+    context_window = []
+    for row in parent_rows:
+        cugo_num = int(row[headers.index('CUGO_number')])
+        if target_cugo - cugo_range <= cugo_num <= target_cugo + cugo_range:
+            context_window.append(row)
+
+    if not context_window:
+        return []
+
+    # Reverse for negative strand
+    if strand == '-':
+        context_window = context_window[::-1]
+
+    # Find target index
+    target_index = None
+    for i, row in enumerate(context_window):
+        if row[seq_idx] == target_id:
+            target_index = i
+            break
+
+    if target_index is None:
+        return []
+
+    # Transpose: each column becomes a row
+    results = []
+    for col_idx, header in enumerate(headers):
+        row_data = {'feat_type': header}
+
+        for i, row in enumerate(context_window):
+            centered_idx = i - target_index
+            row_data[str(centered_idx)] = row[col_idx]
+
+        results.append(row_data)
+
+    return results
+
+
+def write_context_output(results, output_file):
+    """Write the transposed results to output file."""
+    if not results:
+        return
+
+    # Get all column indices
+    all_indices = set()
+    for row in results:
+        for key in row.keys():
+            if key != 'feat_type':
+                all_indices.add(int(key))
+
+    sorted_indices = sorted(all_indices)
+
+    with open(output_file, 'w') as f:
+        # Header
+        f.write('feat_type\t' + '\t'.join(str(idx) for idx in sorted_indices) + '\n')
+
+        # Data rows
+        for row in results:
+            line_parts = [row['feat_type']]
+            for idx in sorted_indices:
+                line_parts.append(row.get(str(idx), ''))
+            f.write('\t'.join(line_parts) + '\n')
+
 def context(fasta_path: str,
             cugo_path: str,
             cugo_range: int,
             output_dir: str,
             force: bool = False,
             ):
-    """
-    Extract genomic context windows around target proteins from CUGO data.
-
-    Args:
-        fasta_path: Path to FASTA file
-        cugo_path: Path to CUGO file
-        cugo_range: Range around target protein for context
-        output_dir: Directory for output files
-        force: If true, existing files are overwritten
-
-    Returns:
-        str: Path to output context file
-    """
-    # load protein identifiers from fasta or id file
     if fasta_path:
         protein_name = determine_dataset_name(fasta_path, '.', 0)
         output_file = ensure_path(output_dir, f'{protein_name}_context.tsv', force=force)
         sequences = read_fasta_to_dict(fasta_path)
-        protein_identifiers = list(sequences.keys())
+        protein_identifiers = set(sequences.keys())  # O(1) lookups
 
-        # setup special log file
         log_file = ensure_path(output_dir, f'{protein_name}_missing_files.log', force=force)
         logging.basicConfig(
             filename=log_file,
@@ -814,62 +874,91 @@ def context(fasta_path: str,
             format='%(asctime)s - %(levelname)s - %(message)s'
         )
     else:
-        logger.error('Path to input FASTA file must be provided.')
-        raise ValueError('You must provide either a FASTA file or a list of protein IDs.')
+        raise ValueError('You must provide a FASTA file.')
 
+    # Pass 1: Find target proteins and determine context ranges needed
+    target_contexts = {}  # seqID -> (parent_ID, cugo_number, strand)
+    context_ranges = defaultdict(set)  # parent_ID -> set of cugo_numbers needed
 
+    print("Pass 1: Finding target proteins...")
+    with open(cugo_path, 'r') as f:
+        reader = csv.reader(f, delimiter="\t")
+        headers = next(reader)
+        seq_idx = headers.index('seqID')
+        parent_idx = headers.index('parent_ID')
+        cugo_idx = headers.index('CUGO_number')
+        strand_idx = headers.index('strand')
 
-    # load cugo data
-    with gzip.open(cugo_path, 'rt') as f:
-        df = pd.read_csv(f, sep='\t', na_filter=False)
+        for fields in reader:
+            seq_id = fields[seq_idx]
 
-    results = None
-    protein_set = set(protein_identifiers)
+            if seq_id in protein_identifiers:
+                parent_id = fields[parent_idx]
+                cugo_num = int(fields[cugo_idx])
+                strand = fields[strand_idx]
 
-    # filter for target proteins
-    target_df = df[df['seqID'].isin(protein_set)]
+                target_contexts[seq_id] = (parent_id, cugo_num, strand)
 
-    if target_df.empty:
+                # Mark context range needed
+                for i in range(cugo_num - cugo_range, cugo_num + cugo_range + 1):
+                    context_ranges[parent_id].add(i)
+
+                if len(target_contexts) % 100 == 0:
+                    logging.info("Target #%d", len(target_contexts))
+
+                # Early termination - stop when we've found all targets
+                if len(target_contexts) == len(protein_identifiers):
+                    print(f"Found all {len(protein_identifiers)} targets, stopping pass 1")
+                    break
+
+    if not target_contexts:
         logging.warning('No target proteins found in the CUGO file.')
-        return
+        return None
 
-    for _, row in target_df.iterrows():
-        id = row['seqID']
-        target_cugo = int(row['CUGO_number'])
-        target_parent = row['parent_ID']
-        target_strand = row['strand']
+    print(context_ranges)
 
-        # extract context window around target protein
-        parent_df = df[df['parent_ID'] == target_parent]
-        cugo_context = parent_df[
-            (parent_df['CUGO_number'] >= (target_cugo - cugo_range)) &
-            (parent_df['CUGO_number'] <= (target_cugo + cugo_range))
-            ]
+    # Pass 2: Collect context data with sorted file optimization
+    needed_parents = set(context_ranges.keys())  # Parents we still need
+    context_data = defaultdict(list)
 
-        # reverse order for negative strand
-        if target_strand == '-':
-            cugo_context = cugo_context.iloc[::-1]
+    with open(cugo_path, 'r') as f:
+        reader = csv.reader(f, delimiter="\t")
+        next(reader)  # skip header
 
-        cugo_context = cugo_context.reset_index(drop=True)
+        current_parent = None
 
-        # center index on target protein
-        target_index = cugo_context.index[cugo_context.seqID == id].item()
-        cugo_context.index = cugo_context.index - target_index
-        cugo_context = cugo_context.transpose()
+        for fields in reader:
+            parent_id = fields[parent_idx]
+            cugo_num = int(fields[cugo_idx])
 
-        # combine results
-        if results is None:
-            results = cugo_context
-        else:
-            results = pd.concat([results, cugo_context], join='outer', axis=0)
+            # New parent encountered
+            if parent_id != current_parent:
+                # If previous parent was needed and we're done with it, remove it
+                if current_parent in needed_parents:
+                    needed_parents.discard(current_parent)
+                current_parent = parent_id
 
-    # save results
-    if results is not None:
-        results = results.reset_index().rename(columns={'index': 'feat_type'})
-        results.to_csv(output_file, sep='\t', index=False)
+                # If no more parents needed, stop
+                if not needed_parents:
+                    print("All needed parents processed, stopping")
+                    break
 
-    return output_file
+            # Keep row if needed
+            if parent_id in context_ranges and cugo_num in context_ranges[parent_id]:
+                context_data[parent_id].append(fields)
 
+    all_results = []
+
+    for seq_id, (parent_id, target_cugo, strand) in target_contexts.items():
+        results = process_target_context(
+            seq_id, parent_id, target_cugo, strand, cugo_range,
+            context_data, headers, seq_idx
+        )
+        all_results.extend(results)
+
+    if all_results:
+        write_context_output(all_results, output_file)
+        return output_file
 
 def cugo_plot(context_path: str,
               flank_lower: int,

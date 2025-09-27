@@ -420,7 +420,6 @@ def get_main_parser():
             __fasta(grp, required=True)
             __cugo_path(grp, required=True)
             __cugo_range(grp, required=True)
-            __context_path(grp, required=True)
             __flank_lower(grp, required=True)
             __flank_upper(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
