@@ -350,13 +350,13 @@ def get_main_parser():
         with arg_group(parser, 'Required arguments') as grp:
             __matched(grp, required=True)
             __bsr(grp, required=True)
-            __output(grp, required=True)
-        with arg_group(parser, 'Optional'):
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
             __create_yaml(grp)
             __selfmin(grp)
             __selfmax(grp)
             __dbmin(grp)
-            __bsr(grp)
+            __bsr_cutoff(grp)
             __force(grp)
 
 

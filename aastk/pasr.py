@@ -583,8 +583,14 @@ def plot_bsr(bsr_file: str,
         # ===============================
         # histogram data using binned_counts with proper axis alignment
         # top histogram (histx) - sum counts for each x position, align x-axis with scatter
-        x_hist = binned_counts.groupby('x', observed=True)['counts'].sum()
-        axs['histx'].bar(x_hist.index, x_hist.values, width=bin_width, align='center', color='gray', edgecolor='black')
+        x_hist = binned_counts.groupby(binned_counts['max_score_bin'].apply(lambda b: b.left), observed=True)['counts'].sum()
+        axs['histx'].bar(
+            x_hist.index,
+            x_hist.values,
+            width=bin_width,
+            align='edge',
+            color='gray', edgecolor='black'
+        )
         axs['histx'].set_xlim(axs['scatter'].get_xlim())
         axs['histx'].set_xticks([0, max_score_max / 2, max_score_max]) # maybe change to 1.5x
         axs['histx'].set_ylabel('Counts')
@@ -600,7 +606,6 @@ def plot_bsr(bsr_file: str,
         axs['histy'].tick_params(labelleft=False)
 
         max_count = y_hist.values.max() if len(y_hist) > 0 else 100
-        axs['histy'].set_xticks(range(0, int(max_count) + 50, 50))
 
         # ===============================
         # Threshold lines (update mode)

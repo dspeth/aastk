@@ -549,7 +549,6 @@ def plot_top_cogs_per_position(
     """
     # load context data and extract cog information
     cont = pd.read_csv(context_path, sep='\t', na_values='', keep_default_na=False)
-    print(cont)
     extract = cont.loc[cont['feat_type'] == 'COG_ID']
 
     # load cog color mapping
