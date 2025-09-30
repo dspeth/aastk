@@ -486,17 +486,17 @@ def plot_bsr(bsr_file: str,
              update: bool = False):
     """
     Creates a scatter plot of the BSR data flanked by histograms showing the distribution of datapoints alongside the axes.
-
-    Args:
-        bsr_file (str): Path to the BSR TSV file.
-        output_dir (str): Directory to save the plot.
-        yaml_path (str): Path to yaml file containing metadata which is plotted if update is selected
-        force (bool): If true, existing files/directories in output path are overwritten
-        update (bool): If true, metadata from the yaml path is plotted within the normal BSR plot.
-
-    Returns:
-        Path to the output plot.
     """
+    from pathlib import Path
+    import numpy as np
+    import pandas as pd
+    import matplotlib.pyplot as plt
+    from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+    import yaml
+    import logging
+
+    logger = logging.getLogger(__name__)
+
     bsr_file_name = Path(bsr_file).name
     protein_name = bsr_file_name.replace('_bsr.tsv', '')
 
@@ -510,54 +510,45 @@ def plot_bsr(bsr_file: str,
 
     logger.info(f"Creating BSR scatter plot for {protein_name}")
 
-    # ===============================
-    # Data loading and validation
-    # ===============================
     try:
+        # ===============================
+        # Load data
+        # ===============================
         bsr_df = pd.read_csv(bsr_file, sep='\t', header=0)
 
-        # check BSR file consistency
         required_cols = ['max_score', 'score', 'pident', 'qlen', 'BSR']
         for col in required_cols:
             if col not in bsr_df.columns:
                 raise ValueError(f"Required column '{col}' not found in BSR data")
 
         # ===============================
-        # Histogram binning setup
+        # Define axis ranges and bins
         # ===============================
-        # set bin width for flanking histograms
         bin_width = 10
-
-        # determine number of bins according to maximum theoretical max score and alignment score in the data; arange the bins
-        max_score_max = bsr_df['max_score'].max()
         score_max = bsr_df['score'].max()
-        max_score_bins = np.arange(0, max_score_max + bin_width, bin_width)
-        score_bins = np.arange(0, score_max + bin_width, bin_width)
 
-        # bin theoretical max scores as well as alignment scores
-        bsr_df['max_score_bin'] = pd.cut(bsr_df['max_score'], bins=max_score_bins, include_lowest=True, right=False)
-        bsr_df['score_bin'] = pd.cut(bsr_df['score'], bins=score_bins, include_lowest=True, right=False)
+        # define common axis limits for scatter + histograms
+        xlim = (0, 1.5 * score_max)
+        ylim = (0, score_max)
 
-        # count occurrences of datapoints in each bin
-        binned_counts = bsr_df.groupby(['max_score_bin', 'score_bin'], observed=True).size().reset_index(name='counts')
-
-        binned_counts['x'] = bin_mid(binned_counts['max_score_bin'])
-        binned_counts['y'] = bin_mid(binned_counts['score_bin'])
+        x_bins = np.arange(xlim[0], xlim[1] + bin_width, bin_width)
+        y_bins = np.arange(ylim[0], ylim[1] + bin_width, bin_width)
 
         # ===============================
-        # Plot layout and scatter plot
+        # Layout
         # ===============================
-        # create plot layout
         fig, axs = plt.subplot_mosaic(
             [['histx', '.'],
-            ['scatter', 'histy']],
+             ['scatter', 'histy']],
             figsize=(8, 8),
             width_ratios=(4, 1),
             height_ratios=(1, 4),
             layout='constrained'
         )
 
-        # scatterplot
+        # ===============================
+        # Scatter plot
+        # ===============================
         scatter = axs['scatter'].scatter(
             bsr_df['max_score'],
             bsr_df['score'],
@@ -570,47 +561,49 @@ def plot_bsr(bsr_file: str,
         )
         axs['scatter'].set_xlabel('Calculated maximum score')
         axs['scatter'].set_ylabel('Alignment score to seed set')
-        axs['scatter'].set_xlim(0, 1.5 * score_max) # set to 1.5x the maximum alignment score to capture relevant data in the scatterplot
+        axs['scatter'].set_xlim(xlim)
         axs['scatter'].set_ylim(bottom=0)
 
-        # move colorbar inside scatterplot and color it by sequence identity
         cb_ax = inset_axes(axs['scatter'], width="5%", height="30%", loc='upper left', borderpad=1)
         cbar = fig.colorbar(scatter, cax=cb_ax)
         cbar.set_label('% sequence identity')
 
         # ===============================
-        # Histogram creation
+        # Histograms aligned with scatter
         # ===============================
-        # histogram data using binned_counts with proper axis alignment
-        # top histogram (histx) - sum counts for each x position, align x-axis with scatter
-        x_hist = binned_counts.groupby(binned_counts['max_score_bin'].apply(lambda b: b.left), observed=True)['counts'].sum()
+        # Top histogram
+        x_hist, x_edges = np.histogram(bsr_df['max_score'], bins=x_bins)
         axs['histx'].bar(
-            x_hist.index,
-            x_hist.values,
+            x_edges[:-1],
+            x_hist,
             width=bin_width,
             align='edge',
-            color='gray', edgecolor='black'
+            color='black'
         )
-        axs['histx'].set_xlim(axs['scatter'].get_xlim())
-        axs['histx'].set_xticks([0, max_score_max / 2, max_score_max]) # maybe change to 1.5x
+        axs['histx'].set_xlim(xlim)
         axs['histx'].set_ylabel('Counts')
+        axs['histx'].set_yticks([0, max(x_hist)/2, max(x_hist)])
         axs['histx'].tick_params(labelbottom=False)
         axs['histx'].set_title(f'Protein Alignment Score Ratio for {protein_name}')
 
-        # right histogram (histy) - sum counts for each y position, align x-axis with scatterplot's y-axis
-        y_hist = binned_counts.groupby('y', observed=True)['counts'].sum()
-        axs['histy'].barh(y_hist.index, y_hist.values, height=bin_width, align='center', color='gray', edgecolor='black')
-        axs['histy'].set_ylim(axs['scatter'].get_ylim())
+        # Right histogram
+        y_hist, y_edges = np.histogram(bsr_df['score'], bins=y_bins)
+        axs['histy'].barh(
+            y_edges[:-1],
+            y_hist,
+            height=bin_width,
+            align='edge',
+            color='black'
+        )
+        axs['histy'].set_ylim(ylim)
         axs['histy'].set_xlabel('Counts')
-        axs['histy'].set_yticks([0, score_max / 2, score_max])
+        axs['histy'].set_xticks([0, max(y_hist)/2, max(y_hist)])
         axs['histy'].tick_params(labelleft=False)
 
-        max_count = y_hist.values.max() if len(y_hist) > 0 else 100
 
         # ===============================
         # Threshold lines (update mode)
         # ===============================
-        # plot the parameters from the metadata yaml file in case of update
         if update:
             try:
                 with open(yaml_path) as f:
@@ -630,13 +623,12 @@ def plot_bsr(bsr_file: str,
             if dbmin is not None:
                 axs['scatter'].axhline(dbmin, color='black', linestyle='--', linewidth=1.0)
             if bsr_min is not None:
-                x_min, x_max = axs['scatter'].get_xlim()
-                x_vals = np.linspace(x_min, x_max, 500)
+                x_vals = np.linspace(xlim[0], xlim[1], 500)
                 y_vals = bsr_min * x_vals
                 axs['scatter'].plot(x_vals, y_vals, color='black', linestyle='--', linewidth=1.0)
 
         # ===============================
-        # Save plot and cleanup
+        # Save
         # ===============================
         fig.savefig(out_graph, dpi=300)
         plt.close(fig)
