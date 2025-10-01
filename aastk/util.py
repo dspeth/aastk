@@ -46,9 +46,12 @@ def determine_file_type(file_path):
 def ensure_path(path: Optional[str] = None, target: Optional[str] = None, force: bool = False):
 	path = Path(path) if path else Path('.')
 	final_path = path / target if target else path
+	cwd = Path.cwd().resolve()
 
 	if final_path.exists():
 		if force:
+			if final_path.resolve() == cwd:
+				raise RuntimeError(f"Refusing to remove the current working directory: {cwd}")
 			if final_path.is_dir():
 				logger.warning(f"Removing existing directory: {final_path}")
 				shutil.rmtree(final_path)
