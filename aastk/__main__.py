@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import logging
+from .log import logger_setup
 from aastk.cli import get_main_parser
 from aastk.pasr import *
 from aastk.cugo import *
@@ -8,6 +10,8 @@ from aastk.casm import *
 def main():
     parser = get_main_parser()
     args = parser.parse_args()
+
+    logger = logger_setup(silent=args.silent)
 
     # If no subcommand is specified, print help
     if not args.subparser_name:
@@ -19,17 +23,15 @@ def main():
         if args.subparser_name == 'build':
             db_path = build_protein_db(
                 db_dir=args.db,
-                protein_name=args.protein_name,
                 seed_fasta=args.seed,
                 threads=args.threads,
                 force=args.force
             )
 
         elif args.subparser_name == 'search':
-            search_results = search_protein_db(
+            search_protein_db(
                 db_path=args.db,
                 query_path=args.query,
-                protein_name=args.protein_name,
                 output_dir=args.output,
                 threads=args.threads,
                 sensitivity=args.sensitivity,
@@ -40,7 +42,6 @@ def main():
 
         elif args.subparser_name == 'extract':
             extract_matching_sequences(
-                protein_name=args.protein_name,
                 blast_tab=args.tabular,
                 query_path=args.query,
                 output_dir=args.output,
@@ -50,7 +51,6 @@ def main():
 
         elif args.subparser_name == 'calculate':
             calculate_max_scores(
-                protein_name=args.protein_name,
                 extracted=args.extracted,
                 matrix=args.matrix,
                 output_dir=args.output
@@ -58,7 +58,6 @@ def main():
 
         elif args.subparser_name == 'bsr':
             blast_score_ratio(
-                protein_name=args.protein_name,
                 blast_tab=args.tabular,
                 max_scores_path=args.max_scores,
                 output_dir=args.output,
@@ -70,7 +69,6 @@ def main():
 
         elif args.subparser_name == 'pasr_plot':
             plot_bsr(
-                protein_name=args.protein_name,
                 bsr_file=args.bsr,
                 output_dir=args.output,
                 yaml_path=args.yaml,
@@ -85,7 +83,6 @@ def main():
                 dbmin=args.dbmin,
                 bsr=args.bsr_cutoff,
                 output_dir=args.output,
-                protein_name=args.protein_name,
                 force=args.force
             )
 
@@ -99,7 +96,6 @@ def main():
                 selfmax=args.selfmax,
                 dbmin=args.dbmin,
                 bsr=args.bsr_cutoff,
-                protein_name=args.protein_name,
                 force=args.force,
                 create_yaml=args.create_yaml,
                 params=args.params
@@ -107,7 +103,6 @@ def main():
 
         elif args.subparser_name == 'pasr':
             pasr(
-                protein_name=args.protein_name,
                 seed_fasta=args.seed,
                 query_fasta=args.query,
                 matrix_name=args.matrix,
@@ -124,29 +119,28 @@ def main():
         ### PARSER FOR CUGO FUNCTIONALITIES AND WORKFLOW ###
         elif args.subparser_name == 'parse':
             parse(
-                tar_gz_path=args.gff_path,
+                gff_tar_path=args.gff_path,
                 tmhmm_tar_path=args.tmhmm_dir,
                 output_dir=args.output,
                 globdb_version=args.globdb_version,
-                force=args.force
+                force=args.force,
+                db_path=args.db_path,
+                cleanup_db=args.cleanup
             )
 
 
         elif args.subparser_name == 'context':
             context(
-                protein_ids=args.protein_ids,
+                fasta_path=args.fasta,
                 cugo_path=args.cugo_path,
                 cugo_range=args.cugo_range,
                 output_dir=args.output,
-                protein_name=args.protein_name,
                 force=args.force,
-                fasta_path=args.fasta
             )
 
         elif args.subparser_name == 'cugo_plot':
             cugo_plot(
                 context_path=args.context_path,
-
                 flank_lower=args.flank_lower,
                 flank_upper=args.flank_upper,
                 top_n=args.top_n,
@@ -157,6 +151,20 @@ def main():
                 bin_width=args.bin_width,
                 y_range=args.y_range,
                 force=args.force
+            )
+
+        elif args.subparser_name == 'cugo':
+            cugo(
+                cugo_path=args.cugo_path,
+                cugo_range=args.cugo_range,
+                fasta_path=args.fasta,
+                output_dir=args.output,
+                flank_lower=args.flank_lower,
+                flank_upper=args.flank_upper,
+                top_n=args.top_n,
+                force=args.force,
+                bin_width=args.bin_width,
+                y_range=args.y_range
             )
 
         ### PARSER FOR CASM FUNCTIONALITIES AND WORKFLOW ###
@@ -181,7 +189,9 @@ def main():
                 threads=args.threads,
                 metadata_protein=args.metadata_protein,
                 metadata_genome=args.metadata_genome,
-                force=args.force
+                force=args.force,
+                large=args.large,
+                sample_size=args.sample_size
             )
 
 
@@ -205,6 +215,8 @@ def main():
                 metadata_protein=args.metadata_protein,
                 metadata_genome=args.metadata_genome,
                 force=args.force,
+                large=args.large,
+                sample_size=args.sample_size
             )
 
     except Exception as e:

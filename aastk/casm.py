@@ -2,7 +2,7 @@ import json
 
 from .util import *
 
-import sys
+import logging
 import random
 import numpy as np
 import subprocess
@@ -11,16 +11,7 @@ import openTSNE
 from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
 
-
 logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.DEBUG,  # or logging.INFO if you want less verbosity
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    stream=sys.stdout
-)
-logging.getLogger('matplotlib').setLevel(logging.WARNING)
-logging.getLogger("PIL").setLevel(logging.INFO)
-
 
 def fasta_subsample(fasta: str,
                     output_dir: str,
@@ -38,12 +29,10 @@ def fasta_subsample(fasta: str,
     Returns:
         output_path: Path to output subset fasta file
     """
-    logger.info(f"Starting FASTA subsampling from {fasta}")
     dataset = determine_dataset_name(fasta, '.', 0)
     output_file = f"{dataset}_subsample.faa"
     output_path = ensure_path(output_dir, output_file, force=force)
 
-    logger.debug(f"Reading FASTA file: {fasta}")
     sequences = read_fasta_to_dict(fasta)
     total_sequences = len(sequences)
     logger.info(f"Total sequences in FASTA: {total_sequences}")
@@ -53,17 +42,14 @@ def fasta_subsample(fasta: str,
             f"Requested subset size ({subset_size}) is larger than total sequences ({total_sequences}). Using all sequences.")
         subset_size = total_sequences
 
-    logger.info(f"Randomly sampling {subset_size} sequences from {total_sequences}")
     subset_keys = random.sample(list(sequences.keys()), subset_size)
     subset_dict = {k: sequences[k] for k in subset_keys}
 
-    logger.debug(f"Writing subset to: {output_path}")
     with open(output_path, 'w') as f:
         for header, seq in subset_dict.items():
             f.write(f">{header}\n")
             f.write(f'{seq}\n')
 
-    logger.info(f"Successfully created subset FASTA with {len(subset_dict)} sequences")
     return output_path
 
 def run_diamond_alignment(fasta: str,
@@ -267,6 +253,30 @@ def load_alignment_matrix_from_file(matrix_path: str,
 
     return matrix, queries, targets
 
+def create_embedding_file(output_file: str,
+                          embedding: np.ndarray,
+                          queries: list,
+                          clusters: np.ndarray,
+                          col_names: list,
+                          metadata_protein: str,
+                          metadata_genome: str,
+                          ):
+    logger.info(f"Creating embedding TSV with {len(queries)} proteins")
+
+    loci = [prot_id.rsplit("_", 1)[1] for prot_id in queries]
+    genome_ids = [prot_id.rsplit("_", 1)[0] for prot_id in queries]
+
+    with open(output_file, "w", encoding="utf-8") as f:
+        base_cols = ["prot_ID", "locus_nr", "genome_ID"] + col_names + ["cluster"]
+
+        f.write("\t".join(base_cols) + "\n")
+        for q, c, l, g, emb in zip(queries, clusters, loci, genome_ids, embedding):
+            row = [q, l, g] + [f"{x:.6f}" for x in emb] + [str(c)]
+            f.write("\t".join(row) + "\n")
+
+    logger.info(f"Finished writing TSV: {output_file}")
+
+
 def create_embedding_dataframe(embedding: np.ndarray,
                                queries: list,
                                clusters: np.ndarray,
@@ -388,15 +398,8 @@ def tsne_embedding(matrix: np.ndarray,
 
     # save early embedding
     logger.debug("Saving early embedding results")
-    early_df = create_embedding_dataframe(tsne_embed,
-                                          queries,
-                                          clustering.labels_,
-                                          ['tsne1', 'tsne2'],
-                                          metadata_protein,
-                                          metadata_genome,
-                                          )
     early_filename = ensure_path(target=f"{basename}_tsne_early_clust.tsv", force=force)
-    early_df.to_csv(early_filename, sep="\t", index=False)
+    create_embedding_file(early_filename, tsne_embed, queries, clustering.labels_, ['tsne1', 'tsne2'],metadata_protein, metadata_genome)
     logger.info(f"Early embedding saved to: {early_filename}")
 
     # final embedding
@@ -409,16 +412,8 @@ def tsne_embedding(matrix: np.ndarray,
 
     # save final embedding
     logger.debug("Saving final embedding results")
-    final_df = create_embedding_dataframe(tsne_embed,
-                                          queries,
-                                          clustering.labels_,
-                                          ['tsne1', 'tsne2'],
-                                          metadata_protein,
-                                          metadata_genome,
-                                          )
-
-    final_filename = ensure_path(target=f"{basename}_tsne_embed.tsv", force=force)
-    final_df.to_csv(final_filename, sep="\t", index=False)
+    final_filename = ensure_path(target=f"{basename}_tsne_final_clust.tsv", force=force)
+    create_embedding_file(final_filename, tsne_embed, queries, clustering.labels_, ['tsne1', 'tsne2'],metadata_protein, metadata_genome)
     logger.info(f"Final embedding saved to: {final_filename}")
 
     return early_filename, final_filename
@@ -491,9 +486,17 @@ def plot_clusters(tsv_file: str,
 
     plt.tight_layout()
 
+    if 'early_clust' in tsv_file:
+        prefix = tsv_file.replace('_tsne_early_clust.tsv', '')
+        filename = f'{prefix}_tsne_early_clusters.png'
+    elif 'final_clust' in tsv_file:
+        prefix = tsv_file.replace('_tsne_final_clust.tsv', '')
+        filename = f'{prefix}_tsne_final_clusters.png'
 
-    suffix = "_tsne_clusters.png"
-    output_file = ensure_path(output, suffix, force=force)
+    else:
+        raise ValueError(f"Unexpected TSV filename: {tsv_file}")
+
+    output_file = ensure_path(output, filename, force=force)
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     logger.info(f"Plot saved to: {output_file}")
 
@@ -536,7 +539,7 @@ def matrix(fasta: str,
        subset_fasta = fasta_subsample(fasta, output, subset_size, force=force)
 
     logger.info("=== Phase 1: DIAMOND Alignment ===")
-    align_output = run_diamond_alignment(fasta, subset_fasta, subset_size, threads)
+    align_output = run_diamond_alignment(fasta, subset_fasta, subset_size, threads, force=force)
 
     logger.info("=== Phase 2: Matrix Construction ===")
     _, _, _, matrix_file, metadata_file = build_alignment_matrix_split(align_output, output, force)
@@ -553,7 +556,10 @@ def cluster(matrix_path: str,
          threads: int = 1,
          metadata_protein: str = None,
          metadata_genome: str = None,
-         force: bool = False):
+         force: bool = False,
+         large: bool = False,
+         sample_size: int = 10000
+         ):
     """
     Perform t-SNE embedding and DBSCAN clustering on alignment matrix.
 
@@ -583,25 +589,26 @@ def cluster(matrix_path: str,
        logger.info(f"Output basename: {output}")
 
     matrix, queries, targets = load_alignment_matrix_from_file(matrix_path, matrix_metadata_path)
-    early_filename, final_filename =tsne_embedding(matrix=matrix,
-                                                        queries=queries,
-                                                        basename=output,
-                                                        perplexity=perplexity,
-                                                        iterations=iterations,
-                                                        exaggeration=exaggeration,
-                                                        threads=threads,
-                                                        metadata_protein=metadata_protein,
-                                                        metadata_genome=metadata_genome,
-                                                        force=force
-                                                        )
 
+    early_filename, final_filename = tsne_embedding(matrix=matrix,
+                              queries=queries,
+                              basename=output,
+                              perplexity=perplexity,
+                              iterations=iterations,
+                              exaggeration=exaggeration,
+                              threads=threads,
+                              metadata_protein=metadata_protein,
+                              metadata_genome=metadata_genome,
+                              force=force,
+                              )
     logger.info("=== t-SNE Embedding Completed ===")
     return early_filename, final_filename
 
 
 def casm_plot(early_clust_path: str,
         full_clust_path: str,
-        output: str):
+        output: str,
+        force: bool = False):
     """
     Generate t-SNE cluster visualization plots for early and final embeddings.
 
@@ -624,10 +631,10 @@ def casm_plot(early_clust_path: str,
 
     # Generate plots
     logger.info("Generating early clustering plot")
-    plot_clusters(early_clust_path, output=f"{output}_early")
+    plot_clusters(early_clust_path, output=output, force=force)
 
     logger.info("Generating full clustering plot")
-    plot_clusters(full_clust_path, output=f"{output}_final")
+    plot_clusters(full_clust_path, output=output, force=force)
 
     logger.info("=== Plot Generation Completed ===")
 
@@ -642,7 +649,10 @@ def casm(fasta: str,
          exaggeration: int = 6,
          metadata_protein: str = None,
          metadata_genome: str = None,
-         force: bool = False):
+         force: bool = False,
+         large: bool = False,
+         sample_size: int = 10000
+         ):
     """
     Run complete CASM analysis pipeline.
 
@@ -690,7 +700,9 @@ def casm(fasta: str,
         threads=threads,
         metadata_protein=metadata_protein,
         metadata_genome=metadata_genome,
-        force=force
+        force=force,
+        large=large,
+        sample_size=sample_size
     )
 
     # Phase 3: Plot generation
@@ -698,7 +710,8 @@ def casm(fasta: str,
     casm_plot(
         early_clust_path=early_filename,
         full_clust_path=final_filename,
-        output=output
+        output=output,
+        force=force
     )
 
     logger.info("=== Complete CASM Analysis Completed ===")

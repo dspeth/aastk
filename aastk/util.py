@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
 from pathlib import Path
 from typing import Optional
-import pandas as pd
-import logging
 import shutil
+import logging
 
 logger = logging.getLogger(__name__)
 
+
 def bin_mid(bin_series):
 	return bin_series.apply(lambda b: (b.left + b.right) / 2)
+
+def check_dependency_availability(command: str):
+	if shutil.which(command) is None:
+		logger.error(f"Command not found in PATH: {command}")
+		raise FileNotFoundError(f"Command not found in PATH: {command}")
+
 
 def count_fasta_sequences(fasta_path: str) -> int:
 	with open(fasta_path, 'r') as f:
@@ -40,9 +46,12 @@ def determine_file_type(file_path):
 def ensure_path(path: Optional[str] = None, target: Optional[str] = None, force: bool = False):
 	path = Path(path) if path else Path('.')
 	final_path = path / target if target else path
+	cwd = Path.cwd().resolve()
 
 	if final_path.exists():
 		if force:
+			if final_path.resolve() == cwd:
+				raise RuntimeError(f"Refusing to remove the current working directory: {cwd}")
 			if final_path.is_dir():
 				logger.warning(f"Removing existing directory: {final_path}")
 				shutil.rmtree(final_path)
@@ -146,7 +155,7 @@ def write_fa_matches(seq_file, ids):
 				sequence += line
 
 		if matching:
-			yield (header, sequence)
+			yield header, sequence
 
 
 def write_fq_matches(seq_file, ids):
@@ -179,5 +188,5 @@ def write_fq_matches(seq_file, ids):
 			elif line_count == 4:
 				line_count = 0  # Reset after each fastq record
 				if matching:
-					yield (header, sequence)
+					yield header, sequence
 
