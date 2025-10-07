@@ -39,6 +39,7 @@ def setup_database(db_path: str) -> sqlite3.Connection:
         ''')
 
     conn.execute('CREATE INDEX IF NOT EXISTS idx_all_seqid ON all_data(seqID)')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_parent_id ON all_data(parent_ID)')
 
     conn.commit()
     return conn
