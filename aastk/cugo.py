@@ -27,33 +27,22 @@ def setup_database(db_path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
 
     conn.execute('''
-        CREATE TABLE IF NOT EXISTS gff_data (
+        CREATE TABLE IF NOT EXISTS all_data (
             seqID TEXT PRIMARY KEY,
             parent_ID TEXT,
-            gene_start INTEGER,
-            gene_end INTEGER,
-            nuc_length INTEGER,
             aa_length INTEGER,
-            strand TEXT,
+            strand TEXT, 
             COG_ID TEXT,
             cugo_number INTEGER,
-            cugo_start TEXT,
-            cugo_end TEXT
-        )
-    ''')
-
-    conn.execute('''
-            CREATE TABLE IF NOT EXISTS tmhmm_data (
-                seqID TEXT PRIMARY KEY,
-                no_tmh INTEGER
+            no_tmh INTEGER
             )
         ''')
 
-    conn.execute('CREATE INDEX IF NOT EXISTS idx_gff_seqid ON gff_data(seqID)')
-    conn.execute('CREATE INDEX IF NOT EXISTS idx_tmhmm_seqid ON tmhmm_data(seqID)')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_all_seqid ON all_data(seqID)')
 
     conn.commit()
     return conn
+
 
 def extract_gene_info(line: list) -> tuple:
     """
@@ -287,8 +276,8 @@ def parse_single_gff(gff_content: str) -> list:
         )
 
         # store processed gene data (all 11 fields for database)
-        reformat_data.append([seqID, parent, gene_start, gene_end, nuc_length, aa_length,
-                              direction, COG_ID, cugo, cugo_start, cugo_end])
+        reformat_data.append([seqID, parent, aa_length,
+                              direction, COG_ID, cugo])
 
         # update tracking variables for next iteration
         prev_line = clean_line
@@ -308,9 +297,9 @@ def parse_single_gff(gff_content: str) -> list:
             cugo_count, cugo_size, cugo_size_count, prev_cugo
         )
 
-        # store final gene data (all 11 fields for database)
-        reformat_data.append([seqID, parent, gene_start, gene_end, nuc_length, aa_length,
-                              direction, COG_ID, cugo, cugo_start, cugo_end])
+        # store final gene data (all 6 fields for database)
+        reformat_data.append([seqID, parent, aa_length,
+                              direction, COG_ID, cugo])
 
         # finalize cugo size tracking
         cugo_size[cugo] = cugo_size_count
@@ -437,43 +426,35 @@ def parse(gff_tar_path: str,
     conn = setup_database(db_path)
 
     # Process GFF files sequentially
-    logger.info("Processing GFF files...")
-    for gff_file in tqdm(gff_files, desc="GFF files"):
+    for gff_file in tqdm(gff_files, desc="Processing GFF files"):
         gff_data = process_gff_file(str(gff_file))
         if gff_data:
             conn.executemany("""
-                INSERT OR REPLACE INTO gff_data
-                (seqID, parent_ID, gene_start, gene_end, nuc_length,
-                 aa_length, strand, COG_ID, cugo_number, cugo_start, cugo_end)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO all_data
+                (seqID, parent_ID, aa_length, strand, COG_ID, cugo_number)
+                VALUES (?, ?, ?, ?, ?, ?)
             """, gff_data)
             conn.commit()
 
-    # Process TMHMM files sequentially
+    # --- Process TMHMM files ---
     if tmhmm_files:
-        logger.info("Processing TMHMM files...")
-        for tmhmm_file in tqdm(tmhmm_files, desc="TMHMM files"):
+        for tmhmm_file in tqdm(tmhmm_files, desc="Processing TMHMM files"):
             tmhmm_data = process_tmhmm_file(str(tmhmm_file))
             if tmhmm_data:
-                conn.executemany("""
-                    INSERT OR REPLACE INTO tmhmm_data
-                    (seqID, no_tmh)
-                    VALUES (?, ?)
-                """, tmhmm_data)
+                for prot_id, no_tmh in tmhmm_data:
+                    conn.execute("""
+                        UPDATE all_data
+                        SET no_tmh = ?
+                        WHERE seqID = ?
+                    """, (no_tmh, prot_id))
                 conn.commit()
 
     conn.close()
 
-    # Export to TSV
-    logger.info("Exporting to TSV...")
-    export_to_tsv(db_path, output_tsv)
 
-    # Cleanup
-    if cleanup_db:
-        Path(db_path).unlink(missing_ok=True)
-    shutil.rmtree(tempdir)
 
-    logger.info(f"Parsing complete. Output saved to: {output_tsv}")
+
+
 
 # ======================================
 # FUNCTION DEFINITIONS FOR CUGO PLOTTING
