@@ -397,8 +397,6 @@ def parse(gff_tar_path: str,
     """
     Main parsing function - single-threaded version for memory efficiency
     """
-    output_tsv = ensure_path(output_dir, f'globdb_r{globdb_version}_cugo', force=force)
-
     logger.info("Processing files single-threaded for memory efficiency")
 
     if output_dir is None:
@@ -966,15 +964,20 @@ def context(fasta_path: str,
     conn = sqlite3.connect(cugo_path)
     cursor = conn.cursor()
 
+    BATCH_SIZE = 500
+    target_rows = []
+    protein_list = list(protein_identifiers)
 
-    placeholders = ','.join('?' * len(protein_identifiers))
-    query = f"""
-        SELECT seqID, parent_ID, aa_length, strand, COG_ID, CUGO_number, no_TMH
-        FROM all_data
-        WHERE seqID IN ({placeholders})
-    """
-    cursor.execute(query, tuple(protein_identifiers))
-    target_rows = cursor.fetchall()
+    for i in tqdm(range(0, len(protein_list), BATCH_SIZE)):
+        batch = protein_list[i:i + BATCH_SIZE]
+        placeholders = ','.join('?' * len(batch))
+        query = f"""
+            SELECT seqID, parent_ID, aa_length, strand, COG_ID, CUGO_number, no_TMH
+            FROM all_data
+            WHERE seqID IN ({placeholders})
+        """
+        cursor.execute(query, batch)
+        target_rows.extend(cursor.fetchall())
 
     if not target_rows:
         logger.warning("No target proteins found in the database.")
@@ -991,20 +994,25 @@ def context(fasta_path: str,
     context_data = defaultdict(list)
     headers = ["seqID", "parent_ID", "aa_length", "strand", "COG_ID", "CUGO_number", "no_TMH"]
 
-    for parent_ID, needed_numbers in context_ranges.items():
-        placeholders = ','.join('?' * len(needed_numbers))
-        query = f"""
-                SELECT seqID, parent_ID, aa_length, strand, COG_ID, CUGO_number, no_TMH
-                FROM all_data
-                WHERE parent_ID = ?
-                AND CUGO_number IN ({placeholders})
-                ORDER BY CUGO_number
-            """
-        params = (parent_ID, *needed_numbers)
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-        if rows:
-            context_data[parent_ID].extend(rows)
+
+
+    for parent_ID, needed_numbers in tqdm(context_ranges.items(), desc="Fetching parent contexts"):
+        needed_list = list(needed_numbers)
+        for j in range(0, len(needed_list), BATCH_SIZE):
+            batch = needed_list[j:j + BATCH_SIZE]
+            placeholders = ','.join('?' * len(batch))
+            query = f"""
+                    SELECT seqID, parent_ID, aa_length, strand, COG_ID, CUGO_number, no_TMH
+                    FROM all_data
+                    WHERE parent_ID = ?
+                    AND CUGO_number IN ({placeholders})
+                    ORDER BY CUGO_number
+                """
+            params = (parent_ID, *batch)
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            if rows:
+                context_data[parent_ID].extend(rows)
 
     all_results = []
 
@@ -1082,7 +1090,7 @@ def cugo_plot(context_path: str,
         if not top_n:
             logger.error('top_n is required if cugo is True')
         else:
-            all_plot_path = ensure_path(output, f'{dataset_name}_cugo.png')
+            all_plot_path = ensure_path(output, f'{dataset_name}_cugo.png', force=force)
 
             # calculate dynamic figure width
             width = max(8, int((flank_upper - flank_lower + 1) * top_n * 0.6))
