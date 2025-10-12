@@ -761,6 +761,114 @@ def plot_size_per_position(context_path: str,
     if save:
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
 
+def plot_tmh_per_position(context_path: str,
+                          flank_lower: int,
+                          flank_upper: int,
+                          title: str = 'no_TMH Distribution per Position',
+                          save: bool = False,
+                          ax: Optional[plt.Axes] = None,
+                          pos_boundaries: Optional[list] = None,
+                          y_range: int = None,
+                          plot_path: str = None
+                          ):
+    """
+    Creates 1D-density plot showing transmembrane helix count distribution across genomic positions.
+
+    Args:
+        context_path (str): path to context data file
+        flank_lower (int): lower bound of flanking region
+        flank_upper (int): upper bound of flanking region
+        title (str): plot title
+        save (bool): whether to save plot to file
+        ax (plt.Axes, optional): matplotlib axes object to plot on
+        pos_boundaries (list, optional): position boundaries to draw as vertical lines
+        y_range (int, optional): maximum y-axis range to display
+        plot_path (str, optional): path to save plot file
+
+    Returns:
+        None
+    """
+    # load context data and extract no_TMH information
+    cont = pd.read_csv(context_path, sep='\t', na_values='', keep_default_na=False)
+    extract = cont.loc[cont['feat_type'] == 'no_TMH']
+
+    # select columns for specified flanking region
+    flank_cols = [str(i) for i in range(flank_lower, flank_upper + 1)]
+    cugo_df = extract[flank_cols]
+    positions = [int(col) for col in cugo_df.columns]
+
+    # determine bin edges for TMH counts (integers)
+    all_tmh = cugo_df.values.flatten()
+    all_tmh = all_tmh[~pd.isna(all_tmh)].astype(float)
+    max_tmh = int(all_tmh.max())
+    bin_edges = np.arange(0, max_tmh + 2, 1)  # bins for 0, 1, 2, ..., max_tmh
+    n_bins = len(bin_edges) - 1
+
+    # create histogram data for each position
+    heat_data = np.zeros((n_bins, len(flank_cols)))
+    position_counts = []
+
+    for col_idx, col in enumerate(flank_cols):
+        values = cugo_df[col].dropna().astype(float)
+        hist, _ = np.histogram(values, bins=bin_edges)
+        heat_data[:, col_idx] = hist
+        position_counts.append(len(values))
+
+    # create figure if no axes provided
+    if ax is None:
+        fig, ax = plt.subplots()
+
+    # set up colormap and normalization
+    cmap = get_cmap('Reds')
+    norm = Normalize(vmin=0, vmax=heat_data.max())
+
+    # draw heatmap rectangles
+    rect_width = 0.8
+    for col_idx, pos in enumerate(positions):
+        for y in range(heat_data.shape[0]):
+            val = heat_data[y, col_idx]
+            color = cmap(norm(val))
+            ax.add_patch(plt.Rectangle(
+                (pos - rect_width / 2, y), rect_width, 1, color=color, linewidth=0
+            ))
+
+    # add position boundaries if provided
+    if pos_boundaries is not None:
+        for boundary in pos_boundaries:
+            ax.axvline(boundary, color='gray', linestyle='--', linewidth=0.7, zorder=1)
+
+    # set x-axis labels with position and count information
+    ax.set_xlim(positions[0] - 0.5, positions[-1] + 0.5)
+    xtick_labels = [f'{pos}\n(n={count})' for pos, count in zip(positions, position_counts)]
+    ax.set_xticks(positions)
+    ax.set_xticklabels(xtick_labels, fontsize=14)
+
+    # set y-axis range
+    if y_range:
+        n_bins = min(y_range, n_bins)
+
+    ax.set_ylim(0, n_bins)
+
+    # create y-axis tick labels for TMH counts
+    tick_indices = list(range(n_bins))
+    tick_labels = [f'{int(bin_edges[i])}' for i in tick_indices]
+
+    ax.set_yticks(np.array(tick_indices) + 0.5)
+    ax.set_yticklabels(tick_labels, fontsize=16)
+
+    # set axis labels and title
+    ax.set_xlabel('Position', fontsize=18)
+    ax.set_ylabel('no_TMH', fontsize=18)
+    ax.set_title(title, fontsize=20)
+
+    # create colorbar
+    sm = ScalarMappable(norm=norm, cmap=cmap)
+    sm.set_array([])
+
+    plt.tight_layout()
+    if save:
+        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+
 # ======================================
 # CUGO COMMAND LINE TOOLS
 # ======================================
@@ -958,13 +1066,15 @@ def cugo_plot(context_path: str,
               output: str,
               cugo: bool = False,
               size: bool = False,
+              tmh: bool = False,
               all_plots: bool = False,
               bin_width: int = 10,
               y_range: int = None,
+              tmh_y_range: int = None,
               force: bool = False
               ):
     """
-    Generate plots for genomic context analysis: COG distribution and protein size.
+    Generate plots for genomic context analysis: COG distribution, protein size, and TMH counts.
 
     Args:
         context_path: Path to context TSV file
@@ -974,9 +1084,11 @@ def cugo_plot(context_path: str,
         output: Output directory for plots
         cugo: Whether to generate COG-only plot
         size: Whether to generate size-only plot
+        tmh: Whether to generate TMH-only plot
         all_plots: Whether to generate combined plot
         bin_width: Bin width for size plots
         y_range: Y-axis range for size plots
+        tmh_y_range: Y-axis range for TMH plots
         force: Whether to overwrite existing files
     """
     dataset_name = context_path.removesuffix('_context.tsv')
@@ -996,21 +1108,28 @@ def cugo_plot(context_path: str,
         size_plot_path = ensure_path(output, f'{dataset_name}_size_only.png', force=force)
         plot_size_per_position(context_path=context_path, flank_lower=flank_lower,
                                flank_upper=flank_upper, save=True, bin_width=bin_width,
-                               plot_path=size_plot_path)
+                               plot_path=size_plot_path, y_range=y_range)
+
+    # generate tmh-only plot
+    if tmh:
+        tmh_plot_path = ensure_path(output, f'{dataset_name}_tmh_only.png', force=force)
+        plot_tmh_per_position(context_path=context_path, flank_lower=flank_lower,
+                              flank_upper=flank_upper, save=True, y_range=tmh_y_range,
+                              plot_path=tmh_plot_path)
 
     # generate combined plot
     if all_plots:
         if not top_n:
-            logger.error('top_n is required if cugo is True')
+            logger.error('top_n is required if all_plots is True')
         else:
             all_plot_path = ensure_path(output, f'{dataset_name}_cugo.png', force=force)
 
             # calculate dynamic figure width
             width = max(8, int((flank_upper - flank_lower + 1) * top_n * 0.6))
-            figsize = (width, 12)
-            fig, (ax1, ax2) = plt.subplots(2, 1,
-                                           figsize=figsize,
-                                           gridspec_kw={'height_ratios': [3, 2]})
+            figsize = (width, 16)
+            fig, (ax1, ax2, ax3) = plt.subplots(3, 1,
+                                                figsize=figsize,
+                                                gridspec_kw={'height_ratios': [3, 2, 1.5]})
 
             # plot top cogs per position
             pos_centers, pos_boundaries = plot_top_cogs_per_position(
@@ -1032,6 +1151,17 @@ def cugo_plot(context_path: str,
                 pos_boundaries=pos_boundaries,
                 bin_width=bin_width,
                 y_range=y_range
+            )
+
+            # plot TMH distribution
+            plot_tmh_per_position(
+                context_path=context_path,
+                flank_lower=flank_lower,
+                flank_upper=flank_upper,
+                title='no_TMH Distribution per Position',
+                ax=ax3,
+                pos_boundaries=pos_boundaries,
+                y_range=tmh_y_range
             )
 
             ax1.tick_params(labelbottom=True)
