@@ -17,6 +17,8 @@ from tqdm import tqdm
 import subprocess
 from collections import defaultdict
 import csv
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 
 logger = logging.getLogger(__name__)
 
@@ -834,104 +836,6 @@ def write_context_output(results, output_file):
                 line_parts.append(row.get(str(idx), ''))
             f.write('\t'.join(map(str, line_parts)) + '\n')
 
-def context(fasta_path: str,
-            cugo_path: str,
-            cugo_range: int,
-            output_dir: str,
-            force: bool = False,
-            ):
-    if fasta_path:
-        protein_name = determine_dataset_name(fasta_path, '.', 0)
-        output_file = ensure_path(output_dir, f'{protein_name}_context.tsv', force=force)
-        sequences = read_fasta_to_dict(fasta_path)
-        protein_identifiers = set(sequences.keys())  # O(1) lookups
-
-        log_file = ensure_path(output_dir, f'{protein_name}_missing_files.log', force=force)
-        logging.basicConfig(
-            filename=log_file,
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s'
-        )
-    else:
-        raise ValueError('You must provide a FASTA file.')
-
-    conn = sqlite3.connect(cugo_path)
-    cursor = conn.cursor()
-
-    BATCH_SIZE = 500
-    target_rows = []
-    protein_list = list(protein_identifiers)
-
-    for i in tqdm(range(0, len(protein_list), BATCH_SIZE)):
-        batch = protein_list[i:i + BATCH_SIZE]
-        placeholders = ','.join('?' * len(batch))
-        query = f"""
-            SELECT seqID, parent_ID, aa_length, strand, COG_ID, CUGO_number, no_TMH
-            FROM all_data
-            WHERE seqID IN ({placeholders})
-        """
-        cursor.execute(query, batch)
-        target_rows.extend(cursor.fetchall())
-
-    if not target_rows:
-        logger.warning("No target proteins found in the database.")
-        return None
-
-    target_contexts = {}  # seqID -> (parent_ID, CUGO_number, strand)
-    context_ranges = defaultdict(set)
-
-    for seqID, parent_ID, aa_length, strand, COG_ID, CUGO_number, no_TMH in target_rows:
-        target_contexts[seqID] = (parent_ID, CUGO_number, strand)
-        for i in range(CUGO_number - cugo_range, CUGO_number + cugo_range + 1):
-            context_ranges[parent_ID].add(i)
-
-    context_data = defaultdict(list)
-    headers = ["seqID", "parent_ID", "aa_length", "strand", "COG_ID", "CUGO_number", "no_TMH"]
-
-
-
-    for parent_ID, needed_numbers in tqdm(context_ranges.items(), desc="Fetching parent contexts"):
-        needed_list = list(needed_numbers)
-        for j in range(0, len(needed_list), BATCH_SIZE):
-            batch = needed_list[j:j + BATCH_SIZE]
-            placeholders = ','.join('?' * len(batch))
-            query = f"""
-                    SELECT seqID, parent_ID, aa_length, strand, COG_ID, CUGO_number, no_TMH
-                    FROM all_data
-                    WHERE parent_ID = ?
-                    AND CUGO_number IN ({placeholders})
-                    ORDER BY CUGO_number
-                """
-            params = (parent_ID, *batch)
-            cursor.execute(query, params)
-            rows = cursor.fetchall()
-            if rows:
-                context_data[parent_ID].extend(rows)
-
-    all_results = []
-
-    for seqID, (parent_ID, target_cugo, strand) in target_contexts.items():
-        results = process_target_context(
-            target_id=seqID,
-            parent_id=parent_ID,
-            target_cugo=target_cugo,
-            strand=strand,
-            cugo_range=cugo_range,
-            context_data=context_data,
-            headers=headers,
-            seq_idx=0  # assuming first column is seqID
-        )
-        all_results.extend(results)
-
-    if all_results:
-        write_context_output(all_results, output_file)
-        logger.info(f"Context written to {output_file}")
-        return output_file
-    else:
-        logger.info("No context data found.")
-        return None
-
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 def fetch_seqid_batch(batch, cugo_path):
     conn = sqlite3.connect(cugo_path)
@@ -987,7 +891,6 @@ def context(fasta_path: str,
         )
     else:
         raise ValueError('You must provide a FASTA file.')
-
 
     BATCH_SIZE = 500
     target_rows = []
