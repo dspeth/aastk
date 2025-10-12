@@ -396,6 +396,7 @@ def get_main_parser():
             __cugo_range(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __threads(grp)
             __force(grp)
 
     with subparser(sub_parsers, 'cugo_plot', 'Plot CUGO context') as parser:
@@ -429,6 +430,7 @@ def get_main_parser():
             __bin_width(grp)
             __y_range(grp)
             __output(grp)
+            __threads(grp)
 
     with subparser(sub_parsers, 'matrix', 'Create alignment matrix for tSNE embedding and DBSCAN clustering') as parser:
         with mutex_group(parser, required=True) as grp:
