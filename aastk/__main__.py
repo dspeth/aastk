@@ -135,6 +135,7 @@ def main():
                 cugo_path=args.cugo_path,
                 cugo_range=args.cugo_range,
                 output_dir=args.output,
+                threads=args.threads,
                 force=args.force,
             )
 
@@ -162,6 +163,7 @@ def main():
                 flank_lower=args.flank_lower,
                 flank_upper=args.flank_upper,
                 top_n=args.top_n,
+                threads=args.threads,
                 force=args.force,
                 bin_width=args.bin_width,
                 y_range=args.y_range

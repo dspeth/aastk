@@ -17,6 +17,8 @@ from tqdm import tqdm
 import subprocess
 from collections import defaultdict
 import csv
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 
 logger = logging.getLogger(__name__)
 
@@ -27,33 +29,23 @@ def setup_database(db_path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
 
     conn.execute('''
-        CREATE TABLE IF NOT EXISTS gff_data (
+        CREATE TABLE IF NOT EXISTS all_data (
             seqID TEXT PRIMARY KEY,
             parent_ID TEXT,
-            gene_start INTEGER,
-            gene_end INTEGER,
-            nuc_length INTEGER,
             aa_length INTEGER,
-            strand TEXT,
+            strand TEXT, 
             COG_ID TEXT,
             cugo_number INTEGER,
-            cugo_start TEXT,
-            cugo_end TEXT
-        )
-    ''')
-
-    conn.execute('''
-            CREATE TABLE IF NOT EXISTS tmhmm_data (
-                seqID TEXT PRIMARY KEY,
-                no_tmh INTEGER
+            no_tmh INTEGER
             )
         ''')
 
-    conn.execute('CREATE INDEX IF NOT EXISTS idx_gff_seqid ON gff_data(seqID)')
-    conn.execute('CREATE INDEX IF NOT EXISTS idx_tmhmm_seqid ON tmhmm_data(seqID)')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_all_seqid ON all_data(seqID)')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_parent_id ON all_data(parent_ID)')
 
     conn.commit()
     return conn
+
 
 def extract_gene_info(line: list) -> tuple:
     """
@@ -287,8 +279,8 @@ def parse_single_gff(gff_content: str) -> list:
         )
 
         # store processed gene data (all 11 fields for database)
-        reformat_data.append([seqID, parent, gene_start, gene_end, nuc_length, aa_length,
-                              direction, COG_ID, cugo, cugo_start, cugo_end])
+        reformat_data.append([seqID, parent, aa_length,
+                              direction, COG_ID, cugo])
 
         # update tracking variables for next iteration
         prev_line = clean_line
@@ -308,9 +300,9 @@ def parse_single_gff(gff_content: str) -> list:
             cugo_count, cugo_size, cugo_size_count, prev_cugo
         )
 
-        # store final gene data (all 11 fields for database)
-        reformat_data.append([seqID, parent, gene_start, gene_end, nuc_length, aa_length,
-                              direction, COG_ID, cugo, cugo_start, cugo_end])
+        # store final gene data (all 6 fields for database)
+        reformat_data.append([seqID, parent, aa_length,
+                              direction, COG_ID, cugo])
 
         # finalize cugo size tracking
         cugo_size[cugo] = cugo_size_count
@@ -407,8 +399,6 @@ def parse(gff_tar_path: str,
     """
     Main parsing function - single-threaded version for memory efficiency
     """
-    output_tsv = ensure_path(output_dir, f'globdb_r{globdb_version}_cugo', force=force)
-
     logger.info("Processing files single-threaded for memory efficiency")
 
     if output_dir is None:
@@ -437,43 +427,35 @@ def parse(gff_tar_path: str,
     conn = setup_database(db_path)
 
     # Process GFF files sequentially
-    logger.info("Processing GFF files...")
-    for gff_file in tqdm(gff_files, desc="GFF files"):
+    for gff_file in tqdm(gff_files, desc="Processing GFF files"):
         gff_data = process_gff_file(str(gff_file))
         if gff_data:
             conn.executemany("""
-                INSERT OR REPLACE INTO gff_data
-                (seqID, parent_ID, gene_start, gene_end, nuc_length,
-                 aa_length, strand, COG_ID, cugo_number, cugo_start, cugo_end)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO all_data
+                (seqID, parent_ID, aa_length, strand, COG_ID, cugo_number)
+                VALUES (?, ?, ?, ?, ?, ?)
             """, gff_data)
             conn.commit()
 
-    # Process TMHMM files sequentially
+    # --- Process TMHMM files ---
     if tmhmm_files:
-        logger.info("Processing TMHMM files...")
-        for tmhmm_file in tqdm(tmhmm_files, desc="TMHMM files"):
+        for tmhmm_file in tqdm(tmhmm_files, desc="Processing TMHMM files"):
             tmhmm_data = process_tmhmm_file(str(tmhmm_file))
             if tmhmm_data:
-                conn.executemany("""
-                    INSERT OR REPLACE INTO tmhmm_data
-                    (seqID, no_tmh)
-                    VALUES (?, ?)
-                """, tmhmm_data)
+                for prot_id, no_tmh in tmhmm_data:
+                    conn.execute("""
+                        UPDATE all_data
+                        SET no_tmh = ?
+                        WHERE seqID = ?
+                    """, (no_tmh, prot_id))
                 conn.commit()
 
     conn.close()
 
-    # Export to TSV
-    logger.info("Exporting to TSV...")
-    export_to_tsv(db_path, output_tsv)
 
-    # Cleanup
-    if cleanup_db:
-        Path(db_path).unlink(missing_ok=True)
-    shutil.rmtree(tempdir)
 
-    logger.info(f"Parsing complete. Output saved to: {output_tsv}")
+
+
 
 # ======================================
 # FUNCTION DEFINITIONS FOR CUGO PLOTTING
@@ -779,6 +761,114 @@ def plot_size_per_position(context_path: str,
     if save:
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
 
+def plot_tmh_per_position(context_path: str,
+                          flank_lower: int,
+                          flank_upper: int,
+                          title: str = 'no_TMH Distribution per Position',
+                          save: bool = False,
+                          ax: Optional[plt.Axes] = None,
+                          pos_boundaries: Optional[list] = None,
+                          y_range: int = None,
+                          plot_path: str = None
+                          ):
+    """
+    Creates 1D-density plot showing transmembrane helix count distribution across genomic positions.
+
+    Args:
+        context_path (str): path to context data file
+        flank_lower (int): lower bound of flanking region
+        flank_upper (int): upper bound of flanking region
+        title (str): plot title
+        save (bool): whether to save plot to file
+        ax (plt.Axes, optional): matplotlib axes object to plot on
+        pos_boundaries (list, optional): position boundaries to draw as vertical lines
+        y_range (int, optional): maximum y-axis range to display
+        plot_path (str, optional): path to save plot file
+
+    Returns:
+        None
+    """
+    # load context data and extract no_TMH information
+    cont = pd.read_csv(context_path, sep='\t', na_values='', keep_default_na=False)
+    extract = cont.loc[cont['feat_type'] == 'no_TMH']
+
+    # select columns for specified flanking region
+    flank_cols = [str(i) for i in range(flank_lower, flank_upper + 1)]
+    cugo_df = extract[flank_cols]
+    positions = [int(col) for col in cugo_df.columns]
+
+    # determine bin edges for TMH counts (integers)
+    all_tmh = cugo_df.values.flatten()
+    all_tmh = all_tmh[~pd.isna(all_tmh)].astype(float)
+    max_tmh = int(all_tmh.max())
+    bin_edges = np.arange(0, max_tmh + 2, 1)  # bins for 0, 1, 2, ..., max_tmh
+    n_bins = len(bin_edges) - 1
+
+    # create histogram data for each position
+    heat_data = np.zeros((n_bins, len(flank_cols)))
+    position_counts = []
+
+    for col_idx, col in enumerate(flank_cols):
+        values = cugo_df[col].dropna().astype(float)
+        hist, _ = np.histogram(values, bins=bin_edges)
+        heat_data[:, col_idx] = hist
+        position_counts.append(len(values))
+
+    # create figure if no axes provided
+    if ax is None:
+        fig, ax = plt.subplots()
+
+    # set up colormap and normalization
+    cmap = get_cmap('Reds')
+    norm = Normalize(vmin=0, vmax=heat_data.max())
+
+    # draw heatmap rectangles
+    rect_width = 0.8
+    for col_idx, pos in enumerate(positions):
+        for y in range(heat_data.shape[0]):
+            val = heat_data[y, col_idx]
+            color = cmap(norm(val))
+            ax.add_patch(plt.Rectangle(
+                (pos - rect_width / 2, y), rect_width, 1, color=color, linewidth=0
+            ))
+
+    # add position boundaries if provided
+    if pos_boundaries is not None:
+        for boundary in pos_boundaries:
+            ax.axvline(boundary, color='gray', linestyle='--', linewidth=0.7, zorder=1)
+
+    # set x-axis labels with position and count information
+    ax.set_xlim(positions[0] - 0.5, positions[-1] + 0.5)
+    xtick_labels = [f'{pos}\n(n={count})' for pos, count in zip(positions, position_counts)]
+    ax.set_xticks(positions)
+    ax.set_xticklabels(xtick_labels, fontsize=14)
+
+    # set y-axis range
+    if y_range:
+        n_bins = min(y_range, n_bins)
+
+    ax.set_ylim(0, n_bins)
+
+    # create y-axis tick labels for TMH counts
+    tick_indices = list(range(n_bins))
+    tick_labels = [f'{int(bin_edges[i])}' for i in tick_indices]
+
+    ax.set_yticks(np.array(tick_indices) + 0.5)
+    ax.set_yticklabels(tick_labels, fontsize=16)
+
+    # set axis labels and title
+    ax.set_xlabel('Position', fontsize=18)
+    ax.set_ylabel('no_TMH', fontsize=18)
+    ax.set_title(title, fontsize=20)
+
+    # create colorbar
+    sm = ScalarMappable(norm=norm, cmap=cmap)
+    sm.set_array([])
+
+    plt.tight_layout()
+    if save:
+        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+
 # ======================================
 # CUGO COMMAND LINE TOOLS
 # ======================================
@@ -852,12 +942,47 @@ def write_context_output(results, output_file):
             line_parts = [row['feat_type']]
             for idx in sorted_indices:
                 line_parts.append(row.get(str(idx), ''))
-            f.write('\t'.join(line_parts) + '\n')
+            f.write('\t'.join(map(str, line_parts)) + '\n')
+
+
+def fetch_seqid_batch(batch, cugo_path):
+    conn = sqlite3.connect(cugo_path)
+    cursor = conn.cursor()
+    placeholders = ",".join("?" * len(batch))
+    query = f"""
+        SELECT seqID, parent_ID, aa_length, strand, COG_ID, CUGO_number, no_TMH
+        FROM all_data
+        WHERE seqID IN ({placeholders})
+    """
+    cursor.execute(query, batch)
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+def fetch_parent_context(parent_ID, needed_numbers, cugo_path, batch_size=500):
+    conn = sqlite3.connect(cugo_path)
+    cursor = conn.cursor()
+    rows_out = []
+    needed_list = list(needed_numbers)
+    for j in range(0, len(needed_list), batch_size):
+        batch = needed_list[j:j + batch_size]
+        placeholders = ",".join("?" * len(batch))
+        query = f"""
+            SELECT seqID, parent_ID, aa_length, strand, COG_ID, CUGO_number, no_TMH
+            FROM all_data
+            WHERE parent_ID = ? AND CUGO_number IN ({placeholders})
+            ORDER BY CUGO_number
+        """
+        cursor.execute(query, (parent_ID, *batch))
+        rows_out.extend(cursor.fetchall())
+    conn.close()
+    return parent_ID, rows_out
 
 def context(fasta_path: str,
             cugo_path: str,
             cugo_range: int,
             output_dir: str,
+            threads: int = 1,
             force: bool = False,
             ):
     if fasta_path:
@@ -875,89 +1000,64 @@ def context(fasta_path: str,
     else:
         raise ValueError('You must provide a FASTA file.')
 
-    # Pass 1: Find target proteins and determine context ranges needed
-    target_contexts = {}  # seqID -> (parent_ID, cugo_number, strand)
-    context_ranges = defaultdict(set)  # parent_ID -> set of cugo_numbers needed
+    BATCH_SIZE = 500
+    target_rows = []
+    protein_list = list(protein_identifiers)
+    batches = [protein_list[i:i + BATCH_SIZE] for i in range(0, len(protein_list), BATCH_SIZE)]
 
-    print("Pass 1: Finding target proteins...")
-    with open(cugo_path, 'r') as f:
-        reader = csv.reader(f, delimiter="\t")
-        headers = next(reader)
-        seq_idx = headers.index('seqID')
-        parent_idx = headers.index('parent_ID')
-        cugo_idx = headers.index('CUGO_number')
-        strand_idx = headers.index('strand')
+    with ThreadPoolExecutor(max_workers=threads) as executor:
+        futures = {executor.submit(fetch_seqid_batch, batch, cugo_path): batch for batch in batches}
+        for future in tqdm(as_completed(futures), total=len(futures), desc="Fetching seqIDs"):
+            target_rows.extend(future.result())
 
-        for fields in reader:
-            seq_id = fields[seq_idx]
-
-            if seq_id in protein_identifiers:
-                parent_id = fields[parent_idx]
-                cugo_num = int(fields[cugo_idx])
-                strand = fields[strand_idx]
-
-                target_contexts[seq_id] = (parent_id, cugo_num, strand)
-
-                # Mark context range needed
-                for i in range(cugo_num - cugo_range, cugo_num + cugo_range + 1):
-                    context_ranges[parent_id].add(i)
-
-                if len(target_contexts) % 100 == 0:
-                    logging.info("Target #%d", len(target_contexts))
-
-                # Early termination - stop when we've found all targets
-                if len(target_contexts) == len(protein_identifiers):
-                    print(f"Found all {len(protein_identifiers)} targets, stopping pass 1")
-                    break
-
-    if not target_contexts:
-        logging.warning('No target proteins found in the CUGO file.')
+    if not target_rows:
+        logging.warning("No target proteins found in the database.")
         return None
 
-    print(context_ranges)
+    target_contexts = {}
+    context_ranges = defaultdict(set)
 
-    # Pass 2: Collect context data with sorted file optimization
-    needed_parents = set(context_ranges.keys())  # Parents we still need
+    for seqID, parent_ID, aa_length, strand, COG_ID, CUGO_number, no_TMH in target_rows:
+        target_contexts[seqID] = (parent_ID, CUGO_number, strand)
+        for i in range(CUGO_number - cugo_range, CUGO_number + cugo_range + 1):
+            context_ranges[parent_ID].add(i)
+
+    headers = ["seqID", "parent_ID", "aa_length", "strand", "COG_ID", "CUGO_number", "no_TMH"]
     context_data = defaultdict(list)
 
-    with open(cugo_path, 'r') as f:
-        reader = csv.reader(f, delimiter="\t")
-        next(reader)  # skip header
-
-        current_parent = None
-
-        for fields in reader:
-            parent_id = fields[parent_idx]
-            cugo_num = int(fields[cugo_idx])
-
-            # New parent encountered
-            if parent_id != current_parent:
-                # If previous parent was needed and we're done with it, remove it
-                if current_parent in needed_parents:
-                    needed_parents.discard(current_parent)
-                current_parent = parent_id
-
-                # If no more parents needed, stop
-                if not needed_parents:
-                    print("All needed parents processed, stopping")
-                    break
-
-            # Keep row if needed
-            if parent_id in context_ranges and cugo_num in context_ranges[parent_id]:
-                context_data[parent_id].append(fields)
+    with ThreadPoolExecutor(max_workers=threads) as executor:
+        futures = {
+            executor.submit(fetch_parent_context, pid, numbers, cugo_path, BATCH_SIZE): pid
+            for pid, numbers in context_ranges.items()
+        }
+        for future in tqdm(as_completed(futures), total=len(futures), desc="Fetching parent contexts"):
+            parent_ID, rows = future.result()
+            if rows:
+                context_data[parent_ID].extend(rows)
 
     all_results = []
-
-    for seq_id, (parent_id, target_cugo, strand) in target_contexts.items():
+    for seqID, (parent_ID, target_cugo, strand) in target_contexts.items():
         results = process_target_context(
-            seq_id, parent_id, target_cugo, strand, cugo_range,
-            context_data, headers, seq_idx
+            target_id=seqID,
+            parent_id=parent_ID,
+            target_cugo=target_cugo,
+            strand=strand,
+            cugo_range=cugo_range,
+            context_data=context_data,
+            headers=headers,
+            seq_idx=0,
         )
         all_results.extend(results)
 
     if all_results:
         write_context_output(all_results, output_file)
+        logging.info(f"Context written to {output_file}")
         return output_file
+    else:
+        logging.info("No context data found.")
+        return None
+
+
 
 def cugo_plot(context_path: str,
               flank_lower: int,
@@ -966,13 +1066,15 @@ def cugo_plot(context_path: str,
               output: str,
               cugo: bool = False,
               size: bool = False,
+              tmh: bool = False,
               all_plots: bool = False,
               bin_width: int = 10,
               y_range: int = None,
+              tmh_y_range: int = None,
               force: bool = False
               ):
     """
-    Generate plots for genomic context analysis: COG distribution and protein size.
+    Generate plots for genomic context analysis: COG distribution, protein size, and TMH counts.
 
     Args:
         context_path: Path to context TSV file
@@ -982,9 +1084,11 @@ def cugo_plot(context_path: str,
         output: Output directory for plots
         cugo: Whether to generate COG-only plot
         size: Whether to generate size-only plot
+        tmh: Whether to generate TMH-only plot
         all_plots: Whether to generate combined plot
         bin_width: Bin width for size plots
         y_range: Y-axis range for size plots
+        tmh_y_range: Y-axis range for TMH plots
         force: Whether to overwrite existing files
     """
     dataset_name = context_path.removesuffix('_context.tsv')
@@ -1004,21 +1108,28 @@ def cugo_plot(context_path: str,
         size_plot_path = ensure_path(output, f'{dataset_name}_size_only.png', force=force)
         plot_size_per_position(context_path=context_path, flank_lower=flank_lower,
                                flank_upper=flank_upper, save=True, bin_width=bin_width,
-                               plot_path=size_plot_path)
+                               plot_path=size_plot_path, y_range=y_range)
+
+    # generate tmh-only plot
+    if tmh:
+        tmh_plot_path = ensure_path(output, f'{dataset_name}_tmh_only.png', force=force)
+        plot_tmh_per_position(context_path=context_path, flank_lower=flank_lower,
+                              flank_upper=flank_upper, save=True, y_range=tmh_y_range,
+                              plot_path=tmh_plot_path)
 
     # generate combined plot
     if all_plots:
         if not top_n:
-            logger.error('top_n is required if cugo is True')
+            logger.error('top_n is required if all_plots is True')
         else:
-            all_plot_path = ensure_path(output, f'{dataset_name}_cugo.png')
+            all_plot_path = ensure_path(output, f'{dataset_name}_cugo.png', force=force)
 
             # calculate dynamic figure width
             width = max(8, int((flank_upper - flank_lower + 1) * top_n * 0.6))
-            figsize = (width, 12)
-            fig, (ax1, ax2) = plt.subplots(2, 1,
-                                           figsize=figsize,
-                                           gridspec_kw={'height_ratios': [3, 2]})
+            figsize = (width, 16)
+            fig, (ax1, ax2, ax3) = plt.subplots(3, 1,
+                                                figsize=figsize,
+                                                gridspec_kw={'height_ratios': [3, 2, 1.5]})
 
             # plot top cogs per position
             pos_centers, pos_boundaries = plot_top_cogs_per_position(
@@ -1042,6 +1153,17 @@ def cugo_plot(context_path: str,
                 y_range=y_range
             )
 
+            # plot TMH distribution
+            plot_tmh_per_position(
+                context_path=context_path,
+                flank_lower=flank_lower,
+                flank_upper=flank_upper,
+                title='no_TMH Distribution per Position',
+                ax=ax3,
+                pos_boundaries=pos_boundaries,
+                y_range=tmh_y_range
+            )
+
             ax1.tick_params(labelbottom=True)
 
             plt.tight_layout()
@@ -1059,6 +1181,7 @@ def cugo(cugo_path: str,
          flank_lower: int,
          flank_upper: int,
          top_n: int,
+         threads: int = 1,
          force: bool = False,
          bin_width: int = 10,
          y_range: int = None):
@@ -1086,7 +1209,8 @@ def cugo(cugo_path: str,
         cugo_path=cugo_path,
         cugo_range=cugo_range,
         output_dir=output_dir,
-        force=force,
+        threads=threads,
+        force=force
     )
 
     if context_file is None:
