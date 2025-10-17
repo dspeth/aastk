@@ -359,37 +359,7 @@ def process_tmhmm_file(tmhmm_filepath):
     except Exception:
         return []
 
-def export_to_tsv(db_path: str, output_tsv: str):
-    """Export merged data from SQLite to TSV"""
-    conn = sqlite3.connect(db_path)
-
-    query = '''
-        SELECT 
-            g.seqID,
-            g.parent_ID,
-            g.aa_length,
-            g.strand,
-            g.COG_ID,
-            g.cugo_number,
-            COALESCE(t.no_tmh, 0) as no_TMH
-        FROM gff_data g
-        LEFT JOIN tmhmm_data t ON g.seqID = t.seqID
-        ORDER BY
-            SUBSTR(g.seqID, 1, INSTR(g.seqID, '_') - 1),  -- prefix_text
-            CAST(SUBSTR(g.seqID, INSTR(g.seqID, '_') + 1, INSTR(g.seqID, '__') - INSTR(g.seqID, '_') - 1) AS INTEGER),  -- prefix_num
-            CAST(SUBSTR(g.seqID, INSTR(g.seqID, '__') + 2) AS INTEGER)  -- suffix_num
-    '''
-
-    cursor = conn.execute(query)
-    with open(output_tsv, 'w') as f:
-        f.write('seqID\tparent_ID\taa_length\tstrand\tCOG_ID\tCUGO_number\tno_TMH\n')
-        for row in cursor:
-            f.write('\t'.join(map(str, row)) + '\n')
-
-    conn.close()
-
-
-def parse(gff_tar_path: str,
+def parse_old(gff_tar_path: str,
           tmhmm_tar_path: str = None,
           output_dir: str = None,
           globdb_version: int = None,
@@ -452,7 +422,124 @@ def parse(gff_tar_path: str,
 
     conn.close()
 
+def setup_database(db_path: str, chunk_list: list) -> sqlite3.Connection:
+    conn = sqlite3.connect(db_path)
 
+    for chunk in chunk_list:
+        conn.execute(f'''
+            CREATE TABLE IF NOT EXISTS {chunk} (
+                seqID TEXT PRIMARY KEY,
+                parent_ID TEXT,
+                aa_length INTEGER,
+                strand TEXT, 
+                COG_ID TEXT,
+                cugo_number INTEGER,
+                no_tmh INTEGER
+                )
+            ''')
+
+        conn.execute(f'CREATE INDEX IF NOT EXISTS idx_all_seqid ON {chunk}(seqID)')
+        conn.execute(f'CREATE INDEX IF NOT EXISTS idx_parent_id ON {chunk}(parent_ID)')
+
+        conn.commit()
+    return conn
+
+def extract_chunk_from_path(file_path: Path) -> str:
+    for part in file_path.parts:
+        if 'CHUNK' in part.upper():
+            return part
+    return None
+
+def parse(gff_tar_path: str,
+          tmhmm_tar_path: str = None,
+          output_dir: str = None,
+          globdb_version: int = None,
+          force: bool = False,
+          db_path: str = "temp_genome_data.db",
+          cleanup_db: bool = False):
+    logger.info("Processing files by chunk")
+
+    if output_dir is None:
+        output_dir = '.'
+
+    output_path = Path(output_dir)
+    tempdir = output_path / 'tempdir'
+
+    if tempdir.exists():
+        shutil.rmtree(tempdir)
+    tempdir.mkdir(parents=True, exist_ok=True)
+
+    logger.info("Extracting GFF tar file...")
+    subprocess.run(["tar", "-xzf", gff_tar_path, "-C", str(tempdir)], check=True)
+
+    if tmhmm_tar_path:
+        logger.info("Extracting TMHMM tar file...")
+        subprocess.run(["tar", "-xzf", tmhmm_tar_path, "-C", str(tempdir)], check=True)
+
+    gff_files = list(tempdir.rglob("*_cog.gff.gz"))
+    tmhmm_files = list(tempdir.rglob("*_tmhmm_clean"))
+
+    logger.info(f"Found {len(gff_files)} GFF files and {len(tmhmm_files)} TMHMM files")
+
+    gff_by_chunk = defaultdict(list)
+    tmhmm_by_chunk = defaultdict(list)
+
+    for gff_file in gff_files:
+        chunk = extract_chunk_from_path(gff_file)
+        if chunk:
+            gff_by_chunk[chunk].append(gff_file)
+        else:
+            logger.warning(f"Could not extract chunk from path: {gff_file}")
+
+    for tmhmm_file in tmhmm_files:
+        chunk = extract_chunk_from_path(tmhmm_file)
+        if chunk:
+            tmhmm_by_chunk[chunk].append(tmhmm_file)
+        else:
+            logger.warning(f"Could not extract chunk from path: {tmhmm_file}")
+
+    # Get all unique chunks
+    all_chunks = set(gff_by_chunk.keys()) | set(tmhmm_by_chunk.keys())
+    logger.info(f"Found {len(all_chunks)} chunks: {sorted(all_chunks)}")
+
+    # Setup database with all chunk tables
+    conn = setup_database(db_path, sorted(all_chunks))
+
+    # Process each chunk
+    for chunk in tqdm(sorted(all_chunks), desc="Processing chunks"):
+        table_name = chunk.replace('-', '_').replace('.', '_')
+
+        # Process GFF files for this chunk
+        if chunk in gff_by_chunk:
+            for gff_file in gff_by_chunk[chunk]:
+                gff_data = process_gff_file(str(gff_file))
+                if gff_data:
+                    conn.executemany(f"""
+                        INSERT OR REPLACE INTO {table_name}
+                        (seqID, parent_ID, aa_length, strand, COG_ID, cugo_number)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, gff_data)
+            conn.commit()
+            logger.info(f"Processed {len(gff_by_chunk[chunk])} GFF files for chunk {chunk}")
+
+        # Process TMHMM files for this chunk
+        if chunk in tmhmm_by_chunk:
+            for tmhmm_file in tmhmm_by_chunk[chunk]:
+                tmhmm_data = process_tmhmm_file(str(tmhmm_file))
+                if tmhmm_data:
+                    for prot_id, no_tmh in tmhmm_data:
+                        conn.execute(f"""
+                            UPDATE {table_name}
+                            SET no_tmh = ?
+                            WHERE seqID = ?
+                        """, (no_tmh, prot_id))
+            conn.commit()
+            logger.info(f"Processed {len(tmhmm_by_chunk[chunk])} TMHMM files for chunk {chunk}")
+
+
+    conn.close()
+
+    logger.info("Processing complete!")
 
 
 
@@ -530,7 +617,7 @@ def plot_top_cogs_per_position(
             - boundaries (list): list of position boundary values
     """
     # load context data and extract cog information
-    cont = pd.read_csv(context_path, sep='\t', na_values='', keep_default_na=False)
+    cont = pd.read_csv(context_path, sep='\t', na_values='', keep_default_na=False, dtype=str)
     extract = cont.loc[cont['feat_type'] == 'COG_ID']
 
     # load cog color mapping
@@ -669,7 +756,7 @@ def plot_size_per_position(context_path: str,
         None
     """
     # load context data and extract amino acid length information
-    cont = pd.read_csv(context_path, sep='\t', na_values='', keep_default_na=False)
+    cont = pd.read_csv(context_path, sep='\t', na_values='', keep_default_na=False, dtype=str)
     extract = cont.loc[cont['feat_type'] == 'aa_length']
 
     # select columns for specified flanking region
@@ -789,7 +876,7 @@ def plot_tmh_per_position(context_path: str,
         None
     """
     # load context data and extract no_TMH information
-    cont = pd.read_csv(context_path, sep='\t', na_values='', keep_default_na=False)
+    cont = pd.read_csv(context_path, sep='\t', na_values='', keep_default_na=False, dtype=str)
     extract = cont.loc[cont['feat_type'] == 'no_TMH']
 
     # select columns for specified flanking region
