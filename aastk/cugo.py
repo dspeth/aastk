@@ -359,17 +359,18 @@ def process_tmhmm_file(tmhmm_filepath):
     except Exception:
         return []
 
-def parse_old(gff_tar_path: str,
+def parse(gff_tar_path: str,
           tmhmm_tar_path: str = None,
           output_dir: str = None,
           globdb_version: int = None,
           force: bool = False,
-          db_path: str = "temp_genome_data.db",
-          cleanup_db: bool = False):
+          ):
     """
     Main parsing function - single-threaded version for memory efficiency
     """
     logger.info("Processing files single-threaded for memory efficiency")
+
+    db_path = ensure_path(target=f"globdb_{globdb_version}_cugo.db")
 
     if output_dir is None:
         output_dir = '.'
@@ -421,127 +422,6 @@ def parse_old(gff_tar_path: str,
                 conn.commit()
 
     conn.close()
-
-def setup_database(db_path: str, chunk_list: list) -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path)
-
-    for chunk in chunk_list:
-        conn.execute(f'''
-            CREATE TABLE IF NOT EXISTS {chunk} (
-                seqID TEXT PRIMARY KEY,
-                parent_ID TEXT,
-                aa_length INTEGER,
-                strand TEXT, 
-                COG_ID TEXT,
-                cugo_number INTEGER,
-                no_tmh INTEGER
-                )
-            ''')
-
-        conn.execute(f'CREATE INDEX IF NOT EXISTS idx_all_seqid ON {chunk}(seqID)')
-        conn.execute(f'CREATE INDEX IF NOT EXISTS idx_parent_id ON {chunk}(parent_ID)')
-
-        conn.commit()
-    return conn
-
-def extract_chunk_from_path(file_path: Path) -> str:
-    for part in file_path.parts:
-        if 'CHUNK' in part.upper():
-            return part
-    return None
-
-def parse(gff_tar_path: str,
-          tmhmm_tar_path: str = None,
-          output_dir: str = None,
-          globdb_version: int = None,
-          force: bool = False,
-          db_path: str = "temp_genome_data.db",
-          cleanup_db: bool = False):
-    logger.info("Processing files by chunk")
-
-    if output_dir is None:
-        output_dir = '.'
-
-    output_path = Path(output_dir)
-    tempdir = output_path / 'tempdir'
-
-    if tempdir.exists():
-        shutil.rmtree(tempdir)
-    tempdir.mkdir(parents=True, exist_ok=True)
-
-    logger.info("Extracting GFF tar file...")
-    subprocess.run(["tar", "-xzf", gff_tar_path, "-C", str(tempdir)], check=True)
-
-    if tmhmm_tar_path:
-        logger.info("Extracting TMHMM tar file...")
-        subprocess.run(["tar", "-xzf", tmhmm_tar_path, "-C", str(tempdir)], check=True)
-
-    gff_files = list(tempdir.rglob("*_cog.gff.gz"))
-    tmhmm_files = list(tempdir.rglob("*_tmhmm_clean"))
-
-    logger.info(f"Found {len(gff_files)} GFF files and {len(tmhmm_files)} TMHMM files")
-
-    gff_by_chunk = defaultdict(list)
-    tmhmm_by_chunk = defaultdict(list)
-
-    for gff_file in gff_files:
-        chunk = extract_chunk_from_path(gff_file)
-        if chunk:
-            gff_by_chunk[chunk].append(gff_file)
-        else:
-            logger.warning(f"Could not extract chunk from path: {gff_file}")
-
-    for tmhmm_file in tmhmm_files:
-        chunk = extract_chunk_from_path(tmhmm_file)
-        if chunk:
-            tmhmm_by_chunk[chunk].append(tmhmm_file)
-        else:
-            logger.warning(f"Could not extract chunk from path: {tmhmm_file}")
-
-    # Get all unique chunks
-    all_chunks = set(gff_by_chunk.keys()) | set(tmhmm_by_chunk.keys())
-    logger.info(f"Found {len(all_chunks)} chunks: {sorted(all_chunks)}")
-
-    # Setup database with all chunk tables
-    conn = setup_database(db_path, sorted(all_chunks))
-
-    # Process each chunk
-    for chunk in tqdm(sorted(all_chunks), desc="Processing chunks"):
-        table_name = chunk.replace('-', '_').replace('.', '_')
-
-        # Process GFF files for this chunk
-        if chunk in gff_by_chunk:
-            for gff_file in gff_by_chunk[chunk]:
-                gff_data = process_gff_file(str(gff_file))
-                if gff_data:
-                    conn.executemany(f"""
-                        INSERT OR REPLACE INTO {table_name}
-                        (seqID, parent_ID, aa_length, strand, COG_ID, cugo_number)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    """, gff_data)
-            conn.commit()
-            logger.info(f"Processed {len(gff_by_chunk[chunk])} GFF files for chunk {chunk}")
-
-        # Process TMHMM files for this chunk
-        if chunk in tmhmm_by_chunk:
-            for tmhmm_file in tmhmm_by_chunk[chunk]:
-                tmhmm_data = process_tmhmm_file(str(tmhmm_file))
-                if tmhmm_data:
-                    for prot_id, no_tmh in tmhmm_data:
-                        conn.execute(f"""
-                            UPDATE {table_name}
-                            SET no_tmh = ?
-                            WHERE seqID = ?
-                        """, (no_tmh, prot_id))
-            conn.commit()
-            logger.info(f"Processed {len(tmhmm_by_chunk[chunk])} TMHMM files for chunk {chunk}")
-
-
-    conn.close()
-
-    logger.info("Processing complete!")
-
-
 
 
 # ======================================
@@ -1143,7 +1023,6 @@ def context(fasta_path: str,
     else:
         logging.info("No context data found.")
         return None
-
 
 
 def cugo_plot(context_path: str,
