@@ -21,7 +21,7 @@ def main():
     try:
         ### PARSER FOR PASR FUNCTIONALITIES AND WORKFLOW ###
         if args.subparser_name == 'build':
-            db_path = build_protein_db(
+            build(
                 db_dir=args.db,
                 seed_fasta=args.seed,
                 threads=args.threads,
@@ -29,7 +29,7 @@ def main():
             )
 
         elif args.subparser_name == 'search':
-            search_protein_db(
+            search(
                 db_path=args.db,
                 query_path=args.query,
                 output_dir=args.output,
@@ -41,7 +41,7 @@ def main():
             )
 
         elif args.subparser_name == 'extract':
-            extract_matching_sequences(
+            extract(
                 blast_tab=args.tabular,
                 query_path=args.query,
                 output_dir=args.output,
@@ -50,14 +50,14 @@ def main():
             )
 
         elif args.subparser_name == 'calculate':
-            calculate_max_scores(
+            calculate(
                 extracted=args.extracted,
                 matrix=args.matrix,
                 output_dir=args.output
             )
 
         elif args.subparser_name == 'bsr':
-            blast_score_ratio(
+            bsr(
                 blast_tab=args.tabular,
                 max_scores_path=args.max_scores,
                 output_dir=args.output,
@@ -68,7 +68,7 @@ def main():
             )
 
         elif args.subparser_name == 'pasr_plot':
-            plot_bsr(
+            pasr_plot(
                 bsr_file=args.bsr,
                 output_dir=args.output,
                 yaml_path=args.yaml,

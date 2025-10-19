@@ -13,7 +13,11 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 logger = logging.getLogger(__name__)
 
-def build_protein_db(seed_fasta: str,
+
+# ===============================
+# aastk build CLI FUNCTION
+# ===============================
+def build(seed_fasta: str,
                      threads: int,
                      db_dir: str,
                      force: bool = False):
@@ -78,7 +82,14 @@ def build_protein_db(seed_fasta: str,
     logger.info(f"Successfully built DIAMOND database at {db_path}")
     return db_path
 
-def search_protein_db(db_path: str,
+
+
+
+
+# ===============================
+# aastk search CLI FUNCTION
+# ===============================
+def search(db_path: str,
                       query_path: str,
                       threads: int,
                       output_dir: str,
@@ -123,7 +134,7 @@ def search_protein_db(db_path: str,
     columns = ["qseqid", "sseqid", "pident", "qlen", "slen", "length", "mismatch", "gapopen", "qstart", "qend",
                "sstart", "send", "evalue", "bitscore", "score"]
 
-    # save column information to json file as to not hardcode the score column in the blast_score_ratio function
+    # save column information to json file as to not hardcode the score column in the bsr function
     column_info = {col: idx for idx, col in enumerate(columns)}
     with open(column_info_path, 'w') as f:
         json.dump(column_info, f, indent=2)
@@ -182,7 +193,14 @@ def search_protein_db(db_path: str,
     logger.info(f"Successfully completed DIAMOND search. Results at {output_path}")
     return output_path, column_info_path
 
-def extract_matching_sequences(blast_tab: str,
+
+
+
+
+# ===============================
+# aastk extract CLI FUNCTION
+# ===============================
+def extract(blast_tab: str,
                                query_path: str,
                                output_dir: str,
                                key_column: int = 0,
@@ -262,7 +280,13 @@ def extract_matching_sequences(blast_tab: str,
     return out_fasta, stats_path
 
 
-def calculate_max_scores(extracted: str,
+
+
+
+# ===============================
+# aastk calculate CLI FUNCTION
+# ===============================
+def calculate(extracted: str,
                          matrix: str,
                          output_dir: str,
                          force: bool = False):
@@ -343,7 +367,14 @@ def calculate_max_scores(extracted: str,
 
     return out_file
 
-def blast_score_ratio(blast_tab: str,
+
+
+
+
+# ===============================
+# aastk bsr CLI FUNCTION
+# ===============================
+def bsr(blast_tab: str,
                       max_scores_path: str,
                       output_dir: str,
                       key_column: int = 0,
@@ -479,7 +510,14 @@ def blast_score_ratio(blast_tab: str,
         logger.warning(f"Encountered {error_count} errors during BSR calculation")
     return bsr_file
 
-def plot_bsr(bsr_file: str,
+
+
+
+
+# ===============================
+# aastk pasr_plot CLI FUNCTION
+# ===============================
+def pasr_plot(bsr_file: str,
              output_dir: str,
              yaml_path: str,
              force: bool = False,
@@ -487,14 +525,6 @@ def plot_bsr(bsr_file: str,
     """
     Creates a scatter plot of the BSR data flanked by histograms showing the distribution of datapoints alongside the axes.
     """
-    from pathlib import Path
-    import numpy as np
-    import pandas as pd
-    import matplotlib.pyplot as plt
-    from mpl_toolkits.axes_grid1.inset_locator import inset_axes
-    import yaml
-    import logging
-
     logger = logging.getLogger(__name__)
 
     bsr_file_name = Path(bsr_file).name
@@ -641,6 +671,12 @@ def plot_bsr(bsr_file: str,
         raise RuntimeError(f"Failed to create BSR plot: {e}") from e
 
 
+
+
+
+# ===============================
+# aastk metadata CLI FUNCTION
+# ===============================
 def metadata(selfmin: int,
              selfmax: int,
              output_dir: str,
@@ -764,6 +800,13 @@ def metadata(selfmin: int,
         logger.error(f"Failed to write metadata file {yaml_path}: {e}")
         raise RuntimeError(f"Failed to write metadata file: {e}") from e
 
+
+
+
+
+# ===============================
+# aastk select CLI FUNCTION
+# ===============================
 def select(yaml_path: str,
            matched_fasta: str,
            bsr_table: str,
@@ -933,6 +976,13 @@ def select(yaml_path: str,
     else:
         return output_path, stats_path
 
+
+
+
+
+# ===============================
+# aastk pasr WORKFLOW
+# ===============================
 def pasr(seed_fasta: str,
          query_fasta: str,
          matrix_name: str,
@@ -947,6 +997,17 @@ def pasr(seed_fasta: str,
          force: bool = False):
     """
     PASR workflow with configurable output directory.
+    Runs:
+    aastk build
+    aastk search
+    aastk extract
+    aastk calculate
+    aastk bsr
+    aastk pasr_plot
+
+    Optional (with provided metadata YAML file):
+    aastk select
+    aastk pasr_plot
 
     Args:
         seed_fasta (str): Path to seed FASTA.
@@ -985,14 +1046,14 @@ def pasr(seed_fasta: str,
     # ===============================
     try:
         logger.info("Building protein database")
-        db_path = build_protein_db(seed_fasta, threads, output_dir, force=force)
+        db_path = build(seed_fasta, threads, output_dir, force=force)
         results['db_path'] = db_path
 
         # ===============================
         # Database search
         # ===============================
         logger.info("Searching protein database")
-        search_output, column_info_path = search_protein_db(db_path, query_fasta, threads, output_path, sensitivity, block, chunk, force=force)
+        search_output, column_info_path = search(db_path, query_fasta, threads, output_path, sensitivity, block, chunk, force=force)
         results['search_output'] = search_output
         results['column_info_path'] = column_info_path
 
@@ -1000,7 +1061,7 @@ def pasr(seed_fasta: str,
         # Sequence extraction
         # ===============================
         logger.info("Extracting matching sequences")
-        matched_fasta, stats_path = extract_matching_sequences(search_output, query_fasta, output_path, key_column, force=force)
+        matched_fasta, stats_path = extract(search_output, query_fasta, output_path, key_column, force=force)
         results['matched_fasta'] = matched_fasta
         results['stats_path'] = stats_path
 
@@ -1008,18 +1069,18 @@ def pasr(seed_fasta: str,
         # Score calculations
         # ===============================
         logger.info("Calculating max scores")
-        max_scores = calculate_max_scores(matched_fasta, matrix_name, output_path, force=force)
+        max_scores = calculate(matched_fasta, matrix_name, output_path, force=force)
         results['max_scores'] = max_scores
 
         logger.info("Calculating blast score ratios")
-        bsr_file = blast_score_ratio(search_output, max_scores, output_path, key_column, column_info_path, score_column=None, force=force)
+        bsr_file = bsr(search_output, max_scores, output_path, key_column, column_info_path, score_column=None, force=force)
         results['bsr_file'] = bsr_file
 
         # ===============================
         # Visualization
         # ===============================
         logger.info("Creating BSR plot")
-        bsr_plot = plot_bsr(bsr_file, output_path, yaml_path, force=force, update=False)
+        bsr_plot = pasr_plot(bsr_file, output_path, yaml_path, force=force, update=False)
         results['bsr_plot'] = bsr_plot
 
         # ===============================
@@ -1030,7 +1091,7 @@ def pasr(seed_fasta: str,
             subset_fasta, update_stats_path = select(yaml_path, matched_fasta, bsr_file, output_dir, force=force)
             results['subset_fasta'] = subset_fasta
             results['update_stats_path'] = update_stats_path
-            updated_plot = plot_bsr(bsr_file, output_path,  yaml_path, force=force, update=update)
+            updated_plot = pasr_plot(bsr_file, output_path,  yaml_path, force=force, update=update)
             results['updated_plot'] = updated_plot
 
         logger.info("PASR workflow completed successfully")
