@@ -359,47 +359,18 @@ def process_tmhmm_file(tmhmm_filepath):
     except Exception:
         return []
 
-def export_to_tsv(db_path: str, output_tsv: str):
-    """Export merged data from SQLite to TSV"""
-    conn = sqlite3.connect(db_path)
-
-    query = '''
-        SELECT 
-            g.seqID,
-            g.parent_ID,
-            g.aa_length,
-            g.strand,
-            g.COG_ID,
-            g.cugo_number,
-            COALESCE(t.no_tmh, 0) as no_TMH
-        FROM gff_data g
-        LEFT JOIN tmhmm_data t ON g.seqID = t.seqID
-        ORDER BY
-            SUBSTR(g.seqID, 1, INSTR(g.seqID, '_') - 1),  -- prefix_text
-            CAST(SUBSTR(g.seqID, INSTR(g.seqID, '_') + 1, INSTR(g.seqID, '__') - INSTR(g.seqID, '_') - 1) AS INTEGER),  -- prefix_num
-            CAST(SUBSTR(g.seqID, INSTR(g.seqID, '__') + 2) AS INTEGER)  -- suffix_num
-    '''
-
-    cursor = conn.execute(query)
-    with open(output_tsv, 'w') as f:
-        f.write('seqID\tparent_ID\taa_length\tstrand\tCOG_ID\tCUGO_number\tno_TMH\n')
-        for row in cursor:
-            f.write('\t'.join(map(str, row)) + '\n')
-
-    conn.close()
-
-
 def parse(gff_tar_path: str,
           tmhmm_tar_path: str = None,
           output_dir: str = None,
           globdb_version: int = None,
           force: bool = False,
-          db_path: str = "temp_genome_data.db",
-          cleanup_db: bool = False):
+          ):
     """
     Main parsing function - single-threaded version for memory efficiency
     """
     logger.info("Processing files single-threaded for memory efficiency")
+
+    db_path = ensure_path(target=f"globdb_{globdb_version}_cugo.db")
 
     if output_dir is None:
         output_dir = '.'
@@ -451,10 +422,6 @@ def parse(gff_tar_path: str,
                 conn.commit()
 
     conn.close()
-
-
-
-
 
 
 # ======================================
@@ -530,7 +497,7 @@ def plot_top_cogs_per_position(
             - boundaries (list): list of position boundary values
     """
     # load context data and extract cog information
-    cont = pd.read_csv(context_path, sep='\t', na_values='', keep_default_na=False)
+    cont = pd.read_csv(context_path, sep='\t', na_values='', keep_default_na=False, dtype=str)
     extract = cont.loc[cont['feat_type'] == 'COG_ID']
 
     # load cog color mapping
@@ -669,7 +636,7 @@ def plot_size_per_position(context_path: str,
         None
     """
     # load context data and extract amino acid length information
-    cont = pd.read_csv(context_path, sep='\t', na_values='', keep_default_na=False)
+    cont = pd.read_csv(context_path, sep='\t', na_values='', keep_default_na=False, dtype=str)
     extract = cont.loc[cont['feat_type'] == 'aa_length']
 
     # select columns for specified flanking region
@@ -789,7 +756,7 @@ def plot_tmh_per_position(context_path: str,
         None
     """
     # load context data and extract no_TMH information
-    cont = pd.read_csv(context_path, sep='\t', na_values='', keep_default_na=False)
+    cont = pd.read_csv(context_path, sep='\t', na_values='', keep_default_na=False, dtype=str)
     extract = cont.loc[cont['feat_type'] == 'no_TMH']
 
     # select columns for specified flanking region
@@ -1056,7 +1023,6 @@ def context(fasta_path: str,
     else:
         logging.info("No context data found.")
         return None
-
 
 
 def cugo_plot(context_path: str,
