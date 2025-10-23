@@ -599,11 +599,13 @@ def cluster(matrix_path: str,
     if output:
        logger.info(f"Output basename: {output}")
 
+    prefix = matrix_path.replace('_matrix.npy', '')
+
     matrix, queries, targets = load_alignment_matrix_from_file(matrix_path, matrix_metadata_path)
 
     early_filename, final_filename = tsne_embedding(matrix=matrix,
                               queries=queries,
-                              basename=output,
+                              basename=prefix,
                               perplexity=perplexity,
                               iterations=iterations,
                               exaggeration=exaggeration,
