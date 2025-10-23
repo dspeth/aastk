@@ -42,9 +42,6 @@ def __chunk(group, required=False):
     group.add_argument('-c', '--chunk', type=int, default=2, required=required,
                        help='Choose number of chunks for diamond blastp index processing (Default: 2)')
 
-def __cleanup_db(group, required=False):
-    group.add_argument('--cleanup', action='store_true', required=required,
-                       help='Remove temporary SQLite database from disk after CUGO file creation')
 
 def __create_yaml(group, required=False):
     group.add_argument('--create_yaml', action='store_true', required=required,
@@ -138,10 +135,6 @@ def __key_column(group, required=False):
     group.add_argument('-k', '--key_column', type=int, default=0, required=required,
                        help='Column index in the BLAST tab file to pull unique IDs from (default is 0)')
 
-def __large(group, required=False):
-    group.add_argument('--large', action='store_true', required=required,
-                       help='Handle large datasets for CASM clustering')
-
 def __matched(group, required=False):
     group.add_argument('-m', '--matched', type=str, required=required,
                        help='FASTA file containing matched sequences from previous PASR run')
@@ -170,6 +163,10 @@ def __metadata_matrix(group, required=False):
     group.add_argument('--metadata_matrix', type=str, required=required,
                        help='Path to matrix metadata file')
 
+def __no_cluster(group, required=False):
+    group.add_argument('-n', '--no_cluster', type=int, required=required,
+                       help='Number of cluster of choice in TSV file')
+
 def __output(group, required=False):
     group.add_argument('-o', '--output', type=str, required=required,
                        help='Desired output location (default: current working directory)')
@@ -189,10 +186,6 @@ def __protein_ids(group, required=False):
 def __query(group, required=False):
     group.add_argument('-q', '--query', type=str, default=None, required=required,
                        help='Path to query FASTA')
-
-def __sample_size(group, required=False):
-    group.add_argument('-s', '--sample_size', type=int, default=10000, required=required,
-                       help='Sample size for large dataset downsampling')
 
 def __score_column(group, required=False):
     group.add_argument('-s', '--score_column', type=int, default=None, required=required,
@@ -214,6 +207,10 @@ def __sensitivity(group, required=False):
     group.add_argument('--sensitivity', choices=['fast', 'sensitive', 'mid-sensitive', 'very-sensitive', 'ultra-sensitive', 'faster'], required=required,
                        help='Set the sensitivity level for the DIAMOND search: fast, sensitive, mid-sensitive, very-sensitive, '
                             'ultra-sensitive, or faster (default: fast)')
+
+def __show(group, required=False):
+    group.add_argument('-s', '--show', type=int, required=required,
+                       help='Show cluster number at cluster centers in output plots')
 
 def __size(group, required=False):
     group.add_argument('--size', action='store_true', required=required,
@@ -385,8 +382,7 @@ def get_main_parser():
             __output(grp)
             __force(grp)
             __tmhmm_dir(grp)
-            __db_path(grp)
-            __cleanup_db(grp)
+
 
 
     with subparser(sub_parsers, 'context', 'Parse context information from CUGO input file') as parser:
@@ -456,8 +452,6 @@ def get_main_parser():
             __metadata_protein(grp)
             __metadata_genome(grp)
             __force(grp)
-            __large(grp)
-            __sample_size(grp)
 
 
     with subparser(sub_parsers, 'casm_plot', 'Plot CASM .tsv output files') as parser:
@@ -466,6 +460,7 @@ def get_main_parser():
             __full_clust(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __show(grp)
 
     with subparser(sub_parsers, 'casm', 'CASM: protein clustering using alignment score matrices') as parser:
         with mutex_group(parser, required=True) as grp:
@@ -486,9 +481,16 @@ def get_main_parser():
             __full_clust(grp)
             __matrix_path(grp)
             __metadata_matrix(grp)
-            __large(grp)
-            __sample_size(grp)
+            __show(grp)
 
+    with subparser(sub_parsers, 'pick', 'Pick CASM clusters to generate .faa file for further analysis') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __full_clust(grp, required=True)
+            __fasta(grp, required=True)
+            __no_cluster(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
+            __force(grp)
 
 
     return main_parser

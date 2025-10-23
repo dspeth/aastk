@@ -123,9 +123,7 @@ def main():
                 tmhmm_tar_path=args.tmhmm_dir,
                 output_dir=args.output,
                 globdb_version=args.globdb_version,
-                force=args.force,
-                db_path=args.db_path,
-                cleanup_db=args.cleanup
+                force=args.force
             )
 
 
@@ -192,8 +190,6 @@ def main():
                 metadata_protein=args.metadata_protein,
                 metadata_genome=args.metadata_genome,
                 force=args.force,
-                large=args.large,
-                sample_size=args.sample_size
             )
 
 
@@ -201,7 +197,8 @@ def main():
             casm_plot(
                 early_clust_path=args.early_clust,
                 full_clust_path=args.full_clust,
-                output=args.output
+                output=args.output,
+                show_cluster_numbers=args.show
             )
 
         elif args.subparser_name == 'casm':
@@ -217,9 +214,18 @@ def main():
                 metadata_protein=args.metadata_protein,
                 metadata_genome=args.metadata_genome,
                 force=args.force,
-                large=args.large,
-                sample_size=args.sample_size
+                show_cluster_numbers=args.show
             )
+
+        elif args.subparser_name == 'pick':
+            pick(
+                final_embedding_file=args.full_clust,
+                fasta=args.fasta,
+                no_cluster=args.no_cluster,
+                output=args.output,
+                force=args.force
+            )
+
 
     except Exception as e:
         logger.error(f"Error executing command: {e}")

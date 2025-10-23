@@ -420,7 +420,8 @@ def tsne_embedding(matrix: np.ndarray,
 
 def plot_clusters(tsv_file: str,
                   output: str,
-                  force: bool = False
+                  force: bool = False,
+                  show_cluster_numbers: bool = False
                   ):
     """
     Create a t-SNE scatter plot visualization of DBSCAN clustering results.
@@ -476,6 +477,18 @@ def plot_clusters(tsv_file: str,
                         edgecolors='white',
                         linewidths=0.3,
                         label=f'Cluster {cluster}')
+
+            if show_cluster_numbers:
+                centroid_x = df.loc[cluster_mask, 'tsne1'].mean()
+                centroid_y = df.loc[cluster_mask, 'tsne2'].mean()
+                plt.annotate(str(cluster),
+                            xy=(centroid_x, centroid_y),
+                            fontsize=16,
+                            fontweight='bold',
+                            ha='center',
+                            va='center',
+                            color='black',
+                            alpha=1)
 
     plt.xlabel('t-SNE 1', fontsize=12)
     plt.ylabel('t-SNE 2', fontsize=12)
@@ -557,8 +570,6 @@ def cluster(matrix_path: str,
          metadata_protein: str = None,
          metadata_genome: str = None,
          force: bool = False,
-         large: bool = False,
-         sample_size: int = 10000
          ):
     """
     Perform t-SNE embedding and DBSCAN clustering on alignment matrix.
@@ -608,7 +619,8 @@ def cluster(matrix_path: str,
 def casm_plot(early_clust_path: str,
         full_clust_path: str,
         output: str,
-        force: bool = False):
+        force: bool = False,
+        show_cluster_numbers: bool = False):
     """
     Generate t-SNE cluster visualization plots for early and final embeddings.
 
@@ -631,10 +643,10 @@ def casm_plot(early_clust_path: str,
 
     # Generate plots
     logger.info("Generating early clustering plot")
-    plot_clusters(early_clust_path, output=output, force=force)
+    plot_clusters(early_clust_path, output=output, force=force, show_cluster_numbers=show_cluster_numbers)
 
     logger.info("Generating full clustering plot")
-    plot_clusters(full_clust_path, output=output, force=force)
+    plot_clusters(full_clust_path, output=output, force=force, show_cluster_numbers=show_cluster_numbers)
 
     logger.info("=== Plot Generation Completed ===")
 
@@ -650,8 +662,7 @@ def casm(fasta: str,
          metadata_protein: str = None,
          metadata_genome: str = None,
          force: bool = False,
-         large: bool = False,
-         sample_size: int = 10000
+         show_cluster_numbers: bool = False
          ):
     """
     Run complete CASM analysis pipeline.
@@ -700,9 +711,7 @@ def casm(fasta: str,
         threads=threads,
         metadata_protein=metadata_protein,
         metadata_genome=metadata_genome,
-        force=force,
-        large=large,
-        sample_size=sample_size
+        force=force
     )
 
     # Phase 3: Plot generation
@@ -711,7 +720,8 @@ def casm(fasta: str,
         early_clust_path=early_filename,
         full_clust_path=final_filename,
         output=output,
-        force=force
+        force=force,
+        show_cluster_numbers=show_cluster_numbers
     )
 
     logger.info("=== Complete CASM Analysis Completed ===")
@@ -724,4 +734,37 @@ def casm(fasta: str,
     }
 
     return sum_dict
+
+
+def pick(final_embedding_file: str,
+         fasta: str,
+         no_cluster: int,
+         output: str,
+         force: bool = False):
+    prefix = final_embedding_file.replace('_tsne_final_clust.tsv', '')
+    cluster_fasta = ensure_path(output, f"{prefix}_cluster_{no_cluster}.faa", force=force)
+
+    cluster_prot_ids = []
+    with open(final_embedding_file, 'r') as file:
+        header = file.readline().strip().split()
+        cluster_idx = header.index("cluster")
+        prot_idx = header.index("prot_ID")
+
+        for line in file:
+            parts = line.strip().split('\t')
+            prot_ID = parts[prot_idx]
+            prot_cluster_no = parts[cluster_idx]
+
+            if int(prot_cluster_no) == int(no_cluster):
+                cluster_prot_ids.append(prot_ID)
+
+    input_fasta_dict = read_fasta_to_dict(fasta)
+
+    with open(cluster_fasta, 'w') as file:
+        for id in cluster_prot_ids:
+            if id in input_fasta_dict:
+                file.write(f">{id}\n{input_fasta_dict[id]}\n")
+
+    return cluster_fasta
+
 
