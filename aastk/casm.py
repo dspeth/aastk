@@ -645,6 +645,78 @@ def plot_clusters(tsv_file: str,
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     logger.info(f"Plot saved to: {output_file}")
 
+
+def pick(final_embedding_file: str,
+         fasta: str,
+         no_cluster: int,
+         output: str,
+         force: bool = False):
+    """
+    Extract proteins belonging to a specific cluster into a separate FASTA file.
+
+    Reads the t-SNE clustering results and extracts all protein sequences that
+    belong to the specified cluster number, writing them to a new FASTA file.
+
+    Args:
+        final_embedding_file (str): Path to TSV file with t-SNE embeddings and cluster assignments
+        fasta (str): Path to input FASTA file containing all protein sequences
+        no_cluster (int): Cluster number to extract
+        output (str): Output directory path
+        force (bool): Overwrite existing files if True
+
+    Returns:
+        str: Path to the output FASTA file containing selected cluster sequences
+    """
+    # ===========================
+    # Prepare output filename
+    # ===========================
+
+    # generate output filename based on input file and cluster number
+    prefix = final_embedding_file.replace('_tsne_final_clust.tsv', '')
+    cluster_fasta = ensure_path(output, f"{prefix}_cluster_{no_cluster}.faa", force=force)
+
+    # ============================================
+    # Extract protein IDs from target cluster
+    # ============================================
+    cluster_prot_ids = []
+    with open(final_embedding_file, 'r') as file:
+        # parse header to find column indices
+        header = file.readline().strip().split()
+        cluster_idx = header.index("cluster")
+        prot_idx = header.index("prot_ID")
+
+        # iterate through data rows and collect protein IDs matching target cluster
+        for line in file:
+            parts = line.strip().split('\t')
+            prot_ID = parts[prot_idx]
+            prot_cluster_no = parts[cluster_idx]
+
+            if int(prot_cluster_no) == int(no_cluster):
+                cluster_prot_ids.append(prot_ID)
+
+    # ==================================
+    # Load original FASTA sequences
+    # ==================================
+    input_fasta_dict = read_fasta_to_dict(fasta)
+
+    # ============================================
+    # Write cluster sequences to output FASTA
+    # ============================================
+
+    # write sequences for all proteins in the selected cluster
+    with open(cluster_fasta, 'w') as file:
+        for id in cluster_prot_ids:
+            if id in input_fasta_dict:
+                file.write(f">{id}\n{input_fasta_dict[id]}\n")
+
+    return cluster_fasta
+
+# ==================================================
+#
+#                   CLI FUNCTIONS
+#
+# ==================================================
+
 def matrix(fasta: str,
           output: str,
           subset: str,
@@ -869,70 +941,5 @@ def casm(fasta: str,
 
     return sum_dict
 
-
-def pick(final_embedding_file: str,
-         fasta: str,
-         no_cluster: int,
-         output: str,
-         force: bool = False):
-    """
-    Extract proteins belonging to a specific cluster into a separate FASTA file.
-
-    Reads the t-SNE clustering results and extracts all protein sequences that
-    belong to the specified cluster number, writing them to a new FASTA file.
-
-    Args:
-        final_embedding_file (str): Path to TSV file with t-SNE embeddings and cluster assignments
-        fasta (str): Path to input FASTA file containing all protein sequences
-        no_cluster (int): Cluster number to extract
-        output (str): Output directory path
-        force (bool): Overwrite existing files if True
-
-    Returns:
-        str: Path to the output FASTA file containing selected cluster sequences
-    """
-    # ===========================
-    # Prepare output filename
-    # ===========================
-
-    # generate output filename based on input file and cluster number
-    prefix = final_embedding_file.replace('_tsne_final_clust.tsv', '')
-    cluster_fasta = ensure_path(output, f"{prefix}_cluster_{no_cluster}.faa", force=force)
-
-    # ============================================
-    # Extract protein IDs from target cluster
-    # ============================================
-    cluster_prot_ids = []
-    with open(final_embedding_file, 'r') as file:
-        # parse header to find column indices
-        header = file.readline().strip().split()
-        cluster_idx = header.index("cluster")
-        prot_idx = header.index("prot_ID")
-
-        # iterate through data rows and collect protein IDs matching target cluster
-        for line in file:
-            parts = line.strip().split('\t')
-            prot_ID = parts[prot_idx]
-            prot_cluster_no = parts[cluster_idx]
-
-            if int(prot_cluster_no) == int(no_cluster):
-                cluster_prot_ids.append(prot_ID)
-
-    # ==================================
-    # Load original FASTA sequences
-    # ==================================
-    input_fasta_dict = read_fasta_to_dict(fasta)
-
-    # ============================================
-    # Write cluster sequences to output FASTA
-    # ============================================
-
-    # write sequences for all proteins in the selected cluster
-    with open(cluster_fasta, 'w') as file:
-        for id in cluster_prot_ids:
-            if id in input_fasta_dict:
-                file.write(f">{id}\n{input_fasta_dict[id]}\n")
-
-    return cluster_fasta
 
 
