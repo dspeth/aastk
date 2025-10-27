@@ -16,3 +16,4 @@ dependencies:
   - scipy>=1.15.3
   - diamond>=2.1.8
   - seqkit>=2.5.1
+  - tqdm>=4.67.1
