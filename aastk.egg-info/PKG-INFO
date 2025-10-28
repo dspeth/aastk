@@ -1,0 +1,62 @@
+Metadata-Version: 2.4
+Name: aastk
+Version: 0.0.1
+Summary: Amino Acid Sequence ToolKit
+Home-page: https://github.com/dspeth/aastk
+Author: Marcel Rennig and Daan Speth
+Author-email: daan.speth@univie.ac.at
+Classifier: Development Status :: 4 - Beta
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: GNU General Public License v3 (GPLv3)
+Classifier: Operating System :: POSIX :: Linux
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Scientific/Engineering :: Bio-Informatics
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: contourpy>=1.3.2
+Requires-Dist: matplotlib>=3.10.1
+Requires-Dist: numpy>=2.2.5
+Requires-Dist: openTSNE>=1.0.2
+Requires-Dist: pandas>=2.2.3
+Requires-Dist: PyYAML>=6.0.2
+Requires-Dist: scikit-learn>=1.6.1
+Requires-Dist: scipy>=1.15.3
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: license-file
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+# Amino acid sequence toolkit
+
+### NOTE: aastk is currently in active development, and not yet ready for broad public use. Please be patient
+
+The amino acid sequence toolkit (aastk) is a set of tools and approaches to get biological insights from amino acid sequences. Aastk is designed to work with the [GlobDB](https://globdb.org/), a genomic resource comprised of a dereplicated set of species-representative microbial genomes.
+
+Current features of aastk are:
+- Protein alignment score ratio (PASR) analyses.
+- colocalized unidirection gene organization (CUGO) visualization.
+
+## Installation
+
+### Using conda
+```bash
+git clone https://github.com/dspeth/aastk.git
+cd aastk
+conda env create -f environment.yml
+conda activate aastk
+pip install -e .
+```
+
+## Usage
+```bash
+aastk
+```

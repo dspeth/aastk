@@ -489,6 +489,10 @@ def get_main_parser():
             __large(grp)
             __sample_size(grp)
 
+    with subparser(sub_parsers, 'annotate', 'Annotate') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __fasta(grp, required=True)
+
 
 
     return main_parser

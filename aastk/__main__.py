@@ -6,6 +6,7 @@ from aastk.cli import get_main_parser
 from aastk.pasr import *
 from aastk.cugo import *
 from aastk.casm import *
+from aastk.annotate import *
 
 def main():
     parser = get_main_parser()
@@ -220,6 +221,12 @@ def main():
                 large=args.large,
                 sample_size=args.sample_size
             )
+
+        elif args.subparser_name == 'annotate':
+            annotate(
+                fasta=args.fasta,
+            )
+
 
     except Exception as e:
         logger.error(f"Error executing command: {e}")

@@ -1,0 +1,2 @@
+[console_scripts]
+aastk = aastk.__main__:main

@@ -3,6 +3,9 @@ annotate.py – Step 1: Gene calling with Pyrodigal
 Converts a genome FASTA into predicted amino acid sequences (.faa)
 """
 
+def annotate(fasta: str):
+    print(fasta)
+
 import argparse
 import pyrodigal
 
