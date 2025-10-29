@@ -1,88 +1,72 @@
-"""
-annotate.py – Step 1: Gene calling with Pyrodigal
-Converts a genome FASTA into predicted amino acid sequences (.faa)
-"""
-
-def annotate(fasta: str):
-    print(fasta)
-
-import argparse
+import logging
 import pyrodigal
+from Bio import SeqIO
 
 
-def predict_proteins(input_fasta, output_faa, meta=False, detailed_headers=False):
 
-    # Initialize Pyrodigal gene finder
-    finder = pyrodigal.GeneFinder(meta=meta)
+#same logger setup like casm.py
+logger = logging.getLogger(__name__)
 
-    # Train if not in meta mode (required for complete genomes)
-    if not meta:
-        finder.train(input_fasta)
 
-    # Run gene prediction
-    result = finder.find_genes(input_fasta)
 
-    # Write predicted proteins (AA sequences) to FASTA
-    with open(output_faa, "w") as out:
-        for i, gene in enumerate(result):
-            # Header formatting
-            if detailed_headers:
-                header = (
-                    f">{gene.id}_gene{i+1} "
-                    f"{gene.begin}:{gene.end} ({'+' if gene.strand == 1 else '-'})"
-                )
-            else:
-                header = f">{gene.id}_gene{i+1}"
+def annotate(
+        input_fasta: str,
+        output_dir: str,
+        detailed_headers: bool = False,
+        force: bool = False,
+) -> str:
+    """
+        Predict protein sequences from a nucleotide FASTA using Pyrodigal.
 
-            seq = gene.translation
-            out.write(f"{header}\n{seq}\n")
+        Args:
+            input_fasta (str): Path to the input genome FASTA file.
+            output_dir (str): Directory where the predicted protein FASTA will be written.
+            detailed_headers (bool): Include coordinates and strand info in FASTA headers.
+            force (bool): Overwrite existing output if True.
 
-    print(
-        f"Predicted {len(result)} proteins written to '{output_faa}' "
-        f"(meta={meta}, detailed_headers={detailed_headers})"
+        Returns:
+            str: Path to the generated amino acid FASTA (.faa) file.
+        """
+    # build dataset name and output path copied from casm
+    dataset = determine_dataset_name(input_fasta, splitter=".", part=0)
+    output_file = f"{dataset}.proteins.faa"
+    output_path = ensure_path(output_dir, output_file, force=force)
+
+    logger.info(f"Starting gene calling with Pyrodigal | input={input_fasta}")
+
+    # initialize and train Pyrodigal model
+    finder = pyrodigal.GeneFinder()
+    logger.info("Training Pyrodigal model on complete genome.")
+    finder.train(input_fasta)
+
+    # read genome records (single or multiple contigs)
+    records = list(SeqIO.parse(input_fasta, "fasta"))
+    total_records = len(records)
+    logger.info(f"Found {total_records} sequence record(s) in FASTA.")
+
+    total_genes = 0
+    with open(output_path, "w") as out_faa:
+        for record in records:
+            # predict genes on this sequence
+            results = finder.find_genes(str(record.seq))
+
+            for i, gene in enumerate(results):
+                if detailed_headers:
+                    header = (
+                        f">{record.id}_gene{i + 1} "
+                        f"{gene.begin}:{gene.end} ({'+' if gene.strand == 1 else '-'})"
+                    )
+                else:
+                    header = f">{record.id}_gene{i + 1}"
+
+                aa_seq = gene.translate()
+                out_faa.write(f"{header}\n{aa_seq}\n")
+
+            total_genes += len(results)
+
+    logger.info(
+        f"Predicted {total_genes} proteins from {total_records} input sequence(s). "
+        f"Output written to {output_path}"
     )
 
-
-def main():
-    """Handle command-line interface (CLI) arguments."""
-    parser = argparse.ArgumentParser(
-        description="Predict protein-coding genes from a genome FASTA using Pyrodigal."
-    )
-
-    parser.add_argument(
-        "-i", "--input",
-        required=True,
-        help="Input genome FASTA file."
-    )
-
-    parser.add_argument(
-        "-o", "--output",
-        default="predicted_proteins.faa",
-        help="Output protein FASTA file (default: predicted_proteins.faa)."
-    )
-
-    parser.add_argument(
-        "--meta",
-        action="store_true",
-        help="Use metagenomic mode (meta=True). Default is False."
-    )
-
-    parser.add_argument(
-        "--detailed-headers",
-        action="store_true",
-        help="Include genomic coordinates and strand info in FASTA headers."
-    )
-
-    args = parser.parse_args()
-
-    # Call the main prediction function
-    predict_proteins(
-        input_fasta=args.input,
-        output_faa=args.output,
-        meta=args.meta,
-        detailed_headers=args.detailed_headers,
-    )
-
-
-if __name__ == "__main__":
-    main()
+    return output_path

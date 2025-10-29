@@ -489,9 +489,13 @@ def get_main_parser():
             __large(grp)
             __sample_size(grp)
 
-    with subparser(sub_parsers, 'annotate', 'Annotate') as parser:
+    with subparser(sub_parsers, 'annotate', 'Annotate genome sequences using Pyrodigal') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __fasta(grp, required=True)
+            __output(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __detailed_headers(grp)
+            __force(grp)
 
 
 

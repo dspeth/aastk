@@ -224,7 +224,10 @@ def main():
 
         elif args.subparser_name == 'annotate':
             annotate(
-                fasta=args.fasta,
+                input_fasta=args.fasta,
+                output_dir=args.output,
+                detailed_headers=args.detailed_headers,
+                force=args.force,
             )
 
 
