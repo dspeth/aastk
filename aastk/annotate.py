@@ -1,15 +1,14 @@
 import logging
 import pyrodigal
 from Bio import SeqIO
+from aastk.util import *
 
 
 
 #same logger setup like casm.py
 logger = logging.getLogger(__name__)
 
-
-
-def annotate(
+def gene_calling(
         input_fasta: str,
         output_dir: str,
         detailed_headers: bool = False,
@@ -70,3 +69,12 @@ def annotate(
     )
 
     return output_path
+
+
+def annotate(
+        input_fasta: str,
+        output_dir: str,
+        detailed_headers: bool = False,
+        force: bool = False,
+) -> str:
+        gene_calling.file = gene_calling(input_fasta, output_dir, detailed_headers, force)
