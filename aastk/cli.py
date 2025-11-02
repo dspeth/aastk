@@ -24,11 +24,11 @@ def __all(group, required=False):
 
 def __bin_width(group, required=False):
     group.add_argument('-b', '--bin_width', type=int, default=10, required=required,
-                       help='Bin width for amino acid sequence size plotting (Default: 10)')
+                       help='Bin width for amino acid sequence size plotting (default: 10)')
 
 def __block(group, required=False):
     group.add_argument('-b', '--block', type=int, default=6, required=required,
-                       help='Choose diamond blastp sequence block size in billions of letters (Default: 6)')
+                       help='Choose diamond blastp sequence block size in billions of letters (default: 6)')
 
 def __bsr(group, required=False):
     group.add_argument('-b', '--bsr', type=str, required=required,
@@ -40,7 +40,7 @@ def __bsr_cutoff(group, required=False):
 
 def __chunk(group, required=False):
     group.add_argument('-c', '--chunk', type=int, default=2, required=required,
-                       help='Choose number of chunks for diamond blastp index processing (Default: 2)')
+                       help='Choose number of chunks for diamond blastp index processing (default: 2)')
 
 
 def __create_yaml(group, required=False):
@@ -169,7 +169,7 @@ def __no_cluster(group, required=False):
 
 def __output(group, required=False):
     group.add_argument('-o', '--output', type=str, required=required,
-                       help='Desired output location (default: current working directory)')
+                       help='Desired output directory (default: current working directory)')
 
 def __params(group, required=False):
     group.add_argument('--params', action='store_true', required=required,
@@ -209,7 +209,7 @@ def __sensitivity(group, required=False):
                             'ultra-sensitive, or faster (default: fast)')
 
 def __show(group, required=False):
-    group.add_argument('-s', '--show', type=int, required=required,
+    group.add_argument('-s', '--show', action='store_true', required=required,
                        help='Show cluster number at cluster centers in output plots')
 
 def __size(group, required=False):
@@ -254,7 +254,7 @@ def __yaml(group, required=False):
 
 def __y_range(group, required=False):
     group.add_argument('-y', '--y_range', type=int, required=required,
-                       help='Upper limit for sequence length plot y-axis')
+                       help='Upper limit for sequence length plot y-axis (default: maximum length)')
 
 def get_main_parser():
     main_parser = argparse.ArgumentParser(
