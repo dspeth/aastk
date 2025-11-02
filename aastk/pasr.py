@@ -971,6 +971,25 @@ def select(yaml_path: str,
     logger.debug(f"Running command: {' '.join(cmd)}")
     subprocess.run(cmd, check=True)
 
+    # ===============================
+    # Generate updated BSR plot
+    # ===============================
+    if created_yaml_path:
+        yaml_for_plot = created_yaml_path
+    elif yaml_path:
+        yaml_for_plot = yaml_path
+    else:
+        yaml_for_plot = None
+
+    if yaml_for_plot:
+        pasr_plot(
+            bsr_file=bsr_table,
+            output_dir=output_dir,
+            yaml_path=yaml_for_plot,
+            force=force,
+            update=True
+        )
+
     if created_yaml_path:
         return output_path, stats_path, created_yaml_path
     else:
