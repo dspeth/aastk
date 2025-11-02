@@ -35,6 +35,8 @@ def setup_database(db_path: str) -> sqlite3.Connection:
             aa_length INTEGER,
             strand TEXT, 
             COG_ID TEXT,
+            KEGG_ID TEXT,
+            Pfam_ID TEXT,
             cugo_number INTEGER,
             no_tmh INTEGER
             )
@@ -56,7 +58,7 @@ def extract_gene_info(line: list) -> tuple:
 
     Returns:
         seqID (str): sequence identifier with underscores normalized
-        COG_ID (str): COG identifier or 'NA' if not found
+        annotation_ID (str): annotation identifier or 'NA' if not found
         parent (str): chromosome/contig name
         direction (str): strand direction (+/-)
         gene_start (str): start position
@@ -64,21 +66,28 @@ def extract_gene_info(line: list) -> tuple:
         nuc_length (int): nucleotide sequence length
         aa_length (int): amino acid sequence length
     """
-    # parse annotation field (9th column) for sequence and COG identifiers
-    annotation = line[8].split(';')
-    seqID = annotation[0].split('=')[1]
-    COG_ID = annotation[1].split('=')[1] if len(annotation) > 1 else 'NA'
-
     # extract basic genomic coordinates and features
     parent = line[0]  # chromosome/contig name
     direction = line[6]  # strand direction (+/-)
     gene_start = line[3]  # start position
     gene_end = line[4]  # end position
+    attributes = line[8]
 
-    # calculate sequence lengths
+    # parse attributes field
+    attr_dict = {}
+    for attr in attributes.split(';'):
+        if '=' in attr:
+            key, value = attr.split('=', 1)
+            attr_dict[key] = value
+
+    seqID = attr_dict.get('ID', '')
+    annotation_ID = attr_dict.get('Name', '')
+
+
+# calculate sequence lengths
     nuc_length = abs(int(gene_end) - int(gene_start)) + 1  # nucleotide length
     aa_length = int(nuc_length / 3)  # amino acid length
-    return seqID, COG_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length
+    return seqID, annotation_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length
 
 
 def cugo_boundaries(direction: str,
@@ -226,7 +235,7 @@ def parse_single_gff(gff_content: str) -> list:
             - parent_ID (str): chromosome/contig identifier
             - aa_length (int): amino acid sequence length
             - strand (str): gene strand direction (+/-)
-            - COG_ID (str): COG functional category identifier
+            - annotation ID (str): functional category identifier
             - cugo_number (int): CUGO region identifier
     """
     reformat_data = []
@@ -263,7 +272,7 @@ def parse_single_gff(gff_content: str) -> list:
             continue
 
         # extract gene information from previous line
-        seqID, COG_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length = extract_gene_info(
+        seqID, annotation_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length = extract_gene_info(
             prev_line)
 
         # get next gene's parent and direction for cugo boundary analysis
@@ -279,7 +288,7 @@ def parse_single_gff(gff_content: str) -> list:
 
         # store processed gene data (all 11 fields for database)
         reformat_data.append([seqID, parent, aa_length,
-                              direction, COG_ID, cugo])
+                              direction, annotation_ID, cugo])
 
         # update tracking variables for next iteration
         prev_line = clean_line
@@ -289,7 +298,7 @@ def parse_single_gff(gff_content: str) -> list:
 
     # process the last gene in the file (no next gene to compare)
     if len(clean_line) == 9 and clean_line[2] == 'CDS':
-        seqID, COG_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length = extract_gene_info(
+        seqID, annotation_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length = extract_gene_info(
             clean_line)
 
         # handle last gene - no next gene, so use none for next_parent
@@ -301,7 +310,7 @@ def parse_single_gff(gff_content: str) -> list:
 
         # store final gene data (all 6 fields for database)
         reformat_data.append([seqID, parent, aa_length,
-                              direction, COG_ID, cugo])
+                              direction, annotation_ID, cugo])
 
         # finalize cugo size tracking
         cugo_size[cugo] = cugo_size_count
@@ -309,8 +318,46 @@ def parse_single_gff(gff_content: str) -> list:
     # Return complete data for database storage
     return reformat_data
 
+def parse_gff_for_update(gff_content: str) -> list:
+    """
+    Parses GFF content for UPDATE operations (seqID and annotation_ID only).
 
-def process_gff_file(filepath: str):
+    Args:
+        gff_content (str): GFF format file content as string
+
+    Returns:
+        list: List of tuples (annotation_ID, seqID)
+    """
+    update_data = []
+    lines = gff_content.strip().split('\n')
+
+    for line in lines:
+        clean_line = line.strip().split('\t')
+
+        if len(clean_line) != 9 or clean_line[2] != 'CDS':
+            continue
+
+        attributes = clean_line[8]
+
+        # parse attributes
+        attr_dict = {}
+        for attr in attributes.split(';'):
+            if '=' in attr:
+                key, value = attr.split('=', 1)
+                attr_dict[key] = value
+
+        seqID = attr_dict.get('ID', '')
+        annotation_ID = attr_dict.get('Name', '')
+
+        if seqID and annotation_ID:
+            update_data.append((annotation_ID, seqID))
+
+    return update_data
+
+
+
+def process_gff_file(filepath: str,
+                     update_mode: bool = False):
     """
     Process a single GFF file (gzipped or plain) from disk and parse it.
 
@@ -331,13 +378,14 @@ def process_gff_file(filepath: str):
             with open(filepath, "r", encoding="utf-8") as f:
                 content = f.read()
 
-        gff_data = parse_single_gff(content)
-        return gff_data
+        if update_mode:
+            return parse_gff_for_update(content)
+        else:
+            return parse_single_gff(content)
     except Exception as e:
         # Optional: log the error
         # logger.warning(f"Failed to process {filepath}: {e}")
         return []
-
 
 def process_tmhmm_file(tmhmm_filepath):
     try:
@@ -353,23 +401,30 @@ def process_tmhmm_file(tmhmm_filepath):
                         no_tmh = int(parts[1])
                     except ValueError:
                         no_tmh = 0
-                    tmhmm_data.append((prot_id, no_tmh))
+                    tmhmm_data.append((no_tmh, prot_id))
         return tmhmm_data
     except Exception:
         return []
 
-def parse(gff_tar_path: str,
+def parse(cog_gff_tar_path: str,
+          kegg_gff_tar_path: str = None,
+          pfam_gff_tar_path: str = None,
           tmhmm_tar_path: str = None,
           output_dir: str = None,
           globdb_version: int = None,
           force: bool = False,
           ):
     """
-    Main parsing function - single-threaded version for memory efficiency
+    Main parsing function - processes COG first with full data, then updates with KEGG and Pfam.
+    All annotations use Name= attribute from GFF files.
     """
-    logger.info("Processing files single-threaded for memory efficiency")
+    from logging import getLogger
+    logger = getLogger(__name__)
 
-    db_path = ensure_path(target=f"globdb_{globdb_version}_cugo.db")
+    logger.info("Processing files: COG → TMHMM → KEGG → Pfam")
+
+    # db_path = ensure_path(target=f"globdb_{globdb_version}_cugo.db")
+    db_path = f"globdb_{globdb_version}_cugo.db"
 
     if output_dir is None:
         output_dir = '.'
@@ -380,25 +435,18 @@ def parse(gff_tar_path: str,
         shutil.rmtree(tempdir)
     tempdir.mkdir(parents=True, exist_ok=True)
 
-    # Extract tar files
-    logger.info("Extracting GFF tar file...")
-    subprocess.run(["tar", "-xzf", gff_tar_path, "-C", str(tempdir)], check=True)
-
-    if tmhmm_tar_path:
-        logger.info("Extracting TMHMM tar file...")
-        subprocess.run(["tar", "-xzf", tmhmm_tar_path, "-C", str(tempdir)], check=True)
-
-    gff_files = list(tempdir.rglob("*_cog.gff.gz"))
-    tmhmm_files = list(tempdir.rglob("*_tmhmm_clean"))
-
-    logger.info(f"Found {len(gff_files)} GFF files and {len(tmhmm_files)} TMHMM files")
-
     # Setup database
     conn = setup_database(db_path)
 
-    # Process GFF files sequentially
-    for gff_file in tqdm(gff_files, desc="Processing GFF files"):
-        gff_data = process_gff_file(str(gff_file))
+    # ===== STEP 1: Process COG GFF files =====
+    logger.info("STEP 1: Processing COG GFF files...")
+    subprocess.run(["tar", "-xzf", cog_gff_tar_path, "-C", str(tempdir)], check=True)
+
+    cog_gff_files = list(tempdir.rglob("*.gff.gz")) + list(tempdir.rglob("*.gff"))
+    logger.info(f"Found {len(cog_gff_files)} COG GFF files")
+
+    for gff_file in tqdm(cog_gff_files, desc="Processing COG GFF"):
+        gff_data = process_gff_file(str(gff_file), update_mode=False)
         if gff_data:
             conn.executemany("""
                 INSERT OR REPLACE INTO all_data
@@ -407,20 +455,73 @@ def parse(gff_tar_path: str,
             """, gff_data)
             conn.commit()
 
-    # --- Process TMHMM files ---
-    if tmhmm_files:
-        for tmhmm_file in tqdm(tmhmm_files, desc="Processing TMHMM files"):
+    shutil.rmtree(tempdir)
+    tempdir.mkdir(parents=True, exist_ok=True)
+
+    # ===== STEP 2: Process TMHMM files =====
+    if tmhmm_tar_path:
+        logger.info("STEP 2: Processing TMHMM files...")
+        subprocess.run(["tar", "-xzf", tmhmm_tar_path, "-C", str(tempdir)], check=True)
+
+        tmhmm_files = list(tempdir.rglob("*_tmhmm_clean"))
+        logger.info(f"Found {len(tmhmm_files)} TMHMM files")
+
+        for tmhmm_file in tqdm(tmhmm_files, desc="Processing TMHMM"):
             tmhmm_data = process_tmhmm_file(str(tmhmm_file))
             if tmhmm_data:
-                for prot_id, no_tmh in tmhmm_data:
-                    conn.execute("""
-                        UPDATE all_data
-                        SET no_tmh = ?
-                        WHERE seqID = ?
-                    """, (no_tmh, prot_id))
+                conn.executemany("""
+                                 UPDATE all_data
+                                 SET no_tmh = ?
+                                 WHERE seqID = ?
+                                 """, tmhmm_data)
                 conn.commit()
 
+        shutil.rmtree(tempdir)
+        tempdir.mkdir(parents=True, exist_ok=True)
+
+    # ===== STEP 3: Process KEGG GFF files =====
+    if kegg_gff_tar_path:
+        logger.info("STEP 3: Updating KEGG annotations...")
+        subprocess.run(["tar", "-xzf", kegg_gff_tar_path, "-C", str(tempdir)], check=True)
+
+        kegg_gff_files = list(tempdir.rglob("*.gff.gz")) + list(tempdir.rglob("*.gff"))
+        logger.info(f"Found {len(kegg_gff_files)} KEGG GFF files")
+
+        for gff_file in tqdm(kegg_gff_files, desc="Updating KEGG IDs"):
+            kegg_data = process_gff_file(str(gff_file), update_mode=True)
+            if kegg_data:
+                conn.executemany("""
+                                 UPDATE all_data
+                                 SET KEGG_ID = ?
+                                 WHERE seqID = ?
+                                 """, kegg_data)
+                conn.commit()
+
+        shutil.rmtree(tempdir)
+        tempdir.mkdir(parents=True, exist_ok=True)
+
+    # ===== STEP 4: Process Pfam GFF files =====
+    if pfam_gff_tar_path:
+        logger.info("STEP 4: Updating Pfam annotations...")
+        subprocess.run(["tar", "-xzf", pfam_gff_tar_path, "-C", str(tempdir)], check=True)
+
+        pfam_gff_files = list(tempdir.rglob("*.gff.gz")) + list(tempdir.rglob("*.gff"))
+        logger.info(f"Found {len(pfam_gff_files)} Pfam GFF files")
+
+        for gff_file in tqdm(pfam_gff_files, desc="Updating Pfam IDs"):
+            pfam_data = process_gff_file(str(gff_file), update_mode=True)
+            if pfam_data:
+                conn.executemany("""
+                                 UPDATE all_data
+                                 SET Pfam_ID = ?
+                                 WHERE seqID = ?
+                                 """, pfam_data)
+                conn.commit()
+
+        shutil.rmtree(tempdir)
+
     conn.close()
+    logger.info("Database creation complete!")
 
 
 # ======================================

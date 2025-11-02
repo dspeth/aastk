@@ -119,7 +119,9 @@ def main():
         ### PARSER FOR CUGO FUNCTIONALITIES AND WORKFLOW ###
         elif args.subparser_name == 'parse':
             parse(
-                gff_tar_path=args.gff_path,
+                cog_gff_tar_path=args.cog_gff,
+                kegg_gff_tar_path=args.kegg_gff,
+                pfam_gff_tar_path=args.pfam_gff,
                 tmhmm_tar_path=args.tmhmm_dir,
                 output_dir=args.output,
                 globdb_version=args.globdb_version,
