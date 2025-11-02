@@ -53,7 +53,6 @@ def extract_gene_info(line: list) -> tuple:
 
     Args:
         line (list): parsed annotation line with genomic feature data
-        tmhmm_dict (dict): mapping of protein IDs to transmembrane helix counts
 
     Returns:
         seqID (str): sequence identifier with underscores normalized
@@ -1068,22 +1067,28 @@ def cugo_plot(context_path: str,
             plot_top_cogs_per_position(context_path=context_path, flank_lower=flank_lower,
                                        flank_upper=flank_upper, top_n=top_n, save=True,
                                        plot_path=cugo_plot_path)
+            logger.INFO(f"Plot saved to {cugo_plot_path}")
 
-    # generate size-only plot
+
+# generate size-only plot
     if size:
         size_plot_path = ensure_path(output, f'{dataset_name}_size_only.png', force=force)
         plot_size_per_position(context_path=context_path, flank_lower=flank_lower,
                                flank_upper=flank_upper, save=True, bin_width=bin_width,
                                plot_path=size_plot_path, y_range=y_range)
+        logger.INFO(f"Plot saved to {size_plot_path}")
 
-    # generate tmh-only plot
+
+# generate tmh-only plot
     if tmh:
         tmh_plot_path = ensure_path(output, f'{dataset_name}_tmh_only.png', force=force)
         plot_tmh_per_position(context_path=context_path, flank_lower=flank_lower,
                               flank_upper=flank_upper, save=True, y_range=tmh_y_range,
                               plot_path=tmh_plot_path)
+        logger.INFO(f"Plot saved to {tmh_plot_path}")
 
-    # generate combined plot
+
+# generate combined plot
     if all_plots:
         if not top_n:
             logger.error('top_n is required if all_plots is True')
@@ -1135,6 +1140,7 @@ def cugo_plot(context_path: str,
             plt.tight_layout()
             plt.subplots_adjust(hspace=0.4)
             plt.savefig(all_plot_path, dpi=300, bbox_inches='tight')
+            logger.info(f"Plot saved to {all_plot_path}")
 
 # ======================================
 # CUGO COMMAND LINE WORKFLOW
