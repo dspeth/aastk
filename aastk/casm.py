@@ -609,9 +609,9 @@ def plot_clusters(tsv_file: str,
                             color='black',
                             alpha=1)
 
-    # ========================
+    # =============================
     # Configure plot appearance
-    # ========================
+    # =============================
     plt.xlabel('t-SNE 1', fontsize=12)
     plt.ylabel('t-SNE 2', fontsize=12)
     plt.title('t-SNE Embedding with DBSCAN Clusters', fontsize=14)
@@ -623,9 +623,9 @@ def plot_clusters(tsv_file: str,
     plt.tight_layout()
 
 
-    # ========================
+    # =============================
     # Determine output filename
-    # ========================
+    # =============================
 
     # parse input filename to determine if early or final embedding
     if 'early_clust' in tsv_file:
