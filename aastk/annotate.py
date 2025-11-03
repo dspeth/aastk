@@ -35,8 +35,8 @@ def gene_calling(
 
     # initialize and train Pyrodigal model
     finder = pyrodigal.GeneFinder()
-    logger.info("Training Pyrodigal model on complete genome.")
-    finder.train(input_fasta)
+    #logger.info("Training Pyrodigal model on complete genome.")
+    #finder.train(input_fasta)
 
     # read genome records (single or multiple contigs)
     records = list(SeqIO.parse(input_fasta, "fasta"))
