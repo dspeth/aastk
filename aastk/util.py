@@ -21,7 +21,8 @@ def count_fasta_sequences(fasta_path: str) -> int:
 		return sum(1 for line in f if line.startswith('>'))
 
 def determine_dataset_name(file: str, splitter:str, part: int):
-	dataset = file.split(splitter)[part]
+	basename = Path(file).name
+	dataset = basename.split(splitter)[part]
 	return dataset
 
 def determine_file_type(file_path):
