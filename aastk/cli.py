@@ -244,6 +244,10 @@ def __tmhmm_dir(group, required=False):
     group.add_argument('-t', '--tmhmm_dir', type=str, required=required,
                        help='Directory containing tmhmm files')
 
+def __tmh_y_range(group, required=False):
+    group.add_argument('-t', '--tmh_y_range', type=int, required=required,
+                       help='Upper limit for TMH plot y-axis (default: maximum length)')
+
 def __top_n(group, required=False):
     group.add_argument('-t', '--top_n', type=int, required=required,
                        help='Number of top COGs to plot per position')
@@ -417,6 +421,7 @@ def get_main_parser():
             __all(grp)
             __bin_width(grp)
             __y_range(grp)
+            __tmh_y_range(grp)
             __output(grp)
             __force(grp)
 
@@ -435,6 +440,7 @@ def get_main_parser():
             __top_n(grp)
             __bin_width(grp)
             __y_range(grp)
+            __tmh_y_range(grp)
             __output(grp)
             __threads(grp)
 

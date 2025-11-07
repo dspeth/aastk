@@ -796,24 +796,10 @@ def plot_size_per_position(context_path: str,
 
     ax.set_ylim(0, n_bins)
 
-    # create y-axis tick labels for length bins
-    tick_indices = []
-    tick_labels = []
-
-    for i in range(n_bins):
-        bin_end = int(bin_edges[i + 1])
-        if bin_end % 100 == 0:
-            tick_indices.append(i)
-            tick_labels.append(f'{bin_end}')
-
-    # fallback tick strategy if no multiples of 100
-    if not tick_indices:
-        tick_step = max(1, n_bins // 10)
-        tick_indices = list(range(0, n_bins, tick_step))
-        tick_labels = [f'{int(bin_edges[i + 1])}' for i in tick_indices]
-
-    ax.set_yticks(np.array(tick_indices) + 0.5)
-    ax.set_yticklabels(tick_labels, fontsize=16)
+    # Set y-ticks at 0, middle, and maximum
+    max_length = n_bins * bin_width
+    ax.set_yticks([0, n_bins/2, n_bins])
+    ax.set_yticklabels(['0', f'{int(max_length/2)}', f'{int(max_length)}'], fontsize=16)
 
     # set axis labels and title
     ax.set_xlabel('Position', fontsize=18)
@@ -916,12 +902,9 @@ def plot_tmh_per_position(context_path: str,
 
     ax.set_ylim(0, n_bins)
 
-    # create y-axis tick labels for TMH counts
-    tick_indices = list(range(n_bins))
-    tick_labels = [f'{int(bin_edges[i])}' for i in tick_indices]
-
-    ax.set_yticks(np.array(tick_indices) + 0.5)
-    ax.set_yticklabels(tick_labels, fontsize=16)
+    # Set y-ticks at 0, middle, and maximum (showing actual TMH values)
+    ax.set_yticks([0, n_bins/2, n_bins])
+    ax.set_yticklabels(['0', f'{int(n_bins/2)}', f'{int(n_bins)}'], fontsize=16)
 
     # set axis labels and title
     ax.set_xlabel('Position', fontsize=18)
@@ -1257,7 +1240,8 @@ def cugo(cugo_path: str,
          threads: int = 1,
          force: bool = False,
          bin_width: int = 10,
-         y_range: int = None):
+         y_range: int = None,
+         tmh_y_range: int = None):
     """
     Complete CUGO workflow: generate context data and create comprehensive plots.
 
@@ -1300,6 +1284,7 @@ def cugo(cugo_path: str,
         all_plots=True,
         bin_width=bin_width,
         y_range=y_range,
+        tmh_y_range=tmh_y_range,
         force=force
     )
 

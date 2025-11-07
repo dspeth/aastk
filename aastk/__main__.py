@@ -151,6 +151,7 @@ def main():
                 all_plots=args.all,
                 bin_width=args.bin_width,
                 y_range=args.y_range,
+                tmh_y_range=args.tmh_y_range,
                 force=args.force
             )
 
@@ -166,7 +167,8 @@ def main():
                 threads=args.threads,
                 force=args.force,
                 bin_width=args.bin_width,
-                y_range=args.y_range
+                y_range=args.y_range,
+                tmh_y_range=args.tmh_y_range
             )
 
         ### PARSER FOR CASM FUNCTIONALITIES AND WORKFLOW ###
