@@ -1,8 +1,5 @@
-import logging
 import pyrodigal
-from Bio import SeqIO
 from aastk.util import *
-
 
 
 #same logger setup like casm.py
@@ -26,37 +23,49 @@ def gene_calling(
         Returns:
             str: Path to the generated amino acid FASTA (.faa) file.
         """
-    # build dataset name and output path copied from casm
-    dataset = determine_dataset_name(input_fasta, splitter=".", part=0)
+    # 1) Validate & prepare paths via util
+    if determine_file_type(input_fasta) != "fasta":
+        raise ValueError(f"Input must be FASTA: {input_fasta}")
+
+    dataset = Path(input_fasta).stem
     output_file = f"{dataset}.proteins.faa"
     output_path = ensure_path(output_dir, output_file, force=force)
 
     logger.info(f"Starting gene calling with Pyrodigal | input={input_fasta}")
 
-    # initialize and train Pyrodigal model
-    finder = pyrodigal.GeneFinder()
-    #logger.info("Training Pyrodigal model on complete genome.")
-    #finder.train(input_fasta)
+    # 2) Load sequences with util (no Biopython)
+    seqs = read_fasta_to_dict(input_fasta)
+    if not seqs:
+        raise ValueError(f"No sequences found in {input_fasta}")
 
-    # read genome records (single or multiple contigs)
-    records = list(SeqIO.parse(input_fasta, "fasta"))
+
+    # 3) Initialize and train Pyrodigal model on first sequence (complete-genome assumption)
+    first_seq = next(iter(seqs.values()))
+    finder = pyrodigal.GeneFinder()
+    logger.info("Training Pyrodigal model on complete genome (first record).")
+    finder.train(first_seq)
+
+    # 4) Predict and write proteins plus total records
+    records = list(seqs.items())
     total_records = len(records)
     logger.info(f"Found {total_records} sequence record(s) in FASTA.")
 
     total_genes = 0
     with open(output_path, "w") as out_faa:
-        for record in records:
-            # predict genes on this sequence
-            results = finder.find_genes(str(record.seq))
+        for header, nt_seq in records:
+            results = finder.find_genes(nt_seq)
 
-            for i, gene in enumerate(results):
+            rec_id = header.split("|")[0]
+
+            for i, gene in enumerate(results, start = 1):
+
                 if detailed_headers:
-                    header = (
-                        f">{record.id}_gene{i + 1} "
+                    header_line = (
+                        f">{rec_id}_gene{i} "
                         f"{gene.begin}:{gene.end} ({'+' if gene.strand == 1 else '-'})"
                     )
                 else:
-                    header = f">{record.id}_gene{i + 1}"
+                    header_line = f">{rec_id}_gene{i}"
 
                 aa_seq = gene.translate()
                 out_faa.write(f"{header}\n{aa_seq}\n")
@@ -77,4 +86,4 @@ def annotate(
         detailed_headers: bool = False,
         force: bool = False,
 ) -> str:
-        gene_calling.file = gene_calling(input_fasta, output_dir, detailed_headers, force)
+    return gene_calling(input_fasta, output_dir, detailed_headers, force)
