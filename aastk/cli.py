@@ -86,10 +86,6 @@ def __db_path(group, required=False):
     group.add_argument('-d', '--db_path', type=str, default='temp_genome_data.db', required=required,
                        help='Path to temporary sqlite DB for merging CUGO and TMHMM data')
 
-def __detailed_headers(group, required=False):
-    group.add_argument('--detailed_headers', action='store_true', required=required,
-                       help='Set flag to write detailed headers in output fasta')
-
 def __early_clust(group, required=False):
     group.add_argument('-e', '--early_clust', type=str, required=required,
                        help='Path to early clustering TSV file')
@@ -498,7 +494,6 @@ def get_main_parser():
             __fasta(grp, required=True)
             __output(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
-            __detailed_headers(grp)
             __force(grp)
 
 

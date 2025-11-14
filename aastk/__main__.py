@@ -226,7 +226,6 @@ def main():
             annotate(
                 input_fasta=args.fasta,
                 output_dir=args.output,
-                detailed_headers=args.detailed_headers,
                 force=args.force,
             )
 
