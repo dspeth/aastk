@@ -10,6 +10,7 @@ The aastk is currently comprised of three tools:
 - CUGO: Consensus genomic context visualization
 
 
+
 ## Installation
 
 ### Using conda
@@ -20,6 +21,13 @@ conda env create -f environment.yml
 conda activate aastk
 pip install -e .
 ```
+
+## Usage examples
+PASR
+
+CUGO
+
+CASM
 
 ## Usage
 ```bash
