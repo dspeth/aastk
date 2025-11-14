@@ -2,11 +2,13 @@
 
 ### NOTE: aastk is currently in active development, and not yet ready for broad public use. Please be patient
 
-The amino acid sequence toolkit (aastk) is a set of tools and approaches to get biological insights from amino acid sequences. Aastk is designed to work with the [GlobDB](https://globdb.org/), a genomic resource comprised of a dereplicated set of species-representative microbial genomes.
+The amino acid sequence toolkit (aastk) combines a set of tools for analysis of protein amino acid sequences from the the [GlobDB](https://globdb.org/). The GlobDB is the most comprehensive genomic resource of species-representative microbial genomes of Bacteria and Archaea, and contains the largest phylogenetic sequence diversity currently available in a single resource. The aastk is designed to leverage this diversity to create and analyze protein sequence datasets for evolutionary and functional studies.
 
-Current features of aastk are:
-- Protein alignment score ratio (PASR) analyses.
-- colocalized unidirection gene organization (CUGO) visualization.
+The aastk is currently comprised of three tools:
+- PASR: Database construction using protein alignment score ratio (PASR) analyses.
+- CASM: clustering and visuzalization of protein (super)family datasets.
+- CUGO: Consensus genomic context visualization
+
 
 ## Installation
 
