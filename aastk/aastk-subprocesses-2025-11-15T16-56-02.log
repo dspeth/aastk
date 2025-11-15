@@ -1,0 +1,20 @@
+2025-11-15 16:56:03,124 SUBPROCESS diamond v2.1.13.167 (C) Max Planck Society for the Advancement of Science, Benjamin Buchfink, University of Tuebingen
+Documentation, support and updates available at http://www.diamondsearch.org
+Please cite: http://dx.doi.org/10.1038/s41592-021-01101-x Nature Methods (2021)
+
+#CPU threads: 1
+Scoring parameters: (Matrix=BLOSUM62 Lambda=0.267 K=0.041 Penalties=11/1)
+Database input file: results_genecalling/GCF_001273775.proteins.faa
+Opening the database file... Error: Error detecting input file format. First line must begin with '>' (FASTA) or '@' (FASTQ).
+
+2025-11-15 16:56:03,139 SUBPROCESS diamond v2.1.13.167 (C) Max Planck Society for the Advancement of Science, Benjamin Buchfink, University of Tuebingen
+Documentation, support and updates available at http://www.diamondsearch.org
+Please cite: http://dx.doi.org/10.1038/s41592-021-01101-x Nature Methods (2021)
+
+#CPU threads: 1
+Scoring parameters: (Matrix=BLOSUM45 Lambda=0.195 K=0.032 Penalties=14/2)
+Temporary directory: results_pasr_trail
+#Target sequences to report alignments for: 1
+Opening the database... 
+Error opening file results_pasr_trail/GCF_001273775_seed_db: No such file or directory
+

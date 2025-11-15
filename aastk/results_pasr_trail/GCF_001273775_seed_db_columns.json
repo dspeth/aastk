@@ -1,0 +1,17 @@
+{
+  "qseqid": 0,
+  "sseqid": 1,
+  "pident": 2,
+  "qlen": 3,
+  "slen": 4,
+  "length": 5,
+  "mismatch": 6,
+  "gapopen": 7,
+  "qstart": 8,
+  "qend": 9,
+  "sstart": 10,
+  "send": 11,
+  "evalue": 12,
+  "bitscore": 13,
+  "score": 14
+}
