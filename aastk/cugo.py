@@ -697,6 +697,7 @@ def plot_top_cogs_per_position(
     ax.tick_params(axis='y', labelsize=14)
     ax.set_xlabel('position', fontsize=18)
     ax.set_ylabel('Count', fontsize=18)
+    ax.tick_params(axis='y', labelsize=16)
     ax.set_title(title, fontsize=20)
 
     # save plot if requested
@@ -804,16 +805,12 @@ def plot_size_per_position(context_path: str,
 
     # set axis labels and title
     ax.set_xlabel('position', fontsize=18)
-    ax.set_ylabel(f'length (bin size: {bin_width})', fontsize=18)
+    ax.set_ylabel(f'Length (bin size: {bin_width})', fontsize=18)
     ax.set_title(title, fontsize=20)
 
-    # create colorbar
-    sm = ScalarMappable(norm=norm, cmap=cmap)
-    sm.set_array([])
-
-    plt.tight_layout()
     if save:
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+    return norm, cmap
 
 def plot_tmh_per_position(context_path: str,
                           flank_lower: int,
@@ -912,13 +909,11 @@ def plot_tmh_per_position(context_path: str,
     ax.set_ylabel('Transmembrane helix count', fontsize=18)
     ax.set_title(title, fontsize=20)
 
-    # create colorbar
-    sm = ScalarMappable(norm=norm, cmap=cmap)
-    sm.set_array([])
 
-    plt.tight_layout()
     if save:
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+
+    return norm, cmap
 
 # ======================================
 # CUGO COMMAND LINE TOOLS
@@ -1108,7 +1103,6 @@ def context(fasta_path: str,
         logging.info("No context data found.")
         return None
 
-
 def cugo_plot(context_path: str,
               flank_lower: int,
               flank_upper: int,
@@ -1153,25 +1147,25 @@ def cugo_plot(context_path: str,
         logger.INFO(f"Plot saved to {cugo_plot_path}")
 
 
-# generate size-only plot
+    # generate size-only plot
     if size:
         size_plot_path = ensure_path(output, f'{dataset_name}_size_only.svg', force=force)
-        plot_size_per_position(context_path=context_path, flank_lower=flank_lower,
-                               flank_upper=flank_upper, save=True, bin_width=bin_width,
-                               plot_path=size_plot_path, y_range=y_range)
+        norm_size, cmap_size = plot_size_per_position(context_path=context_path, flank_lower=flank_lower,
+                                flank_upper=flank_upper, save=True, bin_width=bin_width,
+                                plot_path=size_plot_path, y_range=y_range)
         logger.INFO(f"Plot saved to {size_plot_path}")
 
 
-# generate tmh-only plot
+    # generate tmh-only plot
     if tmh:
         tmh_plot_path = ensure_path(output, f'{dataset_name}_tmh_only.svg', force=force)
-        plot_tmh_per_position(context_path=context_path, flank_lower=flank_lower,
-                              flank_upper=flank_upper, save=True, y_range=tmh_y_range,
-                              plot_path=tmh_plot_path)
+        norm_tmh, cmap_tmh = plot_tmh_per_position(context_path=context_path, flank_lower=flank_lower,
+                                flank_upper=flank_upper, save=True, y_range=tmh_y_range,
+                                plot_path=tmh_plot_path)
         logger.INFO(f"Plot saved to {tmh_plot_path}")
 
 
-# generate combined plot
+    # generate combined plot
     if all_plots:
         logger.info(f'Plotting top {top_n} annotations per position.')
         all_plot_path = ensure_path(output, f'{dataset_name}_cugo.svg', force=force)
@@ -1179,9 +1173,20 @@ def cugo_plot(context_path: str,
         # calculate dynamic figure width
         width = max(8, int((flank_upper - flank_lower + 1) * top_n * 0.6))
         figsize = (width, 16)
-        fig, (ax1, ax2, ax3) = plt.subplots(3, 1,
-                                            figsize=figsize,
-                                            gridspec_kw={'height_ratios': [1, 1, 1]})
+
+        # Create figure with gridspec for colorbar columns
+        fig = plt.figure(figsize=figsize)
+        gs = fig.add_gridspec(3, 2,
+                              width_ratios=[20, 1],
+                              height_ratios=[1, 1, 1],
+                              hspace=0.6,
+                              wspace=0.05)
+
+        ax1 = fig.add_subplot(gs[0, 0])  # COG plot
+        ax2 = fig.add_subplot(gs[1, 0])  # Size plot
+        cbar_ax1 = fig.add_subplot(gs[1, 1])  # Colorbar for size
+        ax3 = fig.add_subplot(gs[2, 0])  # TMH plot
+        cbar_ax2 = fig.add_subplot(gs[2, 1])  # Colorbar for TMH
 
         # plot top cogs per position
         pos_centers, pos_boundaries = plot_top_cogs_per_position(
@@ -1194,7 +1199,7 @@ def cugo_plot(context_path: str,
         )
 
         # plot protein size distribution
-        plot_size_per_position(
+        norm_size, cmap_size = plot_size_per_position(
             context_path=context_path,
             flank_lower=flank_lower,
             flank_upper=flank_upper,
@@ -1206,11 +1211,11 @@ def cugo_plot(context_path: str,
         )
 
         # plot TMH distribution
-        plot_tmh_per_position(
+        norm_tmh, cmap_tmh = plot_tmh_per_position(
             context_path=context_path,
             flank_lower=flank_lower,
             flank_upper=flank_upper,
-            title='Density of transmembrane helix count per positionn',
+            title='Density of transmembrane helix count per position',  # Fixed typo
             ax=ax3,
             pos_boundaries=pos_boundaries,
             y_range=tmh_y_range
@@ -1218,8 +1223,20 @@ def cugo_plot(context_path: str,
 
         ax1.tick_params(labelbottom=True)
 
-        plt.tight_layout()
-        plt.subplots_adjust(hspace=0.4)
+        norm_fraction = Normalize(vmin=0, vmax=1)
+
+        sm_size = ScalarMappable(norm=norm_fraction, cmap=cmap_size)
+        sm_size.set_array([])
+        cbar1 = plt.colorbar(sm_size, cax=cbar_ax1)
+        cbar1.set_label('Relative density', fontsize=14)
+        cbar1.ax.tick_params(labelsize=12)
+
+        sm_tmh = ScalarMappable(norm=norm_fraction, cmap=cmap_tmh)
+        sm_tmh.set_array([])
+        cbar2 = plt.colorbar(sm_tmh, cax=cbar_ax2)
+        cbar2.set_label('Relative density', fontsize=14)
+        cbar2.ax.tick_params(labelsize=12)
+
         plt.savefig(all_plot_path, dpi=300, bbox_inches='tight')
         logger.info(f"Plot saved to {all_plot_path}")
 
