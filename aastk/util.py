@@ -20,9 +20,13 @@ def count_fasta_sequences(fasta_path: str) -> int:
 	with open(fasta_path, 'r') as f:
 		return sum(1 for line in f if line.startswith('>'))
 
-def determine_dataset_name(file: str, splitter:str, part: int):
+def determine_dataset_name(file: str, splitter: str, part: int, suffix: str = None):
 	basename = Path(file).name
 	dataset = basename.split(splitter)[part]
+
+	if suffix:
+		dataset = dataset.removesuffix(suffix)
+
 	return dataset
 
 def determine_file_type(file_path):
@@ -54,15 +58,14 @@ def ensure_path(path: Optional[str] = None, target: Optional[str] = None, force:
 			if final_path.resolve() == cwd:
 				raise RuntimeError(f"Refusing to remove the current working directory: {cwd}")
 			if final_path.is_dir():
-				logger.warning(f"Removing existing directory: {final_path}")
-				shutil.rmtree(final_path)
+				raise RuntimeError(f"Refusing to remove directory with force: {final_path}")
 			else:
 				logger.warning(f"Removing existing file: {final_path}")
 				final_path.unlink()
 		else:
 			raise FileExistsError(f"Path already exists: {final_path}")
 
-	path.mkdir(parents=True, exist_ok=True)
+	final_path.parent.mkdir(parents=True, exist_ok=True)
 
 	return str(final_path)
 

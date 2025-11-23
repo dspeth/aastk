@@ -23,8 +23,8 @@ def __all(group, required=False):
                        help='Generate a combined plot for CUGO, AA sequence length and TMHMM')
 
 def __bin_width(group, required=False):
-    group.add_argument('-b', '--bin_width', type=int, default=10, required=required,
-                       help='Bin width for amino acid sequence size plotting (default: 10)')
+    group.add_argument('-b', '--bin_width', type=int, default=50, required=required,
+                       help='Bin width for amino acid sequence size plotting (default: 50)')
 
 def __block(group, required=False):
     group.add_argument('-b', '--block', type=int, default=6, required=required,
@@ -249,8 +249,8 @@ def __tmh_y_range(group, required=False):
                        help='Upper limit for TMH plot y-axis (default: maximum length)')
 
 def __top_n(group, required=False):
-    group.add_argument('-t', '--top_n', type=int, required=required,
-                       help='Number of top COGs to plot per position')
+    group.add_argument('-t', '--top_n', type=int, default=3, required=required,
+                       help='Number of top COGs to plot per position (default: 3)')
 
 def __tsv(group, required=False):
     group.add_argument('-t', '--tsv', type=str, required=required,

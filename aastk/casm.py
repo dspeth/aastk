@@ -533,7 +533,7 @@ def plot_clusters(tsv_file: str,
 
     Args:
         tsv_file (str): Path to input TSV file containing tSNE coordinates and cluster assignment
-        output (str): Base path for output PNG file (adds "_tsne_clusters.png" suffix)
+        output (str): Base path for output svg file (adds "_tsne_clusters.svg" suffix)
         force (bool): Overwrite existing files if True
         show_cluster_numbers (bool): Display cluster number on cluster centers in output plot
     """
@@ -629,12 +629,11 @@ def plot_clusters(tsv_file: str,
 
     # parse input filename to determine if early or final embedding
     if 'early_clust' in tsv_file:
-        prefix = tsv_file.replace('_tsne_early_clust.tsv', '')
-        filename = f'{prefix}_tsne_early_clusters.png'
+        prefix = determine_dataset_name(tsv_file, '.', 0, '_tsne_early_clust')
+        filename = f'{prefix}_tsne_early_clusters.svg'
     elif 'final_clust' in tsv_file:
-        prefix = tsv_file.replace('_tsne_final_clust.tsv', '')
-        filename = f'{prefix}_tsne_final_clusters.png'
-
+        prefix = determine_dataset_name(tsv_file, '.', 0, '_tsne_final_clust')
+        filename = f'{prefix}_tsne_final_clusters.svg'
     else:
         raise ValueError(f"Unexpected TSV filename: {tsv_file}")
 
@@ -672,7 +671,7 @@ def pick(final_embedding_file: str,
     # ===========================
 
     # generate output filename based on input file and cluster number
-    prefix = final_embedding_file.replace('_tsne_final_clust.tsv', '')
+    prefix = determine_dataset_name(final_embedding_file, '.', 0, '_tsne_final_clust')
     cluster_fasta = ensure_path(output, f"{prefix}_cluster_{no_cluster}.faa", force=force)
 
     # ============================================
@@ -803,7 +802,7 @@ def cluster(matrix_path: str,
     if output:
        logger.info(f"Output basename: {output}")
 
-    prefix = matrix_path.replace('_matrix.npy', '')
+    prefix = determine_dataset_name(matrix_path, '.', 0, '_matrix')
 
     matrix, queries, targets = load_alignment_matrix_from_file(matrix_path, matrix_metadata_path)
 
@@ -831,8 +830,8 @@ def casm_plot(early_clust_path: str,
     Generate t-SNE cluster visualization plots for early and final embeddings.
 
     Creates scatter plots showing DBSCAN clustering results for both early
-    (exaggerated) and final t-SNE embeddings. Generates two PNG files with
-    "_early_tsne_clusters.png" and "_final_tsne_clusters.png" suffixes.
+    (exaggerated) and final t-SNE embeddings. Generates two svg files with
+    "_early_tsne_clusters.svg" and "_final_tsne_clusters.svg" suffixes.
 
     Args:
         early_clust_path (str): Path to early clustering results TSV file
@@ -840,7 +839,7 @@ def casm_plot(early_clust_path: str,
         output (str): Base name for output plot files
 
     Returns:
-        None: Saves plots to disk as PNG files
+        None: Saves plots to disk as svg files
     """
     logger.info("=== Starting Plot Generation ===")
     logger.info(f"Early clustering file: {early_clust_path}")
