@@ -1013,7 +1013,7 @@ def cugo_plot(context_path: str,
 # ======================================
 # CUGO context functions and CLI tool
 # ======================================
-def process_target_context(target_id, parent_id, target_cugo, strand, cugo_range,
+def process_target_context(target_id, parent_id, target_cugo, strand,
                            context_data, headers, seq_idx):
     """Build context window for a single target protein."""
     if parent_id not in context_data:
@@ -1024,7 +1024,7 @@ def process_target_context(target_id, parent_id, target_cugo, strand, cugo_range
     context_window = []
     for row in parent_rows:
         cugo_num = int(row[headers.index('CUGO_number')])
-        if target_cugo - cugo_range <= cugo_num <= target_cugo + cugo_range:
+        if cugo_num == target_cugo:
             context_window.append(row)
 
     if not context_window:
@@ -1104,7 +1104,6 @@ def fetch_parent_context(parent_ID, needed_numbers, cugo_path, batch_size=500):
 
 def context(fasta_path: str,
             cugo_path: str,
-            cugo_range: int,
             output_dir: str,
             threads: int = 1,
             force: bool = False,
@@ -1143,8 +1142,7 @@ def context(fasta_path: str,
 
     for seqID, parent_ID, aa_length, strand, COG_ID, CUGO_number, no_TMH in target_rows:
         target_contexts[seqID] = (parent_ID, CUGO_number, strand)
-        for i in range(CUGO_number - cugo_range, CUGO_number + cugo_range + 1):
-            context_ranges[parent_ID].add(i)
+        context_ranges[parent_ID].add(CUGO_number)
 
     headers = ["seqID", "parent_ID", "aa_length", "strand", "COG_ID", "CUGO_number", "no_TMH"]
     context_data = defaultdict(list)
@@ -1166,7 +1164,6 @@ def context(fasta_path: str,
             parent_id=parent_ID,
             target_cugo=target_cugo,
             strand=strand,
-            cugo_range=cugo_range,
             context_data=context_data,
             headers=headers,
             seq_idx=0,
@@ -1186,7 +1183,6 @@ def context(fasta_path: str,
 # ======================================
 
 def cugo(cugo_path: str,
-         cugo_range: int,
          fasta_path: str,
          output_dir: str,
          flank_lower: int,
@@ -1202,7 +1198,6 @@ def cugo(cugo_path: str,
 
     Args:
         cugo_path: Path to CUGO file
-        cugo_range: Range around target protein for context
         output_dir: Directory for output files
         flank_lower: Lower flank boundary for plotting
         flank_upper: Upper flank boundary for plotting
@@ -1220,7 +1215,6 @@ def cugo(cugo_path: str,
     context_file = context(
         fasta_path=fasta_path,
         cugo_path=cugo_path,
-        cugo_range=cugo_range,
         output_dir=output_dir,
         threads=threads,
         force=force
