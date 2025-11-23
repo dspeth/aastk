@@ -8,6 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable, get_cmap
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from typing import Optional
 from pathlib import Path
 import yaml
@@ -16,7 +17,6 @@ import sqlite3
 from tqdm import tqdm
 import subprocess
 from collections import defaultdict
-import csv
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
@@ -667,7 +667,7 @@ def plot_top_cogs_per_position(
         x_pos,
         y_values,
         color=point_colors,
-        s=150,
+        s=300,
         zorder=3,
         edgecolors='black',
         linewidths=0.7
@@ -695,8 +695,9 @@ def plot_top_cogs_per_position(
     ax.set_xlim(positions[0] - 0.5, positions[-1] + 0.5)
 
     ax.tick_params(axis='y', labelsize=14)
-    ax.set_ylabel('Count', fontsize=16)
-    ax.set_title(title, fontsize=18, fontweight='bold')
+    ax.set_xlabel('position', fontsize=18)
+    ax.set_ylabel('Count', fontsize=18)
+    ax.set_title(title, fontsize=20)
 
     # save plot if requested
     if save:
@@ -709,11 +710,11 @@ def plot_top_cogs_per_position(
 def plot_size_per_position(context_path: str,
                            flank_lower: int,
                            flank_upper: int,
-                           title: str = 'aa_length Density per Position',
+                           title: str = 'Density of amino acid length per position',
                            save: bool = False,
                            ax: Optional[plt.Axes] = None,
                            pos_boundaries: Optional[list] = None,
-                           bin_width: int = 10,
+                           bin_width: int = 50,
                            y_range: int = None,
                            plot_path: str = None
                            ):
@@ -802,7 +803,7 @@ def plot_size_per_position(context_path: str,
     ax.set_yticklabels(['0', f'{int(max_length/2)}', f'{int(max_length)}'], fontsize=16)
 
     # set axis labels and title
-    ax.set_xlabel('Position', fontsize=18)
+    ax.set_xlabel('position', fontsize=18)
     ax.set_ylabel(f'length (bin size: {bin_width})', fontsize=18)
     ax.set_title(title, fontsize=20)
 
@@ -817,7 +818,7 @@ def plot_size_per_position(context_path: str,
 def plot_tmh_per_position(context_path: str,
                           flank_lower: int,
                           flank_upper: int,
-                          title: str = 'no_TMH Distribution per Position',
+                          title: str = 'Density of transmembrane helix count per position',
                           save: bool = False,
                           ax: Optional[plt.Axes] = None,
                           pos_boundaries: Optional[list] = None,
@@ -907,8 +908,8 @@ def plot_tmh_per_position(context_path: str,
     ax.set_yticklabels(['0', f'{int(n_bins/2)}', f'{int(n_bins)}'], fontsize=16)
 
     # set axis labels and title
-    ax.set_xlabel('Position', fontsize=18)
-    ax.set_ylabel('no_TMH', fontsize=18)
+    ax.set_xlabel('position', fontsize=18)
+    ax.set_ylabel('Transmembrane helix count', fontsize=18)
     ax.set_title(title, fontsize=20)
 
     # create colorbar
@@ -1039,7 +1040,7 @@ def context(fasta_path: str,
         protein_name = determine_dataset_name(fasta_path, '.', 0)
         output_file = ensure_path(output_dir, f'{protein_name}_context.tsv', force=force)
         sequences = read_fasta_to_dict(fasta_path)
-        protein_identifiers = set(sequences.keys())  # O(1) lookups
+        protein_identifiers = set(sequences.keys())
 
         log_file = ensure_path(output_dir, f'{protein_name}_missing_files.log', force=force)
         logging.basicConfig(
@@ -1111,8 +1112,8 @@ def context(fasta_path: str,
 def cugo_plot(context_path: str,
               flank_lower: int,
               flank_upper: int,
-              top_n: int,
               output: str,
+              top_n: int = 3,
               cugo: bool = False,
               size: bool = False,
               tmh: bool = False,
@@ -1129,8 +1130,8 @@ def cugo_plot(context_path: str,
         context_path: Path to context TSV file
         flank_lower: Lower flank boundary for plotting
         flank_upper: Upper flank boundary for plotting
-        top_n: Number of top COGs to display
         output: Output directory for plots
+        top_n: Number of top COGs to display (default: 3)
         cugo: Whether to generate COG-only plot
         size: Whether to generate size-only plot
         tmh: Whether to generate TMH-only plot
@@ -1140,23 +1141,21 @@ def cugo_plot(context_path: str,
         tmh_y_range: Y-axis range for TMH plots
         force: Whether to overwrite existing files
     """
-    dataset_name = context_path.removesuffix('_context.tsv')
+    dataset_name = determine_dataset_name(context_path, '.', 0, '_context')
 
     # generate cog-only plot
     if cugo:
-        if not top_n:
-            logger.error('top_n is required if cugo is True')
-        else:
-            cugo_plot_path = ensure_path(output, f'{dataset_name}_cugo_only.png', force=force)
-            plot_top_cogs_per_position(context_path=context_path, flank_lower=flank_lower,
-                                       flank_upper=flank_upper, top_n=top_n, save=True,
-                                       plot_path=cugo_plot_path)
-            logger.INFO(f"Plot saved to {cugo_plot_path}")
+        logger.info(f'Plotting top {top_n} annotations per position.')
+        cugo_plot_path = ensure_path(output, f'{dataset_name}_cugo_only.svg', force=force)
+        plot_top_cogs_per_position(context_path=context_path, flank_lower=flank_lower,
+                                   flank_upper=flank_upper, top_n=top_n, save=True,
+                                   plot_path=cugo_plot_path)
+        logger.INFO(f"Plot saved to {cugo_plot_path}")
 
 
 # generate size-only plot
     if size:
-        size_plot_path = ensure_path(output, f'{dataset_name}_size_only.png', force=force)
+        size_plot_path = ensure_path(output, f'{dataset_name}_size_only.svg', force=force)
         plot_size_per_position(context_path=context_path, flank_lower=flank_lower,
                                flank_upper=flank_upper, save=True, bin_width=bin_width,
                                plot_path=size_plot_path, y_range=y_range)
@@ -1165,7 +1164,7 @@ def cugo_plot(context_path: str,
 
 # generate tmh-only plot
     if tmh:
-        tmh_plot_path = ensure_path(output, f'{dataset_name}_tmh_only.png', force=force)
+        tmh_plot_path = ensure_path(output, f'{dataset_name}_tmh_only.svg', force=force)
         plot_tmh_per_position(context_path=context_path, flank_lower=flank_lower,
                               flank_upper=flank_upper, save=True, y_range=tmh_y_range,
                               plot_path=tmh_plot_path)
@@ -1174,57 +1173,55 @@ def cugo_plot(context_path: str,
 
 # generate combined plot
     if all_plots:
-        if not top_n:
-            logger.error('top_n is required if all_plots is True')
-        else:
-            all_plot_path = ensure_path(output, f'{dataset_name}_cugo.png', force=force)
+        logger.info(f'Plotting top {top_n} annotations per position.')
+        all_plot_path = ensure_path(output, f'{dataset_name}_cugo.svg', force=force)
 
-            # calculate dynamic figure width
-            width = max(8, int((flank_upper - flank_lower + 1) * top_n * 0.6))
-            figsize = (width, 16)
-            fig, (ax1, ax2, ax3) = plt.subplots(3, 1,
-                                                figsize=figsize,
-                                                gridspec_kw={'height_ratios': [3, 2, 1.5]})
+        # calculate dynamic figure width
+        width = max(8, int((flank_upper - flank_lower + 1) * top_n * 0.6))
+        figsize = (width, 16)
+        fig, (ax1, ax2, ax3) = plt.subplots(3, 1,
+                                            figsize=figsize,
+                                            gridspec_kw={'height_ratios': [1, 1, 1]})
 
-            # plot top cogs per position
-            pos_centers, pos_boundaries = plot_top_cogs_per_position(
-                context_path=context_path,
-                flank_lower=flank_lower,
-                flank_upper=flank_upper,
-                top_n=top_n,
-                title='Top COGs per Position',
-                ax=ax1,
-            )
+        # plot top cogs per position
+        pos_centers, pos_boundaries = plot_top_cogs_per_position(
+            context_path=context_path,
+            flank_lower=flank_lower,
+            flank_upper=flank_upper,
+            top_n=top_n,
+            title='Top COGs per position',
+            ax=ax1,
+        )
 
-            # plot protein size distribution
-            plot_size_per_position(
-                context_path=context_path,
-                flank_lower=flank_lower,
-                flank_upper=flank_upper,
-                title='aa_length Density per Position',
-                ax=ax2,
-                pos_boundaries=pos_boundaries,
-                bin_width=bin_width,
-                y_range=y_range
-            )
+        # plot protein size distribution
+        plot_size_per_position(
+            context_path=context_path,
+            flank_lower=flank_lower,
+            flank_upper=flank_upper,
+            title='Density of amino acid length per position',
+            ax=ax2,
+            pos_boundaries=pos_boundaries,
+            bin_width=bin_width,
+            y_range=y_range
+        )
 
-            # plot TMH distribution
-            plot_tmh_per_position(
-                context_path=context_path,
-                flank_lower=flank_lower,
-                flank_upper=flank_upper,
-                title='no_TMH Distribution per Position',
-                ax=ax3,
-                pos_boundaries=pos_boundaries,
-                y_range=tmh_y_range
-            )
+        # plot TMH distribution
+        plot_tmh_per_position(
+            context_path=context_path,
+            flank_lower=flank_lower,
+            flank_upper=flank_upper,
+            title='Density of transmembrane helix count per positionn',
+            ax=ax3,
+            pos_boundaries=pos_boundaries,
+            y_range=tmh_y_range
+        )
 
-            ax1.tick_params(labelbottom=True)
+        ax1.tick_params(labelbottom=True)
 
-            plt.tight_layout()
-            plt.subplots_adjust(hspace=0.4)
-            plt.savefig(all_plot_path, dpi=300, bbox_inches='tight')
-            logger.info(f"Plot saved to {all_plot_path}")
+        plt.tight_layout()
+        plt.subplots_adjust(hspace=0.4)
+        plt.savefig(all_plot_path, dpi=300, bbox_inches='tight')
+        logger.info(f"Plot saved to {all_plot_path}")
 
 # ======================================
 # CUGO COMMAND LINE WORKFLOW
@@ -1236,7 +1233,7 @@ def cugo(cugo_path: str,
          output_dir: str,
          flank_lower: int,
          flank_upper: int,
-         top_n: int,
+         top_n: int = 3,
          threads: int = 1,
          force: bool = False,
          bin_width: int = 10,
@@ -1251,7 +1248,7 @@ def cugo(cugo_path: str,
         output_dir: Directory for output files
         flank_lower: Lower flank boundary for plotting
         flank_upper: Upper flank boundary for plotting
-        top_n: Number of top COGs to display
+        top_n: Number of top COGs to display (default: 3)
         force: Whether to overwrite existing files
         fasta_path: Optional path to FASTA file
         bin_width: Bin width for size plots
@@ -1290,6 +1287,6 @@ def cugo(cugo_path: str,
 
     # determine plot file path
     dataset_name = context_file.removesuffix('_context.tsv')
-    plot_file = f"{dataset_name}_cugo.png"
+    plot_file = f"{dataset_name}_cugo.svg"
 
     return context_file, plot_file
