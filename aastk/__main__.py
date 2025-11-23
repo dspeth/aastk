@@ -132,6 +132,7 @@ def main():
         elif args.subparser_name == 'context':
             context(
                 fasta_path=args.fasta,
+                id_list=args.id_list,
                 cugo_path=args.cugo_path,
                 output_dir=args.output,
                 threads=args.threads,
@@ -158,6 +159,7 @@ def main():
             cugo(
                 cugo_path=args.cugo_path,
                 fasta_path=args.fasta,
+                id_list=args.id_list,
                 output_dir=args.output,
                 flank_lower=args.flank_lower,
                 flank_upper=args.flank_upper,
@@ -167,6 +169,13 @@ def main():
                 bin_width=args.bin_width,
                 y_range=args.y_range,
                 tmh_y_range=args.tmh_y_range
+            )
+
+        elif args.subparser_name == 'retrieve':
+            retrieve(
+                context_path=args.context_path,
+                position=args.position,
+                output=args.output
             )
 
         ### PARSER FOR CASM FUNCTIONALITIES AND WORKFLOW ###

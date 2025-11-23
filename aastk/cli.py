@@ -123,6 +123,10 @@ def __help(group, required=False):
     group.add_argument('-h', '--help', action='help',
                        help='Display help text')
 
+def __id_list(group, required=False):
+    group.add_argument('-i', '--id_list', type=str, required=required,
+                       help='Path to list of GlobDB protein IDs')
+
 def __iterations(group, required=False):
     group.add_argument('-i', '--iterations', type=str, default=500, required=required,
                        help='Number of clustering iterations')
@@ -182,6 +186,10 @@ def __perplexity(group, required=False):
 def __pfam_gff(group, required=False):
     group.add_argument('-p', '--pfam_gff', type=str, required=required,
                        help='Path to (.tar.gz) GFF directory containing Pfam annotations')
+
+def __position(group, required=False):
+    group.add_argument('-p', '--position', type=int, required=required,
+                       help='CUGO position to retrieve protein IDs for')
 
 def __protein_ids(group, required=False):
     group.add_argument('-p', '--protein_ids', type=str, required=required,
@@ -396,8 +404,10 @@ def get_main_parser():
 
 
     with subparser(sub_parsers, 'context', 'Parse context information from CUGO input file') as parser:
+        with mutex_group(parser, required=True) as grp:
+            __fasta(grp)
+            __id_list(grp)
         with arg_group(parser, 'Required arguments') as grp:
-            __fasta(grp, required=True)
             __cugo_path(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
@@ -423,8 +433,10 @@ def get_main_parser():
 
 
     with subparser(sub_parsers, 'cugo', 'CUGO: Co-localized gene organization') as parser:
+        with mutex_group(parser, required=True) as grp:
+            __fasta(grp)
+            __id_list(grp)
         with arg_group(parser, 'Required arguments') as grp:
-            __fasta(grp, required=True)
             __cugo_path(grp, required=True)
             __flank_lower(grp, required=True)
             __flank_upper(grp, required=True)
@@ -502,5 +514,11 @@ def get_main_parser():
             __output(grp)
             __force(grp)
 
+    with subparser(sub_parsers, 'retrieve', 'Retrieve protein IDs for select CUGO position') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __context_path(grp, required=True)
+            __position(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
 
     return main_parser
