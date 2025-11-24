@@ -240,6 +240,10 @@ def __tabular(group, required=False):
     group.add_argument('-t', '--tabular', type=str, default=None, required=required,
                        help='Path to tabular BLAST/DIAMOND output file')
 
+def __taxonomy_path(group, required=False):
+    group.add_argument('-t', '--taxonomy_path', type=str, default=None, required=required,
+                       help='Path to taxonomy file')
+
 def __threads(group, required=False):
     group.add_argument('-n', '--threads', type=int, default=1, required=required,
                        help='Number of threads to be used (default: 1)')
@@ -395,6 +399,7 @@ def get_main_parser():
             __cog_gff(grp, required=True)
             __kegg_gff(grp, required=True)
             __pfam_gff(grp, required=True)
+            __taxonomy_path(grp, required=True)
             __globdb_version(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)

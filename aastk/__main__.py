@@ -123,6 +123,7 @@ def main():
                 kegg_gff_tar_path=args.kegg_gff,
                 pfam_gff_tar_path=args.pfam_gff,
                 tmhmm_tar_path=args.tmhmm_dir,
+                taxonomy_path=args.taxonomy_path,
                 output_dir=args.output,
                 globdb_version=args.globdb_version,
                 force=args.force

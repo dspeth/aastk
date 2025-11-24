@@ -29,21 +29,35 @@ def setup_database(db_path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
 
     conn.execute('''
-        CREATE TABLE IF NOT EXISTS all_data (
-            seqID TEXT PRIMARY KEY,
-            parent_ID TEXT,
-            aa_length INTEGER,
-            strand TEXT, 
-            COG_ID TEXT,
-            KEGG_ID TEXT,
-            Pfam_ID TEXT,
-            cugo_number INTEGER,
-            no_tmh INTEGER
-            )
-        ''')
+                 CREATE TABLE IF NOT EXISTS all_data (
+                                                         seqID TEXT PRIMARY KEY,
+                                                         parent_ID TEXT,
+                                                         aa_length INTEGER,
+                                                         strand TEXT,
+                                                         COG_ID TEXT,
+                                                         KEGG_ID TEXT,
+                                                         Pfam_ID TEXT,
+                                                         cugo_number INTEGER,
+                                                         no_tmh INTEGER
+                 )
+                 ''')
+
+    conn.execute('''
+                 CREATE TABLE IF NOT EXISTS taxonomy (
+                                                         genome_ID TEXT PRIMARY KEY,
+                                                         domain TEXT,
+                                                         phylum TEXT,
+                                                         class TEXT,
+                                                         order_tax TEXT,
+                                                         family TEXT,
+                                                         genus TEXT,
+                                                         species TEXT
+                 )
+                 ''')
 
     conn.execute('CREATE INDEX IF NOT EXISTS idx_all_seqid ON all_data(seqID)')
     conn.execute('CREATE INDEX IF NOT EXISTS idx_parent_id ON all_data(parent_ID)')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_taxonomy_genome ON taxonomy(genome_ID)')
 
     conn.commit()
     return conn
@@ -406,10 +420,47 @@ def process_tmhmm_file(tmhmm_filepath):
     except Exception:
         return []
 
+def populate_taxonomy_table(conn: sqlite3.Connection,
+                            taxonomy_filepath: str):
+    try:
+        with gzip.open(taxonomy_filepath, 'rt') as f:
+            next(f)
+
+            taxonomy_data = []
+            for line in f:
+                parts = line.strip().split('\t')
+                if len(parts) < 8:
+                    continue
+
+                genome_id = parts[0]
+                domain = parts[1]
+                phylum = parts[2]
+                class_ = parts[3]
+                order = parts[4]
+                family = parts[5]
+                genus = parts[6]
+                species = parts[7]
+
+                taxonomy_data.append((genome_id, domain, phylum, class_, order, family, genus, species))
+
+            conn.executemany("""
+                INSERT OR REPLACE INTO taxonomy
+                (genome_id, domain, phylum, class_, order, family, genus, species)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?) 
+            """, taxonomy_data)
+
+        conn.commit()
+        logger.info(f"Inserted taxonomy data for {len(taxonomy_data)} genomes")
+
+    except Exception as e:
+        logger.error(f"Error populating taxonomy table: {e}")
+
+
 def parse(cog_gff_tar_path: str,
           kegg_gff_tar_path: str = None,
           pfam_gff_tar_path: str = None,
           tmhmm_tar_path: str = None,
+          taxonomy_path: str = None,
           output_dir: str = None,
           globdb_version: int = None,
           force: bool = False,
@@ -519,6 +570,11 @@ def parse(cog_gff_tar_path: str,
                 conn.commit()
 
         shutil.rmtree(tempdir)
+
+    # ===== STEP 5: Process Taxonomy file =====
+    if taxonomy_path:
+        logger.info("STEP 5: Populating taxonomy table...")
+        populate_taxonomy_table(conn, taxonomy_path)
 
     conn.close()
     logger.info("Database creation complete!")
