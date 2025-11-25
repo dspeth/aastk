@@ -119,21 +119,22 @@ def main():
         ### PARSER FOR CUGO FUNCTIONALITIES AND WORKFLOW ###
         elif args.subparser_name == 'parse':
             parse(
-                gff_tar_path=args.gff_path,
+                cog_gff_tar_path=args.cog_gff,
+                kegg_gff_tar_path=args.kegg_gff,
+                pfam_gff_tar_path=args.pfam_gff,
                 tmhmm_tar_path=args.tmhmm_dir,
+                taxonomy_path=args.taxonomy_path,
                 output_dir=args.output,
                 globdb_version=args.globdb_version,
-                force=args.force,
-                db_path=args.db_path,
-                cleanup_db=args.cleanup
+                force=args.force
             )
 
 
         elif args.subparser_name == 'context':
             context(
                 fasta_path=args.fasta,
+                id_list=args.id_list,
                 cugo_path=args.cugo_path,
-                cugo_range=args.cugo_range,
                 output_dir=args.output,
                 threads=args.threads,
                 force=args.force,
@@ -151,14 +152,15 @@ def main():
                 all_plots=args.all,
                 bin_width=args.bin_width,
                 y_range=args.y_range,
+                tmh_y_range=args.tmh_y_range,
                 force=args.force
             )
 
         elif args.subparser_name == 'cugo':
             cugo(
                 cugo_path=args.cugo_path,
-                cugo_range=args.cugo_range,
                 fasta_path=args.fasta,
+                id_list=args.id_list,
                 output_dir=args.output,
                 flank_lower=args.flank_lower,
                 flank_upper=args.flank_upper,
@@ -166,7 +168,15 @@ def main():
                 threads=args.threads,
                 force=args.force,
                 bin_width=args.bin_width,
-                y_range=args.y_range
+                y_range=args.y_range,
+                tmh_y_range=args.tmh_y_range
+            )
+
+        elif args.subparser_name == 'retrieve':
+            retrieve(
+                context_path=args.context_path,
+                position=args.position,
+                output=args.output
             )
 
         ### PARSER FOR CASM FUNCTIONALITIES AND WORKFLOW ###
@@ -192,8 +202,6 @@ def main():
                 metadata_protein=args.metadata_protein,
                 metadata_genome=args.metadata_genome,
                 force=args.force,
-                large=args.large,
-                sample_size=args.sample_size
             )
 
 
@@ -201,7 +209,8 @@ def main():
             casm_plot(
                 early_clust_path=args.early_clust,
                 full_clust_path=args.full_clust,
-                output=args.output
+                output=args.output,
+                show_cluster_numbers=args.show
             )
 
         elif args.subparser_name == 'casm':
@@ -217,9 +226,18 @@ def main():
                 metadata_protein=args.metadata_protein,
                 metadata_genome=args.metadata_genome,
                 force=args.force,
-                large=args.large,
-                sample_size=args.sample_size
+                show_cluster_numbers=args.show
             )
+
+        elif args.subparser_name == 'pick':
+            pick(
+                final_embedding_file=args.full_clust,
+                fasta=args.fasta,
+                no_cluster=args.no_cluster,
+                output=args.output,
+                force=args.force
+            )
+
 
     except Exception as e:
         logger.error(f"Error executing command: {e}")

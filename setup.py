@@ -19,14 +19,15 @@ setup(
         "pandas>=2.2.3",
         "PyYAML>=6.0.2",
         "scikit-learn>=1.6.1",
-        "scipy>=1.15.3"
+        "scipy>=1.15.3",
+        "tqdm>=4.67.1"
     ],
     entry_points={
         "console_scripts": [
             "aastk=aastk.__main__:main",
         ],
     },
-    python_requires=">=3.12",
+    python_requires=">=3.13",
     classifiers=[
         "Development Status :: 4 - Beta",
         "Environment :: Console",

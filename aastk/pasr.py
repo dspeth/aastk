@@ -118,8 +118,7 @@ def search(db_path: str,
     check_dependency_availability('diamond')
 
     # automatically name files
-    db_name = Path(db_path).name
-    protein_name = db_name.replace('_seed_db.dmnd', '')
+    protein_name = determine_dataset_name(db_path, '.', 0, '_seed_db')
 
     # ===============================
     # Output file path setup
@@ -221,8 +220,7 @@ def extract(blast_tab: str,
     # check if seqkit is in path
     check_dependency_availability('seqkit')
 
-    blast_file = Path(blast_tab).name
-    protein_name = blast_file.replace('_hits.txt', '')
+    protein_name = determine_dataset_name(blast_tab, '.', 0, '_hits')
 
     # ===============================
     # Output file setup
@@ -302,8 +300,7 @@ def calculate(extracted: str,
     Returns:
         max_scores: Dictionary of protein headers and their max scores.
     """
-    extracted_name = Path(extracted).name
-    protein_name = extracted_name.replace('_matched.faa', '')
+    protein_name = determine_dataset_name(extracted, '.', 0, '_matched')
 
     # ===============================
     # Output file setup
@@ -396,8 +393,7 @@ def bsr(blast_tab: str,
     Returns:
         bsr_output (str): Path to the output file with BSR values.
     """
-    blast_file = Path(blast_tab).name
-    protein_name = blast_file.replace('_hits.txt', '')
+    protein_name = determine_dataset_name(blast_tab, '.', 0, '_hits')
 
     # ===============================
     # Output file setup
@@ -527,16 +523,15 @@ def pasr_plot(bsr_file: str,
     """
     logger = logging.getLogger(__name__)
 
-    bsr_file_name = Path(bsr_file).name
-    protein_name = bsr_file_name.replace('_bsr.tsv', '')
+    protein_name = determine_dataset_name(bsr_file, '.', 0, '_bsr')
 
     # ===============================
     # Output file path setup
     # ===============================
     if update:
-        out_graph = ensure_path(output_dir, f'{protein_name}_updated_bsr.png', force=force)
+        out_graph = ensure_path(output_dir, f'{protein_name}_updated_bsr.svg', force=force)
     else:
-        out_graph = ensure_path(output_dir, f'{protein_name}_bsr.png', force=force)
+        out_graph = ensure_path(output_dir, f'{protein_name}_bsr.svg', force=force)
 
     logger.info(f"Creating BSR scatter plot for {protein_name}")
 
@@ -726,8 +721,7 @@ def metadata(selfmin: int,
         logger.info(f"Extracted protein name '{protein_name}' from seed file")
     elif bsr_file is not None:
         logger.info(f"Determining protein name from BSR file: {bsr_file}")
-        bsr_name = Path(bsr_file).name
-        protein_name = bsr_name.replace('_bsr.tsv', '')
+        protein_name = determine_dataset_name(bsr_file, '.', 0, '_bsr')
         logger.info(f"Extracted protein name '{protein_name}' from BSR file")
     else:
         error_msg = "Unexpected state: both seed and bsr_file are None"
@@ -839,8 +833,7 @@ def select(yaml_path: str,
 
     logger.info("Starting sequence subsetting based on thresholds")
 
-    bsr_name = Path(bsr_table).name
-    protein_name = bsr_name.replace('_bsr.tsv', '')
+    protein_name = determine_dataset_name(bsr_file, '.', 0, '_bsr')
 
     # ===============================
     # Parameter validation
@@ -970,6 +963,25 @@ def select(yaml_path: str,
 
     logger.debug(f"Running command: {' '.join(cmd)}")
     subprocess.run(cmd, check=True)
+
+    # ===============================
+    # Generate updated BSR plot
+    # ===============================
+    if created_yaml_path:
+        yaml_for_plot = created_yaml_path
+    elif yaml_path:
+        yaml_for_plot = yaml_path
+    else:
+        yaml_for_plot = None
+
+    if yaml_for_plot:
+        pasr_plot(
+            bsr_file=bsr_table,
+            output_dir=output_dir,
+            yaml_path=yaml_for_plot,
+            force=force,
+            update=True
+        )
 
     if created_yaml_path:
         return output_path, stats_path, created_yaml_path

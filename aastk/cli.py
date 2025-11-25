@@ -23,12 +23,12 @@ def __all(group, required=False):
                        help='Generate a combined plot for CUGO, AA sequence length and TMHMM')
 
 def __bin_width(group, required=False):
-    group.add_argument('-b', '--bin_width', type=int, default=10, required=required,
-                       help='Bin width for amino acid sequence size plotting (Default: 10)')
+    group.add_argument('-b', '--bin_width', type=int, default=50, required=required,
+                       help='Bin width for amino acid sequence size plotting (default: 50)')
 
 def __block(group, required=False):
     group.add_argument('-b', '--block', type=int, default=6, required=required,
-                       help='Choose diamond blastp sequence block size in billions of letters (Default: 6)')
+                       help='Choose diamond blastp sequence block size in billions of letters (default: 6)')
 
 def __bsr(group, required=False):
     group.add_argument('-b', '--bsr', type=str, required=required,
@@ -40,15 +40,16 @@ def __bsr_cutoff(group, required=False):
 
 def __chunk(group, required=False):
     group.add_argument('-c', '--chunk', type=int, default=2, required=required,
-                       help='Choose number of chunks for diamond blastp index processing (Default: 2)')
+                       help='Choose number of chunks for diamond blastp index processing (default: 2)')
 
-def __cleanup_db(group, required=False):
-    group.add_argument('--cleanup', action='store_true', required=required,
-                       help='Remove temporary SQLite database from disk after CUGO file creation')
 
 def __create_yaml(group, required=False):
     group.add_argument('--create_yaml', action='store_true', required=required,
                        help='Create metadata yaml file from command line parameters')
+
+def __cog_gff(group, required=False):
+    group.add_argument('-c', '--cog_gff', type=str, required=required,
+                       help='Path to (.tar.gz) GFF directory containing COG annotations')
 
 def __column_info_path(group, required=False):
     group.add_argument('-c', '--column_info_path', type=str, default=None, required=required,
@@ -65,10 +66,6 @@ def __cugo(group, required=False):
 def __cugo_path(group, required=False):
     group.add_argument('-c', '--cugo_path', type=str, required=required,
                        help='Path to CUGO file')
-
-def __cugo_range(group, required=False):
-    group.add_argument('-r', '--cugo_range', type=int, required=required,
-                       help='CUGO range of interest for genomic context analysis')
 
 def __dataset(group, required=False):
     group.add_argument('-d', '--dataset', type=str, required=required,
@@ -118,10 +115,6 @@ def __full_clust(group, required=False):
     group.add_argument('-f', '--full_clust', type=str, required=required,
                        help='Path to full clustering TSV file')
 
-def __gff_path(group, required=False):
-    group.add_argument('-g', '--gff_path', type=str, required=required,
-                       help='Path to (gzipped) GFF directory')
-
 def __globdb_version(group, required=False):
     group.add_argument('-g', '--globdb_version', type=int, required=required,
                        help='GlobDB version')
@@ -130,17 +123,21 @@ def __help(group, required=False):
     group.add_argument('-h', '--help', action='help',
                        help='Display help text')
 
+def __id_list(group, required=False):
+    group.add_argument('-i', '--id_list', type=str, required=required,
+                       help='Path to list of GlobDB protein IDs')
+
 def __iterations(group, required=False):
     group.add_argument('-i', '--iterations', type=str, default=500, required=required,
                        help='Number of clustering iterations')
 
+def __kegg_gff(group, required=False):
+    group.add_argument('-k', '--kegg_gff', type=str, required=required,
+                       help='Path to (.tar.gz) GFF directory containing KEGG annotations')
+
 def __key_column(group, required=False):
     group.add_argument('-k', '--key_column', type=int, default=0, required=required,
                        help='Column index in the BLAST tab file to pull unique IDs from (default is 0)')
-
-def __large(group, required=False):
-    group.add_argument('--large', action='store_true', required=required,
-                       help='Handle large datasets for CASM clustering')
 
 def __matched(group, required=False):
     group.add_argument('-m', '--matched', type=str, required=required,
@@ -170,9 +167,13 @@ def __metadata_matrix(group, required=False):
     group.add_argument('--metadata_matrix', type=str, required=required,
                        help='Path to matrix metadata file')
 
+def __no_cluster(group, required=False):
+    group.add_argument('-n', '--no_cluster', type=int, required=required,
+                       help='Number of cluster of choice in TSV file')
+
 def __output(group, required=False):
     group.add_argument('-o', '--output', type=str, required=required,
-                       help='Desired output location (default: current working directory)')
+                       help='Desired output directory (default: current working directory)')
 
 def __params(group, required=False):
     group.add_argument('--params', action='store_true', required=required,
@@ -182,6 +183,14 @@ def __perplexity(group, required=False):
     group.add_argument('-p', '--perplexity', type=int, default=50, required=required,
                        help='Perplexity value for tSNE clustering')
 
+def __pfam_gff(group, required=False):
+    group.add_argument('-p', '--pfam_gff', type=str, required=required,
+                       help='Path to (.tar.gz) GFF directory containing Pfam annotations')
+
+def __position(group, required=False):
+    group.add_argument('-p', '--position', type=int, required=required,
+                       help='CUGO position to retrieve protein IDs for')
+
 def __protein_ids(group, required=False):
     group.add_argument('-p', '--protein_ids', type=str, required=required,
                        help='Path to file containing list of protein IDs')
@@ -189,10 +198,6 @@ def __protein_ids(group, required=False):
 def __query(group, required=False):
     group.add_argument('-q', '--query', type=str, default=None, required=required,
                        help='Path to query FASTA')
-
-def __sample_size(group, required=False):
-    group.add_argument('-s', '--sample_size', type=int, default=10000, required=required,
-                       help='Sample size for large dataset downsampling')
 
 def __score_column(group, required=False):
     group.add_argument('-s', '--score_column', type=int, default=None, required=required,
@@ -215,6 +220,10 @@ def __sensitivity(group, required=False):
                        help='Set the sensitivity level for the DIAMOND search: fast, sensitive, mid-sensitive, very-sensitive, '
                             'ultra-sensitive, or faster (default: fast)')
 
+def __show(group, required=False):
+    group.add_argument('-s', '--show', action='store_true', required=required,
+                       help='Show cluster number at cluster centers in output plots')
+
 def __size(group, required=False):
     group.add_argument('--size', action='store_true', required=required,
                        help='Generate AA sequence length plot')
@@ -231,6 +240,10 @@ def __tabular(group, required=False):
     group.add_argument('-t', '--tabular', type=str, default=None, required=required,
                        help='Path to tabular BLAST/DIAMOND output file')
 
+def __taxonomy_path(group, required=False):
+    group.add_argument('-t', '--taxonomy_path', type=str, default=None, required=required,
+                       help='Path to taxonomy file')
+
 def __threads(group, required=False):
     group.add_argument('-n', '--threads', type=int, default=1, required=required,
                        help='Number of threads to be used (default: 1)')
@@ -239,9 +252,13 @@ def __tmhmm_dir(group, required=False):
     group.add_argument('-t', '--tmhmm_dir', type=str, required=required,
                        help='Directory containing tmhmm files')
 
+def __tmh_y_range(group, required=False):
+    group.add_argument('-t', '--tmh_y_range', type=int, required=required,
+                       help='Upper limit for TMH plot y-axis (default: maximum length)')
+
 def __top_n(group, required=False):
-    group.add_argument('-t', '--top_n', type=int, required=required,
-                       help='Number of top COGs to plot per position')
+    group.add_argument('-t', '--top_n', type=int, default=3, required=required,
+                       help='Number of top COGs to plot per position (default: 3)')
 
 def __tsv(group, required=False):
     group.add_argument('-t', '--tsv', type=str, required=required,
@@ -257,7 +274,7 @@ def __yaml(group, required=False):
 
 def __y_range(group, required=False):
     group.add_argument('-y', '--y_range', type=int, required=required,
-                       help='Upper limit for sequence length plot y-axis')
+                       help='Upper limit for sequence length plot y-axis (default: maximum length)')
 
 def get_main_parser():
     main_parser = argparse.ArgumentParser(
@@ -379,21 +396,24 @@ def get_main_parser():
     ### PARSER FOR CUGO FUNCTIONALITIES AND WORKFLOW ###
     with subparser(sub_parsers, 'parse', 'Parse GFF input file') as parser:
         with arg_group(parser, 'Required arguments') as grp:
-            __gff_path(grp, required=True)
+            __cog_gff(grp, required=True)
+            __kegg_gff(grp, required=True)
+            __pfam_gff(grp, required=True)
+            __taxonomy_path(grp, required=True)
             __globdb_version(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __force(grp)
             __tmhmm_dir(grp)
-            __db_path(grp)
-            __cleanup_db(grp)
+
 
 
     with subparser(sub_parsers, 'context', 'Parse context information from CUGO input file') as parser:
+        with mutex_group(parser, required=True) as grp:
+            __fasta(grp)
+            __id_list(grp)
         with arg_group(parser, 'Required arguments') as grp:
-            __fasta(grp, required=True)
             __cugo_path(grp, required=True)
-            __cugo_range(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __threads(grp)
@@ -411,16 +431,18 @@ def get_main_parser():
             __all(grp)
             __bin_width(grp)
             __y_range(grp)
+            __tmh_y_range(grp)
             __output(grp)
             __force(grp)
 
 
 
     with subparser(sub_parsers, 'cugo', 'CUGO: Co-localized gene organization') as parser:
+        with mutex_group(parser, required=True) as grp:
+            __fasta(grp)
+            __id_list(grp)
         with arg_group(parser, 'Required arguments') as grp:
-            __fasta(grp, required=True)
             __cugo_path(grp, required=True)
-            __cugo_range(grp, required=True)
             __flank_lower(grp, required=True)
             __flank_upper(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
@@ -429,6 +451,7 @@ def get_main_parser():
             __top_n(grp)
             __bin_width(grp)
             __y_range(grp)
+            __tmh_y_range(grp)
             __output(grp)
             __threads(grp)
 
@@ -456,8 +479,6 @@ def get_main_parser():
             __metadata_protein(grp)
             __metadata_genome(grp)
             __force(grp)
-            __large(grp)
-            __sample_size(grp)
 
 
     with subparser(sub_parsers, 'casm_plot', 'Plot CASM .tsv output files') as parser:
@@ -466,6 +487,7 @@ def get_main_parser():
             __full_clust(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __show(grp)
 
     with subparser(sub_parsers, 'casm', 'CASM: protein clustering using alignment score matrices') as parser:
         with mutex_group(parser, required=True) as grp:
@@ -486,9 +508,22 @@ def get_main_parser():
             __full_clust(grp)
             __matrix_path(grp)
             __metadata_matrix(grp)
-            __large(grp)
-            __sample_size(grp)
+            __show(grp)
 
+    with subparser(sub_parsers, 'pick', 'Pick CASM clusters to generate .faa file for further analysis') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __full_clust(grp, required=True)
+            __fasta(grp, required=True)
+            __no_cluster(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
+            __force(grp)
 
+    with subparser(sub_parsers, 'retrieve', 'Retrieve protein IDs for select CUGO position') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __context_path(grp, required=True)
+            __position(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
 
     return main_parser
