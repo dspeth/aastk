@@ -445,7 +445,7 @@ def populate_taxonomy_table(conn: sqlite3.Connection,
 
             conn.executemany("""
                 INSERT OR REPLACE INTO taxonomy
-                (genome_id, domain, phylum, class_, order, family, genus, species)
+                (genome_id, domain, phylum, class, order_tax, family, genus, species)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?) 
             """, taxonomy_data)
 
@@ -472,7 +472,7 @@ def parse(cog_gff_tar_path: str,
     from logging import getLogger
     logger = getLogger(__name__)
 
-    logger.info("Processing files: COG → TMHMM → KEGG → Pfam")
+    logger.info("Processing files: COG → TMHMM → KEGG → Pfam → Taxonomy")
 
     # db_path = ensure_path(target=f"globdb_{globdb_version}_cugo.db")
     db_path = f"globdb_{globdb_version}_cugo.db"
