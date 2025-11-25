@@ -1046,9 +1046,8 @@ def pasr(seed_fasta: str,
     protein_name = determine_dataset_name(seed_name, '.', 0)
 
     # check for output_dir
-    output_path = ensure_path(output_dir, force=force)
     logger.info(f"Running PASR workflow for {protein_name}")
-    logger.info(f"Output directory: {output_path}")
+    logger.info(f"Output directory: {output_dir}")
 
     # store all the output paths in a dictionary
     results = {}
@@ -1065,7 +1064,7 @@ def pasr(seed_fasta: str,
         # Database search
         # ===============================
         logger.info("Searching protein database")
-        search_output, column_info_path = search(db_path, query_fasta, threads, output_path, sensitivity, block, chunk, force=force)
+        search_output, column_info_path = search(db_path, query_fasta, threads, output_dir, sensitivity, block, chunk, force=force)
         results['search_output'] = search_output
         results['column_info_path'] = column_info_path
 
@@ -1073,7 +1072,7 @@ def pasr(seed_fasta: str,
         # Sequence extraction
         # ===============================
         logger.info("Extracting matching sequences")
-        matched_fasta, stats_path = extract(search_output, query_fasta, output_path, key_column, force=force)
+        matched_fasta, stats_path = extract(search_output, query_fasta, output_dir, key_column, force=force)
         results['matched_fasta'] = matched_fasta
         results['stats_path'] = stats_path
 
@@ -1081,18 +1080,18 @@ def pasr(seed_fasta: str,
         # Score calculations
         # ===============================
         logger.info("Calculating max scores")
-        max_scores = calculate(matched_fasta, matrix_name, output_path, force=force)
+        max_scores = calculate(matched_fasta, matrix_name, output_dir, force=force)
         results['max_scores'] = max_scores
 
         logger.info("Calculating blast score ratios")
-        bsr_file = bsr(search_output, max_scores, output_path, key_column, column_info_path, score_column=None, force=force)
+        bsr_file = bsr(search_output, max_scores, output_dir, key_column, column_info_path, score_column=None, force=force)
         results['bsr_file'] = bsr_file
 
         # ===============================
         # Visualization
         # ===============================
         logger.info("Creating BSR plot")
-        bsr_plot = pasr_plot(bsr_file, output_path, yaml_path, force=force, update=False)
+        bsr_plot = pasr_plot(bsr_file, output_dir, yaml_path, force=force, update=False)
         results['bsr_plot'] = bsr_plot
 
         # ===============================
@@ -1103,7 +1102,7 @@ def pasr(seed_fasta: str,
             subset_fasta, update_stats_path = select(yaml_path, matched_fasta, bsr_file, output_dir, force=force)
             results['subset_fasta'] = subset_fasta
             results['update_stats_path'] = update_stats_path
-            updated_plot = pasr_plot(bsr_file, output_path,  yaml_path, force=force, update=update)
+            updated_plot = pasr_plot(bsr_file, output_dir,  yaml_path, force=force, update=update)
             results['updated_plot'] = updated_plot
 
         logger.info("PASR workflow completed successfully")
