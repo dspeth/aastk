@@ -671,17 +671,17 @@ def fetch_parent_context(parent_ID, needed_numbers, cugo_path, batch_size=500):
     conn.close()
     return parent_ID, rows_out
 
-def context(fasta_path: str,
+def context(fasta: str,
             id_list: str,
             cugo_path: str,
             output_dir: str,
             threads: int = 1,
             force: bool = False,
             ):
-    if fasta_path:
-        protein_name = determine_dataset_name(fasta_path, '.', 0)
+    if fasta:
+        protein_name = determine_dataset_name(fasta, '.', 0)
         output_file = ensure_path(output_dir, f'{protein_name}_context.tsv', force=force)
-        sequences = read_fasta_to_dict(fasta_path)
+        sequences = read_fasta_to_dict(fasta)
         protein_identifiers = set(sequences.keys())
     if id_list:
         protein_name = determine_dataset_name(id_list, '.', 0)
@@ -1235,7 +1235,7 @@ def cugo_plot(context_path: str,
 # ======================================
 
 def cugo(cugo_path: str,
-         fasta_path: str,
+         fasta: str,
          id_list: str,
          output_dir: str,
          flank_lower: int,
@@ -1257,7 +1257,7 @@ def cugo(cugo_path: str,
         top_n: Number of top COGs to display (default: 3)
         threads (int): Number of threads (default: 1).
         force: Whether to overwrite existing files
-        fasta_path: Optional path to FASTA file
+        fasta: Optional path to FASTA file
         bin_width: Bin width for size plots
         y_range: Y-axis range for size plots
 
@@ -1266,7 +1266,7 @@ def cugo(cugo_path: str,
     """
     # generate context data
     context_file = context(
-        fasta_path=fasta_path,
+        fasta=fasta,
         id_list=id_list,
         cugo_path=cugo_path,
         output_dir=output_dir,
