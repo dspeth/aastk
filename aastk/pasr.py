@@ -833,7 +833,7 @@ def select(yaml_path: str,
 
     logger.info("Starting sequence subsetting based on thresholds")
 
-    protein_name = determine_dataset_name(bsr_file, '.', 0, '_bsr')
+    protein_name = determine_dataset_name(bsr_table, '.', 0, '_bsr')
 
     # ===============================
     # Parameter validation
