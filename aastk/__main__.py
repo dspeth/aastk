@@ -132,7 +132,7 @@ def main():
 
         elif args.subparser_name == 'context':
             context(
-                fasta_path=args.fasta,
+                fasta=args.fasta,
                 id_list=args.id_list,
                 cugo_path=args.cugo_path,
                 output_dir=args.output,
@@ -159,7 +159,7 @@ def main():
         elif args.subparser_name == 'cugo':
             cugo(
                 cugo_path=args.cugo_path,
-                fasta_path=args.fasta,
+                fasta=args.fasta,
                 id_list=args.id_list,
                 output_dir=args.output,
                 flank_lower=args.flank_lower,
