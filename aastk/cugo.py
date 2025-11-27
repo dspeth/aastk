@@ -683,7 +683,7 @@ def context(fasta_path: str,
         output_file = ensure_path(output_dir, f'{protein_name}_context.tsv', force=force)
         sequences = read_fasta_to_dict(fasta_path)
         protein_identifiers = set(sequences.keys())
-    if id_list:
+    elif id_list:
         protein_name = determine_dataset_name(id_list, '.', 0)
         output_file = ensure_path(output_dir, f'{protein_name}_context.tsv', force=force)
         with open(id_list, 'r') as f:
