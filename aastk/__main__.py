@@ -11,7 +11,8 @@ def main():
     parser = get_main_parser()
     args = parser.parse_args()
 
-    logger = logger_setup(silent=args.silent)
+    output_dir = getattr(args, 'output', getattr(args, 'output_dir', None))
+    logger = logger_setup(silent=args.silent, output_dir=output_dir)
 
     # If no subcommand is specified, print help
     if not args.subparser_name:
