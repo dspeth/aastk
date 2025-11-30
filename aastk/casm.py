@@ -567,6 +567,7 @@ def plot_clusters(tsv_file: str,
     Args:
         tsv_file (str): Path to input TSV file containing tSNE coordinates and cluster assignment
         output (str): Base path for output plot file (adds "_tsne_clusters" suffix)
+        svg (bool): Generate plot in SVG format
         force (bool): Overwrite existing files if True
         show_cluster_numbers (bool): Display cluster number on cluster centers in output plot
     """
@@ -863,6 +864,7 @@ def cluster(matrix_path: str,
 def casm_plot(early_clust_path: str,
         full_clust_path: str,
         output: str,
+        svg: bool = False,
         force: bool = False,
         show_cluster_numbers: bool = False):
     """
@@ -887,10 +889,10 @@ def casm_plot(early_clust_path: str,
 
     # Generate plots
     logger.info("Generating early clustering plot")
-    plot_clusters(early_clust_path, output=output, force=force, show_cluster_numbers=show_cluster_numbers)
+    plot_clusters(early_clust_path, output=output, force=force, svg=svg, show_cluster_numbers=show_cluster_numbers)
 
     logger.info("Generating full clustering plot")
-    plot_clusters(full_clust_path, output=output, force=force, show_cluster_numbers=show_cluster_numbers)
+    plot_clusters(full_clust_path, output=output, force=force, svg=svg, show_cluster_numbers=show_cluster_numbers)
 
     logger.info("=== Plot Generation Completed ===")
 
