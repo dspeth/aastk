@@ -51,21 +51,20 @@ def determine_file_type(file_path):
 def ensure_path(path: Optional[str] = None, target: Optional[str] = None, force: bool = False):
 	path = Path(path) if path else Path('.')
 	final_path = path / target if target else path
-	cwd = Path.cwd().resolve()
 
 	if final_path.exists():
-		if force:
-			if final_path.resolve() == cwd:
-				raise RuntimeError(f"Refusing to remove the current working directory: {cwd}")
-			if final_path.is_dir():
-				raise RuntimeError(f"Refusing to remove directory with force: {final_path}")
-			else:
-				logger.warning(f"Removing existing file: {final_path}")
-				final_path.unlink()
+		if final_path.is_dir():
+			pass
+		elif force:
+			logger.warning(f"Removing existing file: {final_path}")
+			final_path.unlink()
 		else:
 			raise FileExistsError(f"Path already exists: {final_path}")
 
-	final_path.parent.mkdir(parents=True, exist_ok=True)
+	if not final_path.exists():
+		final_path.parent.mkdir(parents=True, exist_ok=True)
+	elif final_path.is_file():
+		final_path.parent.mkdir(parents=True, exist_ok=True)
 
 	return str(final_path)
 
