@@ -96,7 +96,7 @@ def run_diamond_alignment(fasta: str,
     # Output file path setup
     # ===============================
     dataset = determine_dataset_name(fasta, '.', 0)
-    dbname = f"{dataset}_subset_dmnd"
+    dbname = ensure_path(output, f"{dataset}_subset_dmnd", force=force)
     align_output = ensure_path(output, f"{dataset}_align", force=force)
 
     # ===============================
@@ -134,12 +134,44 @@ def run_diamond_alignment(fasta: str,
     # Run commands created above
     # ===============================
     logger.debug(f"DIAMOND makedb command: {' '.join(run_dmnd_makedb)}")
-    subprocess.run(run_dmnd_makedb)
-    logger.info("DIAMOND database creation completed")
+    try:
+        proc = subprocess.Popen(
+            run_dmnd_makedb,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        _, stderr = proc.communicate()
+
+        if stderr:
+            logger.log(99, stderr)
+
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Error in building the DIAMOND database: {e}")
+        logger.error(f"STDERR: {e.stderr}")
+        raise RuntimeError(f"DIAMOND database creation failed: {e}") from e
+
+    logger.info(f"Successfully built DIAMOND database at {dbname}")
 
     logger.debug(f"DIAMOND blastp command: {' '.join(run_dmnd_blastp)}")
-    subprocess.run(run_dmnd_blastp)
-    logger.info(f"DIAMOND alignment completed. Output saved to: {align_output}")
+    try:
+        proc = subprocess.Popen(
+            run_dmnd_blastp,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        _, stderr = proc.communicate()
+
+        if stderr:
+            logger.log(99, stderr)
+    except subprocess.CalledProcessError as e:
+
+        logger.error(f"Error in DIAMOND blastp search: {e}")
+        logger.error(f"STDERR: {e.stderr}")
+        raise RuntimeError(f"DIAMOND blastp search failed: {e}") from e
+
+    logger.info(f"Successfully completed DIAMOND search. Results at {align_output}")
 
     return align_output
 
