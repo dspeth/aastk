@@ -516,6 +516,7 @@ def bsr(blast_tab: str,
 def pasr_plot(bsr_file: str,
              output_dir: str,
              yaml_path: str,
+             svg: bool = False,
              force: bool = False,
              update: bool = False):
     """
@@ -529,9 +530,15 @@ def pasr_plot(bsr_file: str,
     # Output file path setup
     # ===============================
     if update:
-        out_graph = ensure_path(output_dir, f'{protein_name}_updated_bsr.svg', force=force)
+        if svg:
+            out_graph = ensure_path(output_dir, f'{protein_name}_updated_bsr.svg', force=force)
+        else:
+            out_graph = ensure_path(output_dir, f'{protein_name}_updated_bsr.png', force=force)
     else:
-        out_graph = ensure_path(output_dir, f'{protein_name}_bsr.svg', force=force)
+        if svg:
+            out_graph = ensure_path(output_dir, f'{protein_name}_bsr.svg', force=force)
+        else:
+            out_graph = ensure_path(output_dir, f'{protein_name}_bsr.png', force=force)
 
     logger.info(f"Creating BSR scatter plot for {protein_name}")
 
@@ -1006,6 +1013,7 @@ def pasr(seed_fasta: str,
          threads: int = 1,
          update: bool = False,
          yaml_path: str = None,
+         svg: bool = False,
          force: bool = False):
     """
     PASR workflow with configurable output directory.
@@ -1091,7 +1099,7 @@ def pasr(seed_fasta: str,
         # Visualization
         # ===============================
         logger.info("Creating BSR plot")
-        bsr_plot = pasr_plot(bsr_file, output_dir, yaml_path, force=force, update=False)
+        bsr_plot = pasr_plot(bsr_file, output_dir, yaml_path, svg=svg, force=force, update=False)
         results['bsr_plot'] = bsr_plot
 
         # ===============================
@@ -1102,7 +1110,7 @@ def pasr(seed_fasta: str,
             subset_fasta, update_stats_path = select(yaml_path, matched_fasta, bsr_file, output_dir, force=force)
             results['subset_fasta'] = subset_fasta
             results['update_stats_path'] = update_stats_path
-            updated_plot = pasr_plot(bsr_file, output_dir,  yaml_path, force=force, update=update)
+            updated_plot = pasr_plot(bsr_file, output_dir,  yaml_path, svg=svg, force=force, update=update)
             results['updated_plot'] = updated_plot
 
         logger.info("PASR workflow completed successfully")

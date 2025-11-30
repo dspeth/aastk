@@ -521,6 +521,7 @@ def tsne_embedding(matrix: np.ndarray,
 
 def plot_clusters(tsv_file: str,
                   output: str,
+                  svg: bool = False,
                   force: bool = False,
                   show_cluster_numbers: bool = False
                   ):
@@ -533,7 +534,7 @@ def plot_clusters(tsv_file: str,
 
     Args:
         tsv_file (str): Path to input TSV file containing tSNE coordinates and cluster assignment
-        output (str): Base path for output svg file (adds "_tsne_clusters.svg" suffix)
+        output (str): Base path for output plot file (adds "_tsne_clusters" suffix)
         force (bool): Overwrite existing files if True
         show_cluster_numbers (bool): Display cluster number on cluster centers in output plot
     """
@@ -630,10 +631,16 @@ def plot_clusters(tsv_file: str,
     # parse input filename to determine if early or final embedding
     if 'early_clust' in tsv_file:
         prefix = determine_dataset_name(tsv_file, '.', 0, '_tsne_early_clust')
-        filename = f'{prefix}_tsne_early_clusters.svg'
+        if svg:
+            filename = f'{prefix}_tsne_early_clusters.svg'
+        else:
+            filename = f'{prefix}_tsne_early_clusters.png'
     elif 'final_clust' in tsv_file:
         prefix = determine_dataset_name(tsv_file, '.', 0, '_tsne_final_clust')
-        filename = f'{prefix}_tsne_final_clusters.svg'
+        if svg:
+            filename = f'{prefix}_tsne_final_clusters.svg'
+        else:
+            filename = f'{prefix}_tsne_final_clusters.png'
     else:
         raise ValueError(f"Unexpected TSV filename: {tsv_file}")
 
@@ -830,8 +837,8 @@ def casm_plot(early_clust_path: str,
     Generate t-SNE cluster visualization plots for early and final embeddings.
 
     Creates scatter plots showing DBSCAN clustering results for both early
-    (exaggerated) and final t-SNE embeddings. Generates two svg files with
-    "_early_tsne_clusters.svg" and "_final_tsne_clusters.svg" suffixes.
+    (exaggerated) and final t-SNE embeddings. Generates two plot files with
+    "_early_tsne_clusters" and "_final_tsne_clusters" suffixes.
 
     Args:
         early_clust_path (str): Path to early clustering results TSV file
@@ -839,7 +846,7 @@ def casm_plot(early_clust_path: str,
         output (str): Base name for output plot files
 
     Returns:
-        None: Saves plots to disk as svg files
+        None: Saves plots to disk as files
     """
     logger.info("=== Starting Plot Generation ===")
     logger.info(f"Early clustering file: {early_clust_path}")
@@ -866,6 +873,7 @@ def casm(fasta: str,
          exaggeration: int = 6,
          metadata_protein: str = None,
          metadata_genome: str = None,
+         svg: bool = False,
          force: bool = False,
          show_cluster_numbers: bool = False
          ):
@@ -883,7 +891,9 @@ def casm(fasta: str,
         exaggeration (int): Early exaggeration parameter
         metadata_protein (str, optional): Path to protein metadata file
         metadata_genome (str, optional): Path to genome metadata file
+        svg (bool): Generate plot in SVG format
         force (bool): Force overwrite existing files
+        show_cluster_numbers (bool): Display cluster enumeration in cluster centers in output plot
 
     Returns:
         sum_dict: Dictionary containing paths to all generated files
@@ -925,6 +935,7 @@ def casm(fasta: str,
         early_clust_path=early_filename,
         full_clust_path=final_filename,
         output=output,
+        svg=svg,
         force=force,
         show_cluster_numbers=show_cluster_numbers
     )

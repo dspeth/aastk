@@ -236,6 +236,10 @@ def __subset_size(group, required=False):
     group.add_argument('--subset_size', type=int, required=required,
                        help='Number of sequences to randomly subset from input FASTA file')
 
+def __svg(group, required=False):
+    group.add_argument('--svg', action='store_true', required=required,
+                       help='Generate plot in SVG format')
+
 def __tabular(group, required=False):
     group.add_argument('-t', '--tabular', type=str, default=None, required=required,
                        help='Path to tabular BLAST/DIAMOND output file')
@@ -340,6 +344,7 @@ def get_main_parser():
             __bsr(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __svg(grp)
             __force(grp)
             __update(grp)
             __yaml(grp)
@@ -391,6 +396,7 @@ def get_main_parser():
             __sensitivity(grp)
             __update(grp)
             __yaml(grp)
+            __svg(grp)
             __force(grp)
 
     ### PARSER FOR CUGO FUNCTIONALITIES AND WORKFLOW ###
@@ -434,6 +440,7 @@ def get_main_parser():
             __tmh_y_range(grp)
             __output(grp)
             __force(grp)
+            __svg(grp)
 
 
 
@@ -454,6 +461,7 @@ def get_main_parser():
             __tmh_y_range(grp)
             __output(grp)
             __threads(grp)
+            __svg(grp)
 
     with subparser(sub_parsers, 'matrix', 'Create alignment matrix for tSNE embedding and DBSCAN clustering') as parser:
         with mutex_group(parser, required=True) as grp:
@@ -488,6 +496,7 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __show(grp)
+            __svg(grp)
 
     with subparser(sub_parsers, 'casm', 'CASM: protein clustering using alignment score matrices') as parser:
         with mutex_group(parser, required=True) as grp:
@@ -509,6 +518,7 @@ def get_main_parser():
             __matrix_path(grp)
             __metadata_matrix(grp)
             __show(grp)
+            __svg(grp)
 
     with subparser(sub_parsers, 'pick', 'Pick CASM clusters to generate .faa file for further analysis') as parser:
         with arg_group(parser, 'Required arguments') as grp:

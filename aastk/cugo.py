@@ -689,7 +689,7 @@ def context(fasta_path: str,
         with open(id_list, 'r') as f:
             protein_identifiers = [line.strip() for line in f]
     else:
-        raise ValueError('You must provide a FASTA file.')
+        raise ValueError('You must provide a FASTA file or a list of protein IDs.')
 
     BATCH_SIZE = 500
     target_rows = []
@@ -1105,6 +1105,7 @@ def cugo_plot(context_path: str,
               bin_width: int = 10,
               y_range: int = None,
               tmh_y_range: int = None,
+              svg: bool = False,
               force: bool = False
               ):
     """
@@ -1123,6 +1124,7 @@ def cugo_plot(context_path: str,
         bin_width: Bin width for size plots
         y_range: Y-axis range for size plots
         tmh_y_range: Y-axis range for TMH plots
+        svg: Generate plot in SVG format
         force: Whether to overwrite existing files
     """
     dataset_name = determine_dataset_name(context_path, '.', 0, '_context')
@@ -1130,7 +1132,10 @@ def cugo_plot(context_path: str,
     # generate cog-only plot
     if cugo:
         logger.info(f'Plotting top {top_n} annotations per position.')
-        cugo_plot_path = ensure_path(output, f'{dataset_name}_cugo_only.svg', force=force)
+        if svg:
+            cugo_plot_path = ensure_path(output, f'{dataset_name}_cugo_only.svg', force=force)
+        else:
+            cugo_plot_path = ensure_path(output, f'{dataset_name}_cugo_only.png', force=force)
         plot_top_cogs_per_position(context_path=context_path, flank_lower=flank_lower,
                                    flank_upper=flank_upper, top_n=top_n, save=True,
                                    plot_path=cugo_plot_path)
@@ -1139,7 +1144,10 @@ def cugo_plot(context_path: str,
 
     # generate size-only plot
     if size:
-        size_plot_path = ensure_path(output, f'{dataset_name}_size_only.svg', force=force)
+        if svg:
+            size_plot_path = ensure_path(output, f'{dataset_name}_size_only.svg', force=force)
+        else:
+            size_plot_path = ensure_path(output, f'{dataset_name}_size_only.png', force=force)
         norm_size, cmap_size = plot_size_per_position(context_path=context_path, flank_lower=flank_lower,
                                                       flank_upper=flank_upper, save=True, bin_width=bin_width,
                                                       plot_path=size_plot_path, y_range=y_range)
@@ -1148,7 +1156,10 @@ def cugo_plot(context_path: str,
 
     # generate tmh-only plot
     if tmh:
-        tmh_plot_path = ensure_path(output, f'{dataset_name}_tmh_only.svg', force=force)
+        if svg:
+            tmh_plot_path = ensure_path(output, f'{dataset_name}_tmh_only.svg', force=force)
+        else:
+            tmh_plot_path = ensure_path(output, f'{dataset_name}_tmh_only.png', force=force)
         norm_tmh, cmap_tmh = plot_tmh_per_position(context_path=context_path, flank_lower=flank_lower,
                                                    flank_upper=flank_upper, save=True, y_range=tmh_y_range,
                                                    plot_path=tmh_plot_path)
@@ -1158,7 +1169,10 @@ def cugo_plot(context_path: str,
     # generate combined plot
     if all_plots:
         logger.info(f'Plotting top {top_n} annotations per position.')
-        all_plot_path = ensure_path(output, f'{dataset_name}_cugo.svg', force=force)
+        if svg:
+            all_plot_path = ensure_path(output, f'{dataset_name}_cugo.svg', force=force)
+        else:
+            all_plot_path = ensure_path(output, f'{dataset_name}_cugo.png', force=force)
 
         # calculate dynamic figure width
         width = max(8, int((flank_upper - flank_lower + 1) * top_n * 0.6))
@@ -1242,6 +1256,7 @@ def cugo(cugo_path: str,
          flank_upper: int,
          top_n: int = 3,
          threads: int = 1,
+         svg: bool = False,
          force: bool = False,
          bin_width: int = 10,
          y_range: int = None,
@@ -1255,7 +1270,8 @@ def cugo(cugo_path: str,
         flank_lower: Lower flank boundary for plotting
         flank_upper: Upper flank boundary for plotting
         top_n: Number of top COGs to display (default: 3)
-        threads (int): Number of threads (default: 1).
+        threads: Number of threads (default: 1).
+        svg: Generate plot in SVG format.
         force: Whether to overwrite existing files
         fasta_path: Optional path to FASTA file
         bin_width: Bin width for size plots
@@ -1289,12 +1305,16 @@ def cugo(cugo_path: str,
         bin_width=bin_width,
         y_range=y_range,
         tmh_y_range=tmh_y_range,
+        svg=svg,
         force=force
     )
 
     # determine plot file path
-    dataset_name = context_file.removesuffix('_context.tsv')
-    plot_file = f"{dataset_name}_cugo.svg"
+    dataset_name = determine_dataset_name(context_file, '.', 0, '_context')
+    if svg:
+        plot_file = f"{dataset_name}_cugo.svg"
+    else:
+        plot_file = f"{dataset_name}_cugo.png"
 
     return context_file, plot_file
 
