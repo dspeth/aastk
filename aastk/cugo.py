@@ -1172,25 +1172,24 @@ def fetch_parent_context(parent_ID, needed_numbers, cugo_path, batch_size=500):
     conn.close()
     return parent_ID, rows_out
 
-def context(fasta_path: str,
+def context(fasta: str,
+            id_list: str,
             cugo_path: str,
             cugo_range: int,
             output_dir: str,
             threads: int = 1,
             force: bool = False,
             ):
-    if fasta_path:
-        protein_name = determine_dataset_name(fasta_path, '.', 0)
+    if fasta:
+        protein_name = determine_dataset_name(fasta, '.', 0)
         output_file = ensure_path(output_dir, f'{protein_name}_context.tsv', force=force)
-        sequences = read_fasta_to_dict(fasta_path)
+        sequences = read_fasta_to_dict(fasta)
         protein_identifiers = set(sequences.keys())
-
-        log_file = ensure_path(output_dir, f'{protein_name}_missing_files.log', force=force)
-        logging.basicConfig(
-            filename=log_file,
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s'
-        )
+    elif id_list:
+        protein_name = determine_dataset_name(id_list, '.', 0)
+        output_file = ensure_path(output_dir, f'{protein_name}_context.tsv', force=force)
+        with open(id_list, 'r') as f:
+            protein_identifiers = [line.strip() for line in f]
     else:
         raise ValueError('You must provide a FASTA file.')
 
@@ -1257,7 +1256,7 @@ def context(fasta_path: str,
 
 def cugo(cugo_path: str,
          cugo_range: int,
-         fasta_path: str,
+         fasta: str,
          id_list: str,
          output_dir: str,
          flank_lower: int,
@@ -1291,7 +1290,7 @@ def cugo(cugo_path: str,
     """
     # generate context data
     context_file = context(
-        fasta_path=fasta_path,
+        fasta=fasta,
         id_list=id_list,
         cugo_path=cugo_path,
         cugo_range=cugo_range,
