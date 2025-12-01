@@ -138,6 +138,7 @@ def main():
                 fasta_path=args.fasta,
                 id_list=args.id_list,
                 cugo_path=args.cugo_path,
+                cugo_range=args.cugo_range,
                 output_dir=args.output,
                 threads=args.threads,
                 force=args.force,
@@ -163,6 +164,7 @@ def main():
         elif args.subparser_name == 'cugo':
             cugo(
                 cugo_path=args.cugo_path,
+                cugo_range=args.cugo_range,
                 fasta_path=args.fasta,
                 id_list=args.id_list,
                 output_dir=args.output,

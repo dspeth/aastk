@@ -579,172 +579,6 @@ def parse(cog_gff_tar_path: str,
     conn.close()
     logger.info("Database creation complete!")
 
-# ======================================
-# CUGO context functions and CLI tool
-# ======================================
-def process_target_context(target_id, parent_id, target_cugo, strand,
-                           context_data, headers, seq_idx):
-    """Build context window for a single target protein."""
-    if parent_id not in context_data:
-        return []
-
-    parent_rows = sorted(context_data[parent_id], key=lambda x: int(x[headers.index('CUGO_number')]))
-
-    context_window = []
-    for row in parent_rows:
-        cugo_num = int(row[headers.index('CUGO_number')])
-        if cugo_num == target_cugo:
-            context_window.append(row)
-
-    if not context_window:
-        return []
-
-    if strand == '-':
-        context_window = context_window[::-1]
-
-    target_index = None
-    for i, row in enumerate(context_window):
-        if row[seq_idx] == target_id:
-            target_index = i
-            break
-
-    if target_index is None:
-        return []
-
-    # build rows with target_id and position
-    results = []
-    for i, row in enumerate(context_window):
-        position = i - target_index
-        row_dict = {'target_id': target_id, 'position': position}
-        for col_idx, header in enumerate(headers):
-            row_dict[header] = row[col_idx]
-        results.append(row_dict)
-
-    return results
-
-
-def write_context_output(all_results, output_file):
-    """Write all results to one TSV."""
-    if not all_results:
-        return
-
-    headers = ['target_id', 'position', 'seqID', 'parent_ID', 'aa_length',
-               'strand', 'COG_ID', 'CUGO_number', 'no_TMH']
-
-    with open(output_file, 'w') as f:
-        f.write('\t'.join(headers) + '\n')
-        for row in all_results:
-            line = [str(row.get(h, '')) for h in headers]
-            f.write('\t'.join(line) + '\n')
-
-
-def fetch_seqid_batch(batch, cugo_path):
-    conn = sqlite3.connect(cugo_path)
-    cursor = conn.cursor()
-    placeholders = ",".join("?" * len(batch))
-    query = f"""
-        SELECT seqID, parent_ID, aa_length, strand, COG_ID, CUGO_number, no_TMH
-        FROM all_data
-        WHERE seqID IN ({placeholders})
-    """
-    cursor.execute(query, batch)
-    rows = cursor.fetchall()
-    conn.close()
-    return rows
-
-def fetch_parent_context(parent_ID, needed_numbers, cugo_path, batch_size=500):
-    conn = sqlite3.connect(cugo_path)
-    cursor = conn.cursor()
-    rows_out = []
-    needed_list = list(needed_numbers)
-    for j in range(0, len(needed_list), batch_size):
-        batch = needed_list[j:j + batch_size]
-        placeholders = ",".join("?" * len(batch))
-        query = f"""
-            SELECT seqID, parent_ID, aa_length, strand, COG_ID, CUGO_number, no_TMH
-            FROM all_data
-            WHERE parent_ID = ? AND CUGO_number IN ({placeholders})
-            ORDER BY CUGO_number
-        """
-        cursor.execute(query, (parent_ID, *batch))
-        rows_out.extend(cursor.fetchall())
-    conn.close()
-    return parent_ID, rows_out
-
-def context(fasta_path: str,
-            id_list: str,
-            cugo_path: str,
-            output_dir: str,
-            threads: int = 1,
-            force: bool = False,
-            ):
-    if fasta_path:
-        protein_name = determine_dataset_name(fasta_path, '.', 0)
-        output_file = ensure_path(output_dir, f'{protein_name}_context.tsv', force=force)
-        sequences = read_fasta_to_dict(fasta_path)
-        protein_identifiers = set(sequences.keys())
-    elif id_list:
-        protein_name = determine_dataset_name(id_list, '.', 0)
-        output_file = ensure_path(output_dir, f'{protein_name}_context.tsv', force=force)
-        with open(id_list, 'r') as f:
-            protein_identifiers = [line.strip() for line in f]
-    else:
-        raise ValueError('You must provide a FASTA file or a list of protein IDs.')
-
-    BATCH_SIZE = 500
-    target_rows = []
-    protein_list = list(protein_identifiers)
-    batches = [protein_list[i:i + BATCH_SIZE] for i in range(0, len(protein_list), BATCH_SIZE)]
-
-    with ThreadPoolExecutor(max_workers=threads) as executor:
-        futures = {executor.submit(fetch_seqid_batch, batch, cugo_path): batch for batch in batches}
-        for future in tqdm(as_completed(futures), total=len(futures), desc="Fetching seqIDs"):
-            target_rows.extend(future.result())
-
-    if not target_rows:
-        logging.warning("No target proteins found in the database.")
-        return None
-
-    target_contexts = {}
-    context_ranges = defaultdict(set)
-
-    for seqID, parent_ID, aa_length, strand, COG_ID, CUGO_number, no_TMH in target_rows:
-        target_contexts[seqID] = (parent_ID, CUGO_number, strand)
-        context_ranges[parent_ID].add(CUGO_number)
-
-    headers = ["seqID", "parent_ID", "aa_length", "strand", "COG_ID", "CUGO_number", "no_TMH"]
-    context_data = defaultdict(list)
-
-    with ThreadPoolExecutor(max_workers=threads) as executor:
-        futures = {
-            executor.submit(fetch_parent_context, pid, numbers, cugo_path, BATCH_SIZE): pid
-            for pid, numbers in context_ranges.items()
-        }
-        for future in tqdm(as_completed(futures), total=len(futures), desc="Fetching parent contexts"):
-            parent_ID, rows = future.result()
-            if rows:
-                context_data[parent_ID].extend(rows)
-
-    all_results = []
-    for seqID, (parent_ID, target_cugo, strand) in target_contexts.items():
-        results = process_target_context(
-            target_id=seqID,
-            parent_id=parent_ID,
-            target_cugo=target_cugo,
-            strand=strand,
-            context_data=context_data,
-            headers=headers,
-            seq_idx=0,
-        )
-        all_results.extend(results)
-
-    if all_results:
-        write_context_output(all_results, output_file)
-        logging.info(f"Context written to {output_file}")
-        return output_file
-    else:
-        logging.info("No context data found.")
-        return None
 
 # ======================================
 # FUNCTION DEFINITIONS FOR CUGO PLOTTING
@@ -1244,11 +1078,185 @@ def cugo_plot(context_path: str,
         plt.savefig(all_plot_path, dpi=300, bbox_inches='tight')
         logger.info(f"Plot saved to {all_plot_path}")
 
+
+
+# ======================================
+# CUGO context functions and CLI tool
+# ======================================
+def process_target_context(target_id, parent_id, target_cugo, strand, cugo_range,
+                           context_data, headers, seq_idx):
+    """Build context window for a single target protein."""
+    if parent_id not in context_data:
+        return []
+
+    parent_rows = sorted(context_data[parent_id], key=lambda x: int(x[headers.index('CUGO_number')]))
+
+    context_window = []
+    for row in parent_rows:
+        cugo_num = int(row[headers.index('CUGO_number')])
+        if target_cugo - cugo_range <= cugo_num <= target_cugo + cugo_range:
+            context_window.append(row)
+
+    if not context_window:
+        return []
+
+    if strand == '-':
+        context_window = context_window[::-1]
+
+    target_index = None
+    for i, row in enumerate(context_window):
+        if row[seq_idx] == target_id:
+            target_index = i
+            break
+
+    if target_index is None:
+        return []
+
+    # build rows with target_id and position
+    results = []
+    for i, row in enumerate(context_window):
+        position = i - target_index
+        row_dict = {'target_id': target_id, 'position': position}
+        for col_idx, header in enumerate(headers):
+            row_dict[header] = row[col_idx]
+        results.append(row_dict)
+
+    return results
+
+
+def write_context_output(all_results, output_file):
+    """Write all results to one TSV."""
+    if not all_results:
+        return
+
+    headers = ['target_id', 'position', 'seqID', 'parent_ID', 'aa_length',
+               'strand', 'COG_ID', 'CUGO_number', 'no_TMH']
+
+    with open(output_file, 'w') as f:
+        f.write('\t'.join(headers) + '\n')
+        for row in all_results:
+            line = [str(row.get(h, '')) for h in headers]
+            f.write('\t'.join(line) + '\n')
+
+
+def fetch_seqid_batch(batch, cugo_path):
+    conn = sqlite3.connect(cugo_path)
+    cursor = conn.cursor()
+    placeholders = ",".join("?" * len(batch))
+    query = f"""
+        SELECT seqID, parent_ID, aa_length, strand, COG_ID, CUGO_number, no_TMH
+        FROM all_data
+        WHERE seqID IN ({placeholders})
+    """
+    cursor.execute(query, batch)
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+def fetch_parent_context(parent_ID, needed_numbers, cugo_path, batch_size=500):
+    conn = sqlite3.connect(cugo_path)
+    cursor = conn.cursor()
+    rows_out = []
+    needed_list = list(needed_numbers)
+    for j in range(0, len(needed_list), batch_size):
+        batch = needed_list[j:j + batch_size]
+        placeholders = ",".join("?" * len(batch))
+        query = f"""
+            SELECT seqID, parent_ID, aa_length, strand, COG_ID, CUGO_number, no_TMH
+            FROM all_data
+            WHERE parent_ID = ? AND CUGO_number IN ({placeholders})
+            ORDER BY CUGO_number
+        """
+        cursor.execute(query, (parent_ID, *batch))
+        rows_out.extend(cursor.fetchall())
+    conn.close()
+    return parent_ID, rows_out
+
+def context(fasta_path: str,
+            cugo_path: str,
+            cugo_range: int,
+            output_dir: str,
+            threads: int = 1,
+            force: bool = False,
+            ):
+    if fasta_path:
+        protein_name = determine_dataset_name(fasta_path, '.', 0)
+        output_file = ensure_path(output_dir, f'{protein_name}_context.tsv', force=force)
+        sequences = read_fasta_to_dict(fasta_path)
+        protein_identifiers = set(sequences.keys())
+
+        log_file = ensure_path(output_dir, f'{protein_name}_missing_files.log', force=force)
+        logging.basicConfig(
+            filename=log_file,
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s'
+        )
+    else:
+        raise ValueError('You must provide a FASTA file.')
+
+    BATCH_SIZE = 500
+    target_rows = []
+    protein_list = list(protein_identifiers)
+    batches = [protein_list[i:i + BATCH_SIZE] for i in range(0, len(protein_list), BATCH_SIZE)]
+
+    with ThreadPoolExecutor(max_workers=threads) as executor:
+        futures = {executor.submit(fetch_seqid_batch, batch, cugo_path): batch for batch in batches}
+        for future in tqdm(as_completed(futures), total=len(futures), desc="Fetching seqIDs"):
+            target_rows.extend(future.result())
+
+    if not target_rows:
+        logging.warning("No target proteins found in the database.")
+        return None
+
+    target_contexts = {}
+    context_ranges = defaultdict(set)
+
+    for seqID, parent_ID, aa_length, strand, COG_ID, CUGO_number, no_TMH in target_rows:
+        target_contexts[seqID] = (parent_ID, CUGO_number, strand)
+        for i in range(CUGO_number - cugo_range, CUGO_number + cugo_range + 1):
+            context_ranges[parent_ID].add(i)
+
+    headers = ["seqID", "parent_ID", "aa_length", "strand", "COG_ID", "CUGO_number", "no_TMH"]
+    context_data = defaultdict(list)
+
+    with ThreadPoolExecutor(max_workers=threads) as executor:
+        futures = {
+            executor.submit(fetch_parent_context, pid, numbers, cugo_path, BATCH_SIZE): pid
+            for pid, numbers in context_ranges.items()
+        }
+        for future in tqdm(as_completed(futures), total=len(futures), desc="Fetching parent contexts"):
+            parent_ID, rows = future.result()
+            if rows:
+                context_data[parent_ID].extend(rows)
+
+    all_results = []
+    for seqID, (parent_ID, target_cugo, strand) in target_contexts.items():
+        results = process_target_context(
+            target_id=seqID,
+            parent_id=parent_ID,
+            target_cugo=target_cugo,
+            strand=strand,
+            cugo_range=cugo_range,
+            context_data=context_data,
+            headers=headers,
+            seq_idx=0,
+        )
+        all_results.extend(results)
+
+    if all_results:
+        write_context_output(all_results, output_file)
+        logging.info(f"Context written to {output_file}")
+        return output_file
+    else:
+        logging.info("No context data found.")
+        return None
+
 # ======================================
 # CUGO COMMAND LINE WORKFLOW
 # ======================================
 
 def cugo(cugo_path: str,
+         cugo_range: int,
          fasta_path: str,
          id_list: str,
          output_dir: str,
@@ -1266,6 +1274,7 @@ def cugo(cugo_path: str,
 
     Args:
         cugo_path: Path to CUGO file
+        cugo_range: Range around target protein for context
         output_dir: Directory for output files
         flank_lower: Lower flank boundary for plotting
         flank_upper: Upper flank boundary for plotting
@@ -1285,6 +1294,7 @@ def cugo(cugo_path: str,
         fasta_path=fasta_path,
         id_list=id_list,
         cugo_path=cugo_path,
+        cugo_range=cugo_range,
         output_dir=output_dir,
         threads=threads,
         force=force

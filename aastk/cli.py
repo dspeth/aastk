@@ -67,6 +67,10 @@ def __cugo_path(group, required=False):
     group.add_argument('-c', '--cugo_path', type=str, required=required,
                        help='Path to CUGO file')
 
+def __cugo_range(group, required=False):
+    group.add_argument('-r', '--cugo_range', type=int, required=required,
+                       help='CUGO range of interest for genomic context analysis')
+
 def __dataset(group, required=False):
     group.add_argument('-d', '--dataset', type=str, required=required,
                        help='Dataset name')
@@ -420,6 +424,7 @@ def get_main_parser():
             __id_list(grp)
         with arg_group(parser, 'Required arguments') as grp:
             __cugo_path(grp, required=True)
+            __cugo_range(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __threads(grp)
@@ -450,6 +455,7 @@ def get_main_parser():
             __id_list(grp)
         with arg_group(parser, 'Required arguments') as grp:
             __cugo_path(grp, required=True)
+            __cugo_range(grp, required=True)
             __flank_lower(grp, required=True)
             __flank_upper(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
