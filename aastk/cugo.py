@@ -637,71 +637,70 @@ def plot_top_cogs_per_position(
     """
     Creates scatter plot showing top COG categories at each genomic position.
     """
-    # Load context data in long format
-    cont = pd.read_csv(context_path, sep='\t')
-
-    # Filter to position range
+    # Load context data
+    cont = pd.read_csv(context_path, sep='\t', dtype=str)
+    cont['position'] = pd.to_numeric(cont['position'], errors='coerce')
     cont = cont[(cont['position'] >= flank_lower) & (cont['position'] <= flank_upper)]
 
-    # Get COG_ID column
     positions = sorted(cont['position'].unique())
 
-    # Load cog color mapping
+    # Load COG color mapping
     script_dir = Path(__file__).resolve().parent
     color_yaml_path = script_dir / 'cog_colors.yaml'
     with open(color_yaml_path, 'r') as f:
         cog_color_map = yaml.safe_load(f)
 
-    # Extract top n values and counts for each position
+    # Extract top N COGs per position
     top_ids = [[] for _ in range(top_n)]
     top_counts = [[] for _ in range(top_n)]
 
     for pos in positions:
         pos_data = cont[cont['position'] == pos]
-        counts = pos_data['COG_ID'].value_counts()
-
+        counts = pos_data['COG_ID'].value_counts(dropna=False)  # include NA
         for i in range(top_n):
             if i < len(counts):
-                top_ids[i].append(counts.index[i])
+                cog_id = counts.index[i] if pd.notna(counts.index[i]) else 'NA'
+                top_ids[i].append(cog_id)
                 top_counts[i].append(counts.iloc[i])
             else:
-                top_ids[i].append(np.nan)
-                top_counts[i].append(np.nan)
+                # Only append nothing if no real data in this rank
+                top_ids[i].append(None)
+                top_counts[i].append(None)
 
-    # Calculate positioning for multiple ranks at each position
+    # X-position offsets for multiple ranks
     subtick_width = 0.8 / top_n
     subtick_offset = (top_n - 1) * subtick_width / 2
 
     x_pos, y_values, cog_labels, point_colors = [], [], [], []
     all_xticks, all_xlabels = [], []
 
-    # Create figure if no axes provided
     if ax is None:
         figsize = (max(8, len(positions) * 0.8), 7)
         fig, ax = plt.subplots(figsize=figsize)
 
-    # Prepare data points for each position and rank
     for pos_idx, pos in enumerate(positions):
         for rank in range(top_n):
             cog_id = top_ids[rank][pos_idx]
             count = top_counts[rank][pos_idx]
 
-            # Calculate x position with offset for multiple ranks
+            if cog_id is None or count is None:
+                continue  # skip completely empty ranks
+
             x = pos + (rank * subtick_width) - subtick_offset
             x_pos.append(x)
             y_values.append(count)
             all_xticks.append(x)
 
-            if pd.isna(cog_id):
-                cog_labels.append('nan')
-                point_colors.append('#ffffff')
-                all_xlabels.append('nan')
+            if cog_id == 'NA':
+                cog_labels.append('NA')
+                point_colors.append('#cccccc')  # gray for NA
+                all_xlabels.append('NA')
             else:
                 cog_labels.append(cog_id)
                 point_colors.append(cog_color_map.get(cog_id, '#aaaaaa'))
                 all_xlabels.append(cog_id)
 
-    # Create scatter plot
+    # Scatter plot
     ax.scatter(
         x_pos,
         y_values,
@@ -712,35 +711,31 @@ def plot_top_cogs_per_position(
         linewidths=0.7
     )
 
-    # Set x-axis labels and ticks
+    # X-axis labels
     ax.set_xticks(all_xticks)
     ax.set_xticklabels(all_xlabels, rotation=90, fontsize=14, ha='center')
 
-    # Add vertical lines between positions
+    # Vertical lines between positions
     for pos in positions[:-1]:
-        boundary = pos + 0.5
-        ax.axvline(boundary, color='gray', linestyle='--', linewidth=0.7, zorder=1)
+        ax.axvline(pos + 0.5, color='gray', linestyle='--', linewidth=0.7, zorder=1)
 
-    # Add position labels at top
-    max_y = max([y for y in y_values if not pd.isna(y)], default=0)
+    # Position labels at top
+    max_y = max([y for y in y_values if y is not None], default=0)
     label_offset = max_y * 0.05
-
     for pos in positions:
         ax.text(pos, max_y + label_offset, str(pos), ha='center', va='bottom',
                 fontsize=16, fontweight='bold')
 
-    # Set axis limits and labels
+    # Axis limits and labels
     ax.set_ylim(-max_y * 0.05, max_y * 1.15)
     ax.set_xlim(positions[0] - 0.5, positions[-1] + 0.5)
-
-    ax.tick_params(axis='y', labelsize=14)
     ax.set_xlabel('position', fontsize=18)
     ax.set_ylabel('Count', fontsize=18)
     ax.tick_params(axis='y', labelsize=16)
     ax.set_title(title, fontsize=20)
 
-    # Save plot if requested
-    if save:
+    # Save if requested
+    if save and plot_path is not None:
         plt.tight_layout()
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
 
