@@ -11,7 +11,8 @@ def main():
     parser = get_main_parser()
     args = parser.parse_args()
 
-    logger = logger_setup(silent=args.silent)
+    output_dir = getattr(args, 'output', getattr(args, 'output_dir', None))
+    logger = logger_setup(silent=args.silent, output_dir=output_dir)
 
     # If no subcommand is specified, print help
     if not args.subparser_name:
@@ -72,6 +73,7 @@ def main():
                 bsr_file=args.bsr,
                 output_dir=args.output,
                 yaml_path=args.yaml,
+                svg=args.svg,
                 force=args.force,
                 update=args.update
             )
@@ -113,6 +115,7 @@ def main():
                 sensitivity=args.sensitivity,
                 update=args.update,
                 yaml_path=args.yaml,
+                svg=args.svg,
                 force=args.force
             )
 
@@ -135,6 +138,7 @@ def main():
                 fasta=args.fasta,
                 id_list=args.id_list,
                 cugo_path=args.cugo_path,
+                cugo_range=args.cugo_range,
                 output_dir=args.output,
                 threads=args.threads,
                 force=args.force,
@@ -153,12 +157,14 @@ def main():
                 bin_width=args.bin_width,
                 y_range=args.y_range,
                 tmh_y_range=args.tmh_y_range,
+                svg=args.svg,
                 force=args.force
             )
 
         elif args.subparser_name == 'cugo':
             cugo(
                 cugo_path=args.cugo_path,
+                cugo_range=args.cugo_range,
                 fasta=args.fasta,
                 id_list=args.id_list,
                 output_dir=args.output,
@@ -166,6 +172,7 @@ def main():
                 flank_upper=args.flank_upper,
                 top_n=args.top_n,
                 threads=args.threads,
+                svg=args.svg,
                 force=args.force,
                 bin_width=args.bin_width,
                 y_range=args.y_range,
@@ -210,6 +217,8 @@ def main():
                 early_clust_path=args.early_clust,
                 full_clust_path=args.full_clust,
                 output=args.output,
+                force=args.force,
+                svg=args.svg,
                 show_cluster_numbers=args.show
             )
 
@@ -226,6 +235,7 @@ def main():
                 metadata_protein=args.metadata_protein,
                 metadata_genome=args.metadata_genome,
                 force=args.force,
+                svg=args.svg,
                 show_cluster_numbers=args.show
             )
 

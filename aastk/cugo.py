@@ -579,172 +579,6 @@ def parse(cog_gff_tar_path: str,
     conn.close()
     logger.info("Database creation complete!")
 
-# ======================================
-# CUGO context functions and CLI tool
-# ======================================
-def process_target_context(target_id, parent_id, target_cugo, strand,
-                           context_data, headers, seq_idx):
-    """Build context window for a single target protein."""
-    if parent_id not in context_data:
-        return []
-
-    parent_rows = sorted(context_data[parent_id], key=lambda x: int(x[headers.index('CUGO_number')]))
-
-    context_window = []
-    for row in parent_rows:
-        cugo_num = int(row[headers.index('CUGO_number')])
-        if cugo_num == target_cugo:
-            context_window.append(row)
-
-    if not context_window:
-        return []
-
-    if strand == '-':
-        context_window = context_window[::-1]
-
-    target_index = None
-    for i, row in enumerate(context_window):
-        if row[seq_idx] == target_id:
-            target_index = i
-            break
-
-    if target_index is None:
-        return []
-
-    # build rows with target_id and position
-    results = []
-    for i, row in enumerate(context_window):
-        position = i - target_index
-        row_dict = {'target_id': target_id, 'position': position}
-        for col_idx, header in enumerate(headers):
-            row_dict[header] = row[col_idx]
-        results.append(row_dict)
-
-    return results
-
-
-def write_context_output(all_results, output_file):
-    """Write all results to one TSV."""
-    if not all_results:
-        return
-
-    headers = ['target_id', 'position', 'seqID', 'parent_ID', 'aa_length',
-               'strand', 'COG_ID', 'CUGO_number', 'no_TMH']
-
-    with open(output_file, 'w') as f:
-        f.write('\t'.join(headers) + '\n')
-        for row in all_results:
-            line = [str(row.get(h, '')) for h in headers]
-            f.write('\t'.join(line) + '\n')
-
-
-def fetch_seqid_batch(batch, cugo_path):
-    conn = sqlite3.connect(cugo_path)
-    cursor = conn.cursor()
-    placeholders = ",".join("?" * len(batch))
-    query = f"""
-        SELECT seqID, parent_ID, aa_length, strand, COG_ID, CUGO_number, no_TMH
-        FROM all_data
-        WHERE seqID IN ({placeholders})
-    """
-    cursor.execute(query, batch)
-    rows = cursor.fetchall()
-    conn.close()
-    return rows
-
-def fetch_parent_context(parent_ID, needed_numbers, cugo_path, batch_size=500):
-    conn = sqlite3.connect(cugo_path)
-    cursor = conn.cursor()
-    rows_out = []
-    needed_list = list(needed_numbers)
-    for j in range(0, len(needed_list), batch_size):
-        batch = needed_list[j:j + batch_size]
-        placeholders = ",".join("?" * len(batch))
-        query = f"""
-            SELECT seqID, parent_ID, aa_length, strand, COG_ID, CUGO_number, no_TMH
-            FROM all_data
-            WHERE parent_ID = ? AND CUGO_number IN ({placeholders})
-            ORDER BY CUGO_number
-        """
-        cursor.execute(query, (parent_ID, *batch))
-        rows_out.extend(cursor.fetchall())
-    conn.close()
-    return parent_ID, rows_out
-
-def context(fasta: str,
-            id_list: str,
-            cugo_path: str,
-            output_dir: str,
-            threads: int = 1,
-            force: bool = False,
-            ):
-    if fasta:
-        protein_name = determine_dataset_name(fasta, '.', 0)
-        output_file = ensure_path(output_dir, f'{protein_name}_context.tsv', force=force)
-        sequences = read_fasta_to_dict(fasta)
-        protein_identifiers = set(sequences.keys())
-    if id_list:
-        protein_name = determine_dataset_name(id_list, '.', 0)
-        output_file = ensure_path(output_dir, f'{protein_name}_context.tsv', force=force)
-        with open(id_list, 'r') as f:
-            protein_identifiers = [line.strip() for line in f]
-    else:
-        raise ValueError('You must provide a FASTA file.')
-
-    BATCH_SIZE = 500
-    target_rows = []
-    protein_list = list(protein_identifiers)
-    batches = [protein_list[i:i + BATCH_SIZE] for i in range(0, len(protein_list), BATCH_SIZE)]
-
-    with ThreadPoolExecutor(max_workers=threads) as executor:
-        futures = {executor.submit(fetch_seqid_batch, batch, cugo_path): batch for batch in batches}
-        for future in tqdm(as_completed(futures), total=len(futures), desc="Fetching seqIDs"):
-            target_rows.extend(future.result())
-
-    if not target_rows:
-        logging.warning("No target proteins found in the database.")
-        return None
-
-    target_contexts = {}
-    context_ranges = defaultdict(set)
-
-    for seqID, parent_ID, aa_length, strand, COG_ID, CUGO_number, no_TMH in target_rows:
-        target_contexts[seqID] = (parent_ID, CUGO_number, strand)
-        context_ranges[parent_ID].add(CUGO_number)
-
-    headers = ["seqID", "parent_ID", "aa_length", "strand", "COG_ID", "CUGO_number", "no_TMH"]
-    context_data = defaultdict(list)
-
-    with ThreadPoolExecutor(max_workers=threads) as executor:
-        futures = {
-            executor.submit(fetch_parent_context, pid, numbers, cugo_path, BATCH_SIZE): pid
-            for pid, numbers in context_ranges.items()
-        }
-        for future in tqdm(as_completed(futures), total=len(futures), desc="Fetching parent contexts"):
-            parent_ID, rows = future.result()
-            if rows:
-                context_data[parent_ID].extend(rows)
-
-    all_results = []
-    for seqID, (parent_ID, target_cugo, strand) in target_contexts.items():
-        results = process_target_context(
-            target_id=seqID,
-            parent_id=parent_ID,
-            target_cugo=target_cugo,
-            strand=strand,
-            context_data=context_data,
-            headers=headers,
-            seq_idx=0,
-        )
-        all_results.extend(results)
-
-    if all_results:
-        write_context_output(all_results, output_file)
-        logging.info(f"Context written to {output_file}")
-        return output_file
-    else:
-        logging.info("No context data found.")
-        return None
 
 # ======================================
 # FUNCTION DEFINITIONS FOR CUGO PLOTTING
@@ -803,71 +637,70 @@ def plot_top_cogs_per_position(
     """
     Creates scatter plot showing top COG categories at each genomic position.
     """
-    # Load context data in long format
-    cont = pd.read_csv(context_path, sep='\t')
-
-    # Filter to position range
+    # Load context data
+    cont = pd.read_csv(context_path, sep='\t', dtype=str)
+    cont['position'] = pd.to_numeric(cont['position'], errors='coerce')
     cont = cont[(cont['position'] >= flank_lower) & (cont['position'] <= flank_upper)]
 
-    # Get COG_ID column
     positions = sorted(cont['position'].unique())
 
-    # Load cog color mapping
+    # Load COG color mapping
     script_dir = Path(__file__).resolve().parent
     color_yaml_path = script_dir / 'cog_colors.yaml'
     with open(color_yaml_path, 'r') as f:
         cog_color_map = yaml.safe_load(f)
 
-    # Extract top n values and counts for each position
+    # Extract top N COGs per position
     top_ids = [[] for _ in range(top_n)]
     top_counts = [[] for _ in range(top_n)]
 
     for pos in positions:
         pos_data = cont[cont['position'] == pos]
-        counts = pos_data['COG_ID'].value_counts()
-
+        counts = pos_data['COG_ID'].value_counts(dropna=False)  # include NA
         for i in range(top_n):
             if i < len(counts):
-                top_ids[i].append(counts.index[i])
+                cog_id = counts.index[i] if pd.notna(counts.index[i]) else 'NA'
+                top_ids[i].append(cog_id)
                 top_counts[i].append(counts.iloc[i])
             else:
-                top_ids[i].append(np.nan)
-                top_counts[i].append(np.nan)
+                # Only append nothing if no real data in this rank
+                top_ids[i].append(None)
+                top_counts[i].append(None)
 
-    # Calculate positioning for multiple ranks at each position
+    # X-position offsets for multiple ranks
     subtick_width = 0.8 / top_n
     subtick_offset = (top_n - 1) * subtick_width / 2
 
     x_pos, y_values, cog_labels, point_colors = [], [], [], []
     all_xticks, all_xlabels = [], []
 
-    # Create figure if no axes provided
     if ax is None:
         figsize = (max(8, len(positions) * 0.8), 7)
         fig, ax = plt.subplots(figsize=figsize)
 
-    # Prepare data points for each position and rank
     for pos_idx, pos in enumerate(positions):
         for rank in range(top_n):
             cog_id = top_ids[rank][pos_idx]
             count = top_counts[rank][pos_idx]
 
-            # Calculate x position with offset for multiple ranks
+            if cog_id is None or count is None:
+                continue  # skip completely empty ranks
+
             x = pos + (rank * subtick_width) - subtick_offset
             x_pos.append(x)
             y_values.append(count)
             all_xticks.append(x)
 
-            if pd.isna(cog_id):
-                cog_labels.append('nan')
-                point_colors.append('#ffffff')
-                all_xlabels.append('nan')
+            if cog_id == 'NA':
+                cog_labels.append('NA')
+                point_colors.append('#cccccc')  # gray for NA
+                all_xlabels.append('NA')
             else:
                 cog_labels.append(cog_id)
                 point_colors.append(cog_color_map.get(cog_id, '#aaaaaa'))
                 all_xlabels.append(cog_id)
 
-    # Create scatter plot
+    # Scatter plot
     ax.scatter(
         x_pos,
         y_values,
@@ -878,35 +711,31 @@ def plot_top_cogs_per_position(
         linewidths=0.7
     )
 
-    # Set x-axis labels and ticks
+    # X-axis labels
     ax.set_xticks(all_xticks)
     ax.set_xticklabels(all_xlabels, rotation=90, fontsize=14, ha='center')
 
-    # Add vertical lines between positions
+    # Vertical lines between positions
     for pos in positions[:-1]:
-        boundary = pos + 0.5
-        ax.axvline(boundary, color='gray', linestyle='--', linewidth=0.7, zorder=1)
+        ax.axvline(pos + 0.5, color='gray', linestyle='--', linewidth=0.7, zorder=1)
 
-    # Add position labels at top
-    max_y = max([y for y in y_values if not pd.isna(y)], default=0)
+    # Position labels at top
+    max_y = max([y for y in y_values if y is not None], default=0)
     label_offset = max_y * 0.05
-
     for pos in positions:
         ax.text(pos, max_y + label_offset, str(pos), ha='center', va='bottom',
                 fontsize=16, fontweight='bold')
 
-    # Set axis limits and labels
+    # Axis limits and labels
     ax.set_ylim(-max_y * 0.05, max_y * 1.15)
     ax.set_xlim(positions[0] - 0.5, positions[-1] + 0.5)
-
-    ax.tick_params(axis='y', labelsize=14)
     ax.set_xlabel('position', fontsize=18)
     ax.set_ylabel('Count', fontsize=18)
     ax.tick_params(axis='y', labelsize=16)
     ax.set_title(title, fontsize=20)
 
-    # Save plot if requested
-    if save:
+    # Save if requested
+    if save and plot_path is not None:
         plt.tight_layout()
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
 
@@ -1105,6 +934,7 @@ def cugo_plot(context_path: str,
               bin_width: int = 10,
               y_range: int = None,
               tmh_y_range: int = None,
+              svg: bool = False,
               force: bool = False
               ):
     """
@@ -1123,6 +953,7 @@ def cugo_plot(context_path: str,
         bin_width: Bin width for size plots
         y_range: Y-axis range for size plots
         tmh_y_range: Y-axis range for TMH plots
+        svg: Generate plot in SVG format
         force: Whether to overwrite existing files
     """
     dataset_name = determine_dataset_name(context_path, '.', 0, '_context')
@@ -1130,7 +961,10 @@ def cugo_plot(context_path: str,
     # generate cog-only plot
     if cugo:
         logger.info(f'Plotting top {top_n} annotations per position.')
-        cugo_plot_path = ensure_path(output, f'{dataset_name}_cugo_only.svg', force=force)
+        if svg:
+            cugo_plot_path = ensure_path(output, f'{dataset_name}_cugo_only.svg', force=force)
+        else:
+            cugo_plot_path = ensure_path(output, f'{dataset_name}_cugo_only.png', force=force)
         plot_top_cogs_per_position(context_path=context_path, flank_lower=flank_lower,
                                    flank_upper=flank_upper, top_n=top_n, save=True,
                                    plot_path=cugo_plot_path)
@@ -1139,7 +973,10 @@ def cugo_plot(context_path: str,
 
     # generate size-only plot
     if size:
-        size_plot_path = ensure_path(output, f'{dataset_name}_size_only.svg', force=force)
+        if svg:
+            size_plot_path = ensure_path(output, f'{dataset_name}_size_only.svg', force=force)
+        else:
+            size_plot_path = ensure_path(output, f'{dataset_name}_size_only.png', force=force)
         norm_size, cmap_size = plot_size_per_position(context_path=context_path, flank_lower=flank_lower,
                                                       flank_upper=flank_upper, save=True, bin_width=bin_width,
                                                       plot_path=size_plot_path, y_range=y_range)
@@ -1148,7 +985,10 @@ def cugo_plot(context_path: str,
 
     # generate tmh-only plot
     if tmh:
-        tmh_plot_path = ensure_path(output, f'{dataset_name}_tmh_only.svg', force=force)
+        if svg:
+            tmh_plot_path = ensure_path(output, f'{dataset_name}_tmh_only.svg', force=force)
+        else:
+            tmh_plot_path = ensure_path(output, f'{dataset_name}_tmh_only.png', force=force)
         norm_tmh, cmap_tmh = plot_tmh_per_position(context_path=context_path, flank_lower=flank_lower,
                                                    flank_upper=flank_upper, save=True, y_range=tmh_y_range,
                                                    plot_path=tmh_plot_path)
@@ -1158,7 +998,10 @@ def cugo_plot(context_path: str,
     # generate combined plot
     if all_plots:
         logger.info(f'Plotting top {top_n} annotations per position.')
-        all_plot_path = ensure_path(output, f'{dataset_name}_cugo.svg', force=force)
+        if svg:
+            all_plot_path = ensure_path(output, f'{dataset_name}_cugo.svg', force=force)
+        else:
+            all_plot_path = ensure_path(output, f'{dataset_name}_cugo.png', force=force)
 
         # calculate dynamic figure width
         width = max(8, int((flank_upper - flank_lower + 1) * top_n * 0.6))
@@ -1230,11 +1073,184 @@ def cugo_plot(context_path: str,
         plt.savefig(all_plot_path, dpi=300, bbox_inches='tight')
         logger.info(f"Plot saved to {all_plot_path}")
 
+
+
+# ======================================
+# CUGO context functions and CLI tool
+# ======================================
+def process_target_context(target_id, parent_id, target_cugo, strand, cugo_range,
+                           context_data, headers, seq_idx):
+    """Build context window for a single target protein."""
+    if parent_id not in context_data:
+        return []
+
+    parent_rows = sorted(context_data[parent_id], key=lambda x: int(x[headers.index('CUGO_number')]))
+
+    context_window = []
+    for row in parent_rows:
+        cugo_num = int(row[headers.index('CUGO_number')])
+        if target_cugo - cugo_range <= cugo_num <= target_cugo + cugo_range:
+            context_window.append(row)
+
+    if not context_window:
+        return []
+
+    if strand == '-':
+        context_window = context_window[::-1]
+
+    target_index = None
+    for i, row in enumerate(context_window):
+        if row[seq_idx] == target_id:
+            target_index = i
+            break
+
+    if target_index is None:
+        return []
+
+    # build rows with target_id and position
+    results = []
+    for i, row in enumerate(context_window):
+        position = i - target_index
+        row_dict = {'target_id': target_id, 'position': position}
+        for col_idx, header in enumerate(headers):
+            row_dict[header] = row[col_idx]
+        results.append(row_dict)
+
+    return results
+
+
+def write_context_output(all_results, output_file):
+    """Write all results to one TSV."""
+    if not all_results:
+        return
+
+    headers = ['target_id', 'position', 'seqID', 'parent_ID', 'aa_length',
+               'strand', 'COG_ID', 'CUGO_number', 'no_TMH']
+
+    with open(output_file, 'w') as f:
+        f.write('\t'.join(headers) + '\n')
+        for row in all_results:
+            line = [str(row.get(h, '')) for h in headers]
+            f.write('\t'.join(line) + '\n')
+
+
+def fetch_seqid_batch(batch, cugo_path):
+    conn = sqlite3.connect(cugo_path)
+    cursor = conn.cursor()
+    placeholders = ",".join("?" * len(batch))
+    query = f"""
+        SELECT seqID, parent_ID, aa_length, strand, COG_ID, CUGO_number, no_TMH
+        FROM all_data
+        WHERE seqID IN ({placeholders})
+    """
+    cursor.execute(query, batch)
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+def fetch_parent_context(parent_ID, needed_numbers, cugo_path, batch_size=500):
+    conn = sqlite3.connect(cugo_path)
+    cursor = conn.cursor()
+    rows_out = []
+    needed_list = list(needed_numbers)
+    for j in range(0, len(needed_list), batch_size):
+        batch = needed_list[j:j + batch_size]
+        placeholders = ",".join("?" * len(batch))
+        query = f"""
+            SELECT seqID, parent_ID, aa_length, strand, COG_ID, CUGO_number, no_TMH
+            FROM all_data
+            WHERE parent_ID = ? AND CUGO_number IN ({placeholders})
+            ORDER BY CUGO_number
+        """
+        cursor.execute(query, (parent_ID, *batch))
+        rows_out.extend(cursor.fetchall())
+    conn.close()
+    return parent_ID, rows_out
+
+def context(fasta: str,
+            id_list: str,
+            cugo_path: str,
+            cugo_range: int,
+            output_dir: str,
+            threads: int = 1,
+            force: bool = False,
+            ):
+    if fasta:
+        protein_name = determine_dataset_name(fasta, '.', 0)
+        output_file = ensure_path(output_dir, f'{protein_name}_context.tsv', force=force)
+        sequences = read_fasta_to_dict(fasta)
+        protein_identifiers = set(sequences.keys())
+    elif id_list:
+        protein_name = determine_dataset_name(id_list, '.', 0)
+        output_file = ensure_path(output_dir, f'{protein_name}_context.tsv', force=force)
+        with open(id_list, 'r') as f:
+            protein_identifiers = [line.strip() for line in f]
+    else:
+        raise ValueError('You must provide a FASTA file.')
+
+    BATCH_SIZE = 500
+    target_rows = []
+    protein_list = list(protein_identifiers)
+    batches = [protein_list[i:i + BATCH_SIZE] for i in range(0, len(protein_list), BATCH_SIZE)]
+
+    with ThreadPoolExecutor(max_workers=threads) as executor:
+        futures = {executor.submit(fetch_seqid_batch, batch, cugo_path): batch for batch in batches}
+        for future in tqdm(as_completed(futures), total=len(futures), desc="Fetching seqIDs"):
+            target_rows.extend(future.result())
+
+    if not target_rows:
+        logging.warning("No target proteins found in the database.")
+        return None
+
+    target_contexts = {}
+    context_ranges = defaultdict(set)
+
+    for seqID, parent_ID, aa_length, strand, COG_ID, CUGO_number, no_TMH in target_rows:
+        target_contexts[seqID] = (parent_ID, CUGO_number, strand)
+        for i in range(CUGO_number - cugo_range, CUGO_number + cugo_range + 1):
+            context_ranges[parent_ID].add(i)
+
+    headers = ["seqID", "parent_ID", "aa_length", "strand", "COG_ID", "CUGO_number", "no_TMH"]
+    context_data = defaultdict(list)
+
+    with ThreadPoolExecutor(max_workers=threads) as executor:
+        futures = {
+            executor.submit(fetch_parent_context, pid, numbers, cugo_path, BATCH_SIZE): pid
+            for pid, numbers in context_ranges.items()
+        }
+        for future in tqdm(as_completed(futures), total=len(futures), desc="Fetching parent contexts"):
+            parent_ID, rows = future.result()
+            if rows:
+                context_data[parent_ID].extend(rows)
+
+    all_results = []
+    for seqID, (parent_ID, target_cugo, strand) in target_contexts.items():
+        results = process_target_context(
+            target_id=seqID,
+            parent_id=parent_ID,
+            target_cugo=target_cugo,
+            strand=strand,
+            cugo_range=cugo_range,
+            context_data=context_data,
+            headers=headers,
+            seq_idx=0,
+        )
+        all_results.extend(results)
+
+    if all_results:
+        write_context_output(all_results, output_file)
+        logging.info(f"Context written to {output_file}")
+        return output_file
+    else:
+        logging.info("No context data found.")
+        return None
+
 # ======================================
 # CUGO COMMAND LINE WORKFLOW
 # ======================================
 
 def cugo(cugo_path: str,
+         cugo_range: int,
          fasta: str,
          id_list: str,
          output_dir: str,
@@ -1242,6 +1258,7 @@ def cugo(cugo_path: str,
          flank_upper: int,
          top_n: int = 3,
          threads: int = 1,
+         svg: bool = False,
          force: bool = False,
          bin_width: int = 10,
          y_range: int = None,
@@ -1251,11 +1268,13 @@ def cugo(cugo_path: str,
 
     Args:
         cugo_path: Path to CUGO file
+        cugo_range: Range around target protein for context
         output_dir: Directory for output files
         flank_lower: Lower flank boundary for plotting
         flank_upper: Upper flank boundary for plotting
         top_n: Number of top COGs to display (default: 3)
-        threads (int): Number of threads (default: 1).
+        threads: Number of threads (default: 1).
+        svg: Generate plot in SVG format.
         force: Whether to overwrite existing files
         fasta: Optional path to FASTA file
         bin_width: Bin width for size plots
@@ -1269,6 +1288,7 @@ def cugo(cugo_path: str,
         fasta=fasta,
         id_list=id_list,
         cugo_path=cugo_path,
+        cugo_range=cugo_range,
         output_dir=output_dir,
         threads=threads,
         force=force
@@ -1289,12 +1309,16 @@ def cugo(cugo_path: str,
         bin_width=bin_width,
         y_range=y_range,
         tmh_y_range=tmh_y_range,
+        svg=svg,
         force=force
     )
 
     # determine plot file path
-    dataset_name = context_file.removesuffix('_context.tsv')
-    plot_file = f"{dataset_name}_cugo.svg"
+    dataset_name = determine_dataset_name(context_file, '.', 0, '_context')
+    if svg:
+        plot_file = f"{dataset_name}_cugo.svg"
+    else:
+        plot_file = f"{dataset_name}_cugo.png"
 
     return context_file, plot_file
 
