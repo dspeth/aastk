@@ -1276,7 +1276,7 @@ def cugo(cugo_path: str,
         threads: Number of threads (default: 1).
         svg: Generate plot in SVG format.
         force: Whether to overwrite existing files
-        fasta_path: Optional path to FASTA file
+        fasta: Optional path to FASTA file
         bin_width: Bin width for size plots
         y_range: Y-axis range for size plots
 
