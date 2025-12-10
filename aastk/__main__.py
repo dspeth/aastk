@@ -78,16 +78,6 @@ def main():
                 update=args.update
             )
 
-        elif args.subparser_name == 'metadata':
-            metadata(
-                selfmin=args.selfmin,
-                selfmax=args.selfmax,
-                dbmin=args.dbmin,
-                bsr=args.bsr_cutoff,
-                output_dir=args.output,
-                force=args.force
-            )
-
         elif args.subparser_name == 'select':
             select(
                 yaml_path=args.yaml,
