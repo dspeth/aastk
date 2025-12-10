@@ -122,6 +122,17 @@ def main():
                 force=args.force
             )
 
+        elif args.subparser_name == 'metadata':
+            metadata(
+                db_path=args.db_path,
+                fasta=args.fasta,
+                output=args.output,
+                threads=args.threads,
+                include_annotation=args.include_annotation,
+                include_taxonomy=args.include_taxonomy,
+                all_metadata=args.all_metadata,
+                force=args.force
+            )
 
         elif args.subparser_name == 'context':
             context(
@@ -143,7 +154,7 @@ def main():
                 output=args.output,
                 cugo=args.cugo,
                 size=args.size,
-                all_plots=args.all,
+                all_plots=args.all_plots,
                 bin_width=args.bin_width,
                 y_range=args.y_range,
                 tmh_y_range=args.tmh_y_range,

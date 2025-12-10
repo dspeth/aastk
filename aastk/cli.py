@@ -18,9 +18,13 @@ def mutex_group(parser, required):
 def arg_group(parser, name):
     yield parser.add_argument_group(name)
 
-def __all(group, required=False):
-    group.add_argument('--all', action='store_true', required=required,
+def __all_plots(group, required=False):
+    group.add_argument('--all_plots', action='store_true', required=required,
                        help='Generate a combined plot for CUGO, AA sequence length and TMHMM')
+
+def __all_metadata(group, required=False):
+    group.add_argument('--all_metadata', action='store_true', required=required,
+                       help='Include all metadata in output file')
 
 def __bin_width(group, required=False):
     group.add_argument('-b', '--bin_width', type=int, default=50, required=required,
@@ -85,7 +89,7 @@ def __dbmin(group, required=False):
 
 def __db_path(group, required=False):
     group.add_argument('-d', '--db_path', type=str, default='temp_genome_data.db', required=required,
-                       help='Path to temporary sqlite DB for merging CUGO and TMHMM data')
+                       help='Path to SQLite database')
 
 def __early_clust(group, required=False):
     group.add_argument('-e', '--early_clust', type=str, required=required,
@@ -130,6 +134,14 @@ def __help(group, required=False):
 def __id_list(group, required=False):
     group.add_argument('-i', '--id_list', type=str, required=required,
                        help='Path to list of GlobDB protein IDs')
+
+def __include_annotation(group, required=False):
+    group.add_argument('--include_annotation', action='store_true', required=required,
+                       help='Include annotation metadata in output')
+
+def __include_taxonomy(group, required=False):
+    group.add_argument('--include_taxonomy', action='store_true', required=required,
+                       help='Include taxonomy metadata in output')
 
 def __iterations(group, required=False):
     group.add_argument('-i', '--iterations', type=str, default=500, required=required,
@@ -389,7 +401,7 @@ def get_main_parser():
             __force(grp)
 
     ### PARSER FOR CUGO FUNCTIONALITIES AND WORKFLOW ###
-    with subparser(sub_parsers, 'parse', 'Parse GFF input file') as parser:
+    with subparser(sub_parsers, 'parse', 'Create AASTK SQLite database') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __cog_gff(grp, required=True)
             __kegg_gff(grp, required=True)
@@ -400,6 +412,19 @@ def get_main_parser():
             __output(grp)
             __force(grp)
             __tmhmm_dir(grp)
+
+    with subparser(sub_parsers, 'metadata', 'Retrieve metadata from AASTK SQLite database') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __db_path(grp, required=True)
+            __fasta(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
+            __threads(grp)
+            __include_annotation(grp)
+            __include_taxonomy(grp)
+            __all_metadata(grp)
+            __force(grp)
+
 
 
 
@@ -424,7 +449,7 @@ def get_main_parser():
             __top_n(grp)
             __cugo(grp)
             __size(grp)
-            __all(grp)
+            __all_plots(grp)
             __bin_width(grp)
             __y_range(grp)
             __tmh_y_range(grp)

@@ -579,6 +579,145 @@ def parse(cog_gff_tar_path: str,
     conn.close()
     logger.info("Database creation complete!")
 
+# ======================================
+# METADATA RETRIEVAL
+# ======================================
+def build_query(include_taxonomy: bool, include_annotation: bool, batch_size: int = 1) -> str:
+    select_cols = ['a.seqID', 'a.parent_ID', 'a.aa_length', 'a.strand']
+
+    if include_annotation:
+        select_cols.extend(['a.COG_ID', 'a.KEGG_ID', 'a.Pfam_ID'])
+
+    if include_taxonomy:
+        select_cols.extend([
+            't.genome_ID', 't.domain', 't.phylum', 't.class',
+            't.order_tax', 't.family', 't.genus', 't.species'
+        ])
+
+    query = f"SELECT {', '.join(select_cols)} FROM all_data a"
+
+    if include_taxonomy:
+        query += """
+        LEFT JOIN taxonomy t ON 
+        CASE 
+            WHEN instr(a.seqID, '___') > 0 
+            THEN substr(a.seqID, 1, instr(a.seqID, '___') - 1)
+            ELSE a.seqID
+        END = t.genome_ID
+        """
+
+    if batch_size > 1:
+        placeholders = ','.join(['?' for _ in range(batch_size)])
+        query += f" WHERE a.seqID IN ({placeholders})"
+    else:
+        query += " WHERE a.seqID = ?"
+
+    return query
+
+def get_header(include_taxonomy: bool, include_annotation: bool):
+    header = ['seqID', 'parent_ID', 'aa_length', 'strand']
+
+    if include_annotation:
+        header.extend(['COG_ID', 'KEGG_ID', 'Pfam_ID'])
+
+    if include_taxonomy:
+        header.extend(['genome_ID', 'domain', 'phylum', 'class',
+                       'order', 'family', 'genus', 'species'])
+
+    return header
+
+def process_batch(db_path: str,
+                  batch: list,
+                  include_taxonomy: bool,
+                  include_annotation: bool):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    query = build_query(include_taxonomy, include_annotation, len(batch))
+    cursor.execute(query, batch)
+    results = cursor.fetchall()
+
+    result_dict = {}
+    for result in results:
+        seq_id = result[0]
+        result_dict[seq_id] = result
+
+    conn.close()
+    return batch, result_dict
+
+def metadata(db_path: str,
+             fasta: str,
+             output: str,
+             threads: int = 1,
+             include_annotation: bool = False,
+             include_taxonomy: bool = False,
+             all_metadata: bool = False,
+             force: bool = False):
+    if fasta:
+        seq_dict = read_fasta_to_dict(fasta)
+        seq_ids = list(seq_dict.keys())
+        dataset_name = determine_dataset_name(fasta, '.', 0)
+        output_path = ensure_path(output, f'{dataset_name}_metadata.tsv', force=force)
+    else:
+        logger.error("No valid input file found. Please specify path to protein FASTA")
+        return
+
+    if all_metadata:
+        include_annotation = True
+        include_taxonomy = True
+
+    if not (include_annotation or include_taxonomy):
+        logger.error("Must specify at least one data type (--taxonomy, --annotation, or --all)")
+        return
+
+    conn = sqlite3.connect(db_path)
+
+    BATCH_SIZE = 500
+
+    header = get_header(include_taxonomy, include_annotation)
+
+    # Split seq_ids into batches
+    batches = [seq_ids[i:i + BATCH_SIZE] for i in range(0, len(seq_ids), BATCH_SIZE)]
+
+    found_ids = set()
+    missing_ids = set()
+
+    # Store results with batch index to maintain order
+    batch_results = {}
+
+    # Process batches in parallel
+    with ThreadPoolExecutor(max_workers=threads) as executor:
+        futures = {executor.submit(process_batch, db_path, batch, include_taxonomy, include_annotation): idx
+                   for idx, batch in enumerate(batches)}
+
+        for future in tqdm(as_completed(futures), total=len(batches), desc="Querying database"):
+            batch_idx = futures[future]
+            try:
+                batch, result_dict = future.result()
+                batch_results[batch_idx] = (batch, result_dict)
+            except Exception as e:
+                logger.error(f"Error processing batch {batch_idx}: {e}")
+
+    # Write results in original order
+    with open(output_path, 'w') as out:
+        out.write('\t'.join(header) + '\n')
+
+        for batch_idx in sorted(batch_results.keys()):
+            batch, result_dict = batch_results[batch_idx]
+
+            for seq_id in batch:
+                if seq_id in result_dict:
+                    found_ids.add(seq_id)
+                    row = [str(x) if x is not None else '' for x in result_dict[seq_id]]
+                    out.write('\t'.join(row) + '\n')
+                else:
+                    missing_ids.add(seq_id)
+
+        logger.info(f"Metadata has been saved to {output_path}")
+
+    conn.close()
+
+
 
 # ======================================
 # FUNCTION DEFINITIONS FOR CUGO PLOTTING
