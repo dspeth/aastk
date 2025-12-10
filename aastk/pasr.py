@@ -679,7 +679,7 @@ def pasr_plot(bsr_file: str,
 # ===============================
 # aastk metadata CLI FUNCTION
 # ===============================
-def metadata(selfmin: int,
+def pasr_metadata(selfmin: int,
              selfmax: int,
              output_dir: str,
              dbmin: int = None,
@@ -878,7 +878,7 @@ def select(yaml_path: str,
         # create YAML file if requested
         if create_yaml:
             logger.info("Creating YAML file with provided parameters")
-            created_yaml_path = metadata(
+            created_yaml_path = pasr_metadata(
                 selfmin=selfmin,
                 selfmax=selfmax,
                 output_dir=output_dir,

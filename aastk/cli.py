@@ -353,21 +353,6 @@ def get_main_parser():
             __update(grp)
             __yaml(grp)
 
-    with subparser(sub_parsers, 'metadata', 'Create a metadata file for dataset update', ) as parser:
-        # for consistent naming of analysis files; it is unlikely that users will create metadata without access to one of these files
-        with mutex_group(parser, required=True) as grp:
-            __seed(grp)
-            __bsr(grp)
-        with mutex_group(parser, required=True) as grp:
-            __dbmin(grp)
-            __bsr_cutoff(grp)
-        with arg_group(parser, 'Required arguments') as grp:
-            __selfmax(grp, required=True)
-            __selfmin(grp, required=True)
-        with arg_group(parser, 'Optional') as grp:
-            __output(grp)
-            __force(grp)
-
 
     with subparser(sub_parsers, 'select', 'Select target sequences in accordance with metadata cutoffs') as parser:
         with mutex_group(parser, required=True) as grp:
