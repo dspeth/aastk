@@ -38,7 +38,8 @@ def setup_database(db_path: str) -> sqlite3.Connection:
                                                          KEGG_ID TEXT,
                                                          Pfam_ID TEXT,
                                                          cugo_number INTEGER,
-                                                         no_tmh INTEGER
+                                                         no_tmh INTEGER,
+                                                         protein_seq BLOB,
                  )
                  ''')
 
@@ -455,11 +456,68 @@ def populate_taxonomy_table(conn: sqlite3.Connection,
     except Exception as e:
         logger.error(f"Error populating taxonomy table: {e}")
 
+def stream_all_proteins(fasta: str,
+                        batch_size: int = 10000):
+    try:
+        filepath = Path(fasta)
+
+        if filepath.suffix == '.gz':
+            file_handle = gzip.open(filepath, 'rt')
+        else:
+            file_handle = open(filepath, 'r')
+
+        batch = []
+        current_id = None
+
+        with file_handle as f:
+            for line in f:
+                line = line.strip()
+                
+                if not line:
+                    continue
+
+                if line.startswith('>'):
+                    current_id = line[1:].split()[0]
+                else:
+                    if current_id is not None:
+                        compressed = compress_sequence(line)
+                        batch.append((current_id, compressed))
+                        current_id = None
+
+                        if len(batch) >= batch_size:
+                            yield batch
+                            batch = []
+
+            if batch:
+                yield batch
+
+    except Exception as e:
+        logger.warning(f"Failed to process protein FASTA {fasta}: {e}")
+
+def populate_protein_sequences(conn: sqlite3.Connection,
+                               protein_fasta_path: str,
+                               ):
+    logger.info(f"Processing protein FASTA file: {protein_fasta_path}")
+
+    total_sequences = 0
+
+    for batch in stream_all_proteins(protein_fasta_path):
+        update_data = [(seq_blob, seqid) for seqid, seq_blob in batch]
+        conn.executemany("""
+                         UPDATE all_data
+                         SET protein_seq = ?
+                         WHERE seqID = ?
+                         """, update_data)
+        conn.commit()
+        total_sequences += len(batch)
+
+    logger.info(f"Processed {total_sequences} protein sequences")
 
 def parse(cog_gff_tar_path: str,
           kegg_gff_tar_path: str = None,
           pfam_gff_tar_path: str = None,
           tmhmm_tar_path: str = None,
+          protein_fasta_path: str = None,
           taxonomy_path: str = None,
           output_dir: str = None,
           globdb_version: int = None,
@@ -571,7 +629,12 @@ def parse(cog_gff_tar_path: str,
 
         shutil.rmtree(tempdir)
 
-    # ===== STEP 5: Process Taxonomy file =====
+    # ===== STEP 5: Process Protein FASTA file =====
+    if protein_fasta_path:
+        logger.info("STEP 5: Processing protein sequences...")
+        populate_protein_sequences(conn, protein_fasta_path)
+
+    # ===== STEP 6: Process Taxonomy file =====
     if taxonomy_path:
         logger.info("STEP 5: Populating taxonomy table...")
         populate_taxonomy_table(conn, taxonomy_path)

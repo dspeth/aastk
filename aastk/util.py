@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Optional
 import shutil
 import logging
+import zlib
 
 logger = logging.getLogger(__name__)
 
@@ -15,10 +16,15 @@ def check_dependency_availability(command: str):
 		logger.error(f"Command not found in PATH: {command}")
 		raise FileNotFoundError(f"Command not found in PATH: {command}")
 
+def compress_sequence(sequence: str) -> bytes:
+	return zlib.compress(sequence.encode('utf-8'), level=9)
 
 def count_fasta_sequences(fasta_path: str) -> int:
 	with open(fasta_path, 'r') as f:
 		return sum(1 for line in f if line.startswith('>'))
+
+def decompress_sequence(compressed: bytes) -> str:
+	return zlib.decompress(compressed).decode('utf-8')
 
 def determine_dataset_name(file: str, splitter: str, part: int, suffix: str = None):
 	basename = Path(file).name

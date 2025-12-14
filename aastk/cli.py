@@ -410,6 +410,7 @@ def get_main_parser():
             __cog_gff(grp, required=True)
             __kegg_gff(grp, required=True)
             __pfam_gff(grp, required=True)
+            __all_proteins(grp, required=True)
             __taxonomy_path(grp, required=True)
             __globdb_version(grp, required=True)
         with arg_group(parser, 'Optional') as grp:

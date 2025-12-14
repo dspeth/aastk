@@ -116,6 +116,7 @@ def main():
                 kegg_gff_tar_path=args.kegg_gff,
                 pfam_gff_tar_path=args.pfam_gff,
                 tmhmm_tar_path=args.tmhmm_dir,
+                protein_fasta_path=args.all_proteins,
                 taxonomy_path=args.taxonomy_path,
                 output_dir=args.output,
                 globdb_version=args.globdb_version,
@@ -142,7 +143,7 @@ def main():
                 cugo_range=args.cugo_range,
                 output_dir=args.output,
                 threads=args.threads,
-                force=args.force,
+                force=args.force
             )
 
         elif args.subparser_name == 'cugo_plot':
