@@ -39,7 +39,7 @@ def setup_database(db_path: str) -> sqlite3.Connection:
                                                          Pfam_ID TEXT,
                                                          cugo_number INTEGER,
                                                          no_tmh INTEGER,
-                                                         protein_seq BLOB,
+                                                         protein_seq BLOB
                  )
                  ''')
 
