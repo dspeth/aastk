@@ -22,6 +22,10 @@ def __all_plots(group, required=False):
     group.add_argument('--all_plots', action='store_true', required=required,
                        help='Generate a combined plot for CUGO, AA sequence length and TMHMM')
 
+def __all_proteins(group, required=False):
+    group.add_argument('-a', '--all_proteins', type=str, required=required,
+                       help='Path to FASTA file containing all GlobDB protein sequences')
+
 def __all_metadata(group, required=False):
     group.add_argument('--all_metadata', action='store_true', required=required,
                        help='Include all metadata in output file')
@@ -549,7 +553,9 @@ def get_main_parser():
         with arg_group(parser, 'Required arguments') as grp:
             __context_path(grp, required=True)
             __position(grp, required=True)
+            __all_proteins(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __force(grp)
 
     return main_parser

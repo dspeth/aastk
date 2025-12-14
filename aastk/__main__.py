@@ -184,7 +184,9 @@ def main():
             retrieve(
                 context_path=args.context_path,
                 position=args.position,
-                output=args.output
+                all_proteins=args.all_proteins,
+                output=args.output,
+                force=args.force
             )
 
         ### PARSER FOR CASM FUNCTIONALITIES AND WORKFLOW ###

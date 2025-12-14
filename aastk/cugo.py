@@ -1463,9 +1463,11 @@ def cugo(cugo_path: str,
 
 def retrieve(context_path: str,
              position: int,
-             output: str):
+             all_proteins: str,
+             output: str,
+             force: bool = False):
     dataset_name = determine_dataset_name(context_path, '.', 0, '_context')
-    output_path = ensure_path(output, f'{dataset_name}_{position}_ids.txt')
+    output_path = ensure_path(output, f'{dataset_name}_{position}_ids.txt', force=force)
 
     # load context data
     df = pd.read_csv(context_path, sep='\t')
@@ -1477,8 +1479,12 @@ def retrieve(context_path: str,
     seq_ids = pos_data['seqID'].dropna().unique()
 
     # write to file
-    with open(output_path, 'w') as f:
-        for seq_id in seq_ids:
-            f.write(f"{seq_id}\n")
+    with open(output_path, 'w') as file:
+        for header, sequence in tqdm(
+                write_fa_matches(all_proteins, seq_ids),
+                total=len(seq_ids),
+                desc="Retrieving sequences"
+        ):
+            file.write(f"{header}\n{sequence}\n")
 
-    return len(seq_ids)
+    return output_path
