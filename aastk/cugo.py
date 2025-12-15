@@ -60,6 +60,23 @@ def setup_database(db_path: str) -> sqlite3.Connection:
     conn.execute('CREATE INDEX IF NOT EXISTS idx_parent_id ON all_data(parent_ID)')
     conn.execute('CREATE INDEX IF NOT EXISTS idx_taxonomy_genome ON taxonomy(genome_ID)')
 
+    conn.execute('''
+                 CREATE VIEW IF NOT EXISTS all_data_readable AS
+                 SELECT
+                     seqID,
+                     parent_ID,
+                     aa_length,
+                     strand,
+                     COG_ID,
+                     KEGG_ID,
+                     Pfam_ID,
+                     cugo_number,
+                     no_tmh,
+                     CASE WHEN protein_seq IS NULL THEN NULL ELSE '<COMPRESSED_BLOB>' END as protein_seq_status
+                 FROM all_data
+                 ''')
+
+
     conn.commit()
     return conn
 
@@ -636,8 +653,13 @@ def parse(cog_gff_tar_path: str,
 
     # ===== STEP 6: Process Taxonomy file =====
     if taxonomy_path:
-        logger.info("STEP 5: Populating taxonomy table...")
+        logger.info("STEP 6: Populating taxonomy table...")
         populate_taxonomy_table(conn, taxonomy_path)
+
+    logger.info("Optimizing database with VACUUM...")
+    conn.execute("VACUUM")
+    conn.commit()
+    logger.info("VACUUM complete")
 
     conn.close()
     logger.info("Database creation complete!")
@@ -1526,7 +1548,7 @@ def cugo(cugo_path: str,
 
 def retrieve(context_path: str,
              position: int,
-             all_proteins: str,
+             db_path: str,
              output: str,
              force: bool = False):
     dataset_name = determine_dataset_name(context_path, '.', 0, '_context')
@@ -1539,15 +1561,32 @@ def retrieve(context_path: str,
     pos_data = df[df['position'] == position]
 
     # get unique seqIDs
-    seq_ids = pos_data['seqID'].dropna().unique()
+    seq_ids = pos_data['seqID'].dropna().unique().tolist()
+
+    if not seq_ids:
+        logger.warning(f"No sequences found for position {position}")
+        return output_path
+
+    # connect to database
+    conn = sqlite3.connect(db_path)
+
+    # query database for sequences
+    placeholders = ','.join('?' * len(seq_ids))
+    cursor = conn.execute(f"""
+        SELECT seqID, protein_seq 
+        FROM all_data 
+        WHERE seqID IN ({placeholders}) AND protein_seq IS NOT NULL
+    """, seq_ids)
 
     # write to file
     with open(output_path, 'w') as file:
-        for header, sequence in tqdm(
-                write_fa_matches(all_proteins, seq_ids),
-                total=len(seq_ids),
-                desc="Retrieving sequences"
-        ):
-            file.write(f"{header}\n{sequence}\n")
+        count = 0
+        for seqid, compressed_seq in tqdm(cursor, total=len(seq_ids), desc="Retrieving sequences"):
+            sequence = decompress_sequence(compressed_seq)
+            file.write(f">{seqid}\n{sequence}\n")
+            count += 1
+
+    conn.close()
+    logger.info(f"Retrieved {count} sequences to {output_path}")
 
     return output_path

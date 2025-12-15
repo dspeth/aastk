@@ -185,7 +185,7 @@ def main():
             retrieve(
                 context_path=args.context_path,
                 position=args.position,
-                all_proteins=args.all_proteins,
+                db_path=args.db_path,
                 output=args.output,
                 force=args.force
             )

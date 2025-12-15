@@ -554,7 +554,7 @@ def get_main_parser():
         with arg_group(parser, 'Required arguments') as grp:
             __context_path(grp, required=True)
             __position(grp, required=True)
-            __all_proteins(grp, required=True)
+            __db_path(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __force(grp)
