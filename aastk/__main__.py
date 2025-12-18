@@ -210,8 +210,6 @@ def main():
                 iterations=args.iterations,
                 exaggeration=args.exagerration,
                 threads=args.threads,
-                metadata_protein=args.metadata_protein,
-                metadata_genome=args.metadata_genome,
                 force=args.force,
             )
 
@@ -221,6 +219,9 @@ def main():
                 early_clust_path=args.early_clust,
                 full_clust_path=args.full_clust,
                 output=args.output,
+                db_path=args.db_path,
+                metadata_protein=args.metadata_protein,
+                metadata_genome=args.metadata_genome,
                 force=args.force,
                 svg=args.svg,
                 show_cluster_numbers=args.show
@@ -230,6 +231,7 @@ def main():
             casm(
                 fasta=args.fasta,
                 output=args.output,
+                db_path=args.db_path,
                 subset=args.subset,
                 subset_size=args.subset_size,
                 threads=args.threads,

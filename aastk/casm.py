@@ -1,5 +1,3 @@
-import json
-
 from .util import *
 
 import logging
@@ -10,6 +8,9 @@ import pandas as pd
 import openTSNE
 from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
+import sqlite3
+import json
+
 
 logger = logging.getLogger(__name__)
 
@@ -347,8 +348,6 @@ def create_embedding_file(output_file: str,
                           queries: list,
                           clusters: np.ndarray,
                           col_names: list,
-                          metadata_protein: str,
-                          metadata_genome: str,
                           ):
     """
     Creates a TSV file containing protein embeddings with metadata and cluster assignments.
@@ -381,9 +380,7 @@ def create_embedding_file(output_file: str,
 def create_embedding_dataframe(embedding: np.ndarray,
                                queries: list,
                                clusters: np.ndarray,
-                               col_names: list,
-                               metadata_protein: str = None,
-                               metadata_genome: str = None
+                               col_names: list
                                ):
     """
     Creates DataFrame from t-SNE embedding results with clustering and optional metadata.
@@ -414,17 +411,6 @@ def create_embedding_dataframe(embedding: np.ndarray,
     base_cols = ['prot_ID', 'locus_nr', 'genome_ID'] + col_names + ['cluster']
     df = df[base_cols]
 
-    # add metadata if provided
-    if metadata_protein and Path(metadata_protein).is_file():
-        logger.info(f"Adding protein metadata from: {metadata_protein}")
-        protein_meta = pd.read_csv(metadata_protein, sep="\t")
-        df = pd.merge(df, protein_meta, on="prot_ID", how="left")
-
-    if metadata_genome and Path(metadata_genome).is_file():
-        logger.info(f"Adding genome metadata from: {metadata_genome}")
-        genome_meta = pd.read_csv(metadata_genome, sep="\t")
-        df = pd.merge(df, genome_meta, on="genome_ID", how="left")
-
     logger.debug(f"Final dataframe shape: {df.shape}")
     return df
 
@@ -436,8 +422,6 @@ def tsne_embedding(matrix: np.ndarray,
                    iterations: int,
                    exaggeration: int,
                    threads: int,
-                   metadata_protein: str = None,
-                   metadata_genome: str = None,
                    force: bool = False
                    ):
     """
@@ -454,8 +438,6 @@ def tsne_embedding(matrix: np.ndarray,
         iterations (int): Number of optimization iterations per phase
         exaggeration (int): Early exaggeration factor
         threads (int): Number of threads for parallel processing
-        metadata_protein (str, optional): Path to protein metadata TSV file
-        metadata_genome (str, optional): Path to genome metadata TSV file
         force (bool): Overwrite existing files if True
 
     Returns:
@@ -525,7 +507,7 @@ def tsne_embedding(matrix: np.ndarray,
     # ================================
     logger.debug("Saving early embedding results")
     early_filename = ensure_path(target=f"{basename}_tsne_early_clust.tsv", force=force)
-    create_embedding_file(early_filename, tsne_embed, queries, clustering.labels_, ['tsne1', 'tsne2'], metadata_protein, metadata_genome)
+    create_embedding_file(early_filename, tsne_embed, queries, clustering.labels_, ['tsne1', 'tsne2'])
     logger.info(f"Early embedding saved to: {early_filename}")
 
     # ========================
@@ -545,14 +527,109 @@ def tsne_embedding(matrix: np.ndarray,
     # ===============================
     logger.debug("Saving final embedding results")
     final_filename = ensure_path(target=f"{basename}_tsne_final_clust.tsv", force=force)
-    create_embedding_file(final_filename, tsne_embed, queries, clustering.labels_, ['tsne1', 'tsne2'], metadata_protein, metadata_genome)
+    create_embedding_file(final_filename, tsne_embed, queries, clustering.labels_, ['tsne1', 'tsne2'])
     logger.info(f"Final embedding saved to: {final_filename}")
 
     return early_filename, final_filename
 
+def fetch_protein_metadata(db_path: str,
+                           protein_ids: list,
+                           column: str,
+                           batch_size: int = 500
+                           ):
+    valid_cols = ['COG_ID', 'KEGG_ID', 'Pfam_ID']
+
+    if column not in valid_cols:
+        logger.warning(f"No valid protein metadata columns requested")
+        return pd.DataFrame({'prot_ID': protein_ids})
+
+    conn = sqlite3.connect(db_path)
+
+    col_str = ', '.join(['seqID', column])
+
+    all_results = []
+    n_batches = (len(protein_ids) + batch_size - 1) // batch_size
+    logger.info(f"Fetching protein metadata in {n_batches} batches")
+
+    for i in range(0, len(protein_ids), batch_size):
+        batch = protein_ids[i:i + batch_size]
+        placeholders = ','.join(['?'] * len(batch))
+        query = f"""SELECT {col_str} from all_data where seqID in ({placeholders})"""
+
+        batch_df = pd.read_sql_query(query, conn, params=batch)
+        all_results.append(batch_df)
+
+    conn.close()
+
+    df = pd.concat(all_results, ignore_index=True)
+
+    logger.info(f"Retrieved {len(df)} genome metadata records total")
+
+    return df
+
+
+def fetch_genome_metadata(db_path: str,
+                          genome_ids: list,
+                          column: str,
+                          batch_size: int = 500
+                           ):
+    valid_cols = ['domain', 'phylum', 'class', 'order_tax', 'family', 'genus', 'species']
+
+    if column not in valid_cols:
+        logger.warning(f"No valid protein metadata columns requested")
+        return pd.DataFrame({'genome_ID': genome_ids})
+
+    conn = sqlite3.connect(db_path)
+    col_str = ', '.join(['genome_ID',  column])
+
+    # Process in batches
+    all_results = []
+    n_batches = (len(genome_ids) + batch_size - 1) // batch_size
+    logger.info(f"Fetching genome metadata in {n_batches} batches")
+
+    for i in range(0, len(genome_ids), batch_size):
+        batch = genome_ids[i:i + batch_size]
+        placeholders = ','.join(['?'] * len(batch))
+        query = f"SELECT {col_str} FROM taxonomy WHERE genome_ID IN ({placeholders})"
+
+        batch_df = pd.read_sql_query(query, conn, params=batch)
+        all_results.append(batch_df)
+        logger.debug(f"Batch {len(all_results)}/{n_batches}: retrieved {len(batch_df)} records")
+
+    conn.close()
+
+    df = pd.concat(all_results, ignore_index=True) if all_results else pd.DataFrame()
+
+    logger.info(f"Retrieved {len(df)} genome metadata records total")
+    return df
+
+
+def extend_embedding_with_metadata(df: pd.DataFrame,
+                                   db_path: str,
+                                   protein_col: str = None,
+                                   genome_col: str = None):
+    if not db_path:
+        logger.warning("No database path provided, skipping metadata enrichment")
+        return df
+
+    if protein_col is not None:
+        logger.info(f"Fetching protein metadata: {protein_col}")
+        protein_metadata = fetch_protein_metadata(db_path, df['prot_ID'].tolist(), protein_col)
+        df = pd.merge(df, protein_metadata, on='prot_ID', how='left')
+
+    if genome_col is not None:
+        logger.info(f"Fetching genome metadata: {genome_col}")
+        genome_metadata = fetch_genome_metadata(db_path, df['genome_ID'].unique().tolist(), genome_col)
+        df = pd.merge(df, genome_metadata, on='genome_ID', how='left')
+
+    return df
+
 
 def plot_clusters(tsv_file: str,
                   output: str,
+                  db_path: str = None,
+                  metadata_protein: str = None,
+                  metadata_genome: str = None,
                   svg: bool = False,
                   force: bool = False,
                   show_cluster_numbers: bool = False
@@ -576,72 +653,125 @@ def plot_clusters(tsv_file: str,
     df = pd.read_csv(tsv_file, sep='\t')
     logger.info(f"Loaded {len(df)} data points for plotting")
 
+    if 'prot_ID' not in df.columns:
+        raise KeyError("Expected column 'prot_ID' not found in TSV")
+
+    df['prot_ID'] = df['prot_ID'].astype(str).str.strip()
+    df['genome_ID'] = (
+        df['prot_ID']
+        .apply(parse_protein_identifier)
+        .astype(str)
+        .str.strip()
+    )
+
+    color_column = None
+    if db_path:
+        if metadata_protein:
+            logger.info(f"Fetching protein metadata column '{metadata_protein}' for coloring")
+            df = extend_embedding_with_metadata(df, db_path, protein_col=metadata_protein, genome_col=None)
+            color_column = metadata_protein
+        elif metadata_genome:
+            logger.info(f"Fetching genome metadata column '{metadata_genome}' for coloring")
+            df = extend_embedding_with_metadata(df, db_path, protein_col=None, genome_col=metadata_genome)
+            color_column = metadata_genome
+
+    if (metadata_protein or metadata_genome) and not db_path:
+        logger.info("Metadata selected but path to SQLite DB not provided, coloring by cluster")
+        color_column = 'cluster'
+    elif color_column is None or color_column not in df.columns:
+        logger.info("No metadata column selected, coloring by cluster")
+        color_column = 'cluster'
+
     # ========================
     # Initialize plot
     # ========================
     plt.figure(figsize=(14, 10))
 
-    # create masks to separate noise points (cluster -1) from clustered points
-    noise_mask = df['cluster'] == -1
-    clustered_mask = df['cluster'] != -1
+    if color_column == 'cluster':
+        # create masks to separate noise points (cluster -1) from clustered points
+        noise_mask = df['cluster'] == -1
+        clustered_mask = df['cluster'] != -1
 
-    n_noise = noise_mask.sum()
-    n_clustered = clustered_mask.sum()
-    logger.info(f"Plotting {n_clustered} clustered points and {n_noise} noise points")
+        n_noise = noise_mask.sum()
+        n_clustered = clustered_mask.sum()
+        logger.info(f"Plotting {n_clustered} clustered points and {n_noise} noise points")
 
-    # ========================
-    # Plot noise points
-    # ========================
+        # ========================
+        # Plot noise points
+        # ========================
 
-    # display unclustered points in light gray with low opacity
-    if noise_mask.any():
-        plt.scatter(df.loc[noise_mask, 'tsne1'],
-                    df.loc[noise_mask, 'tsne2'],
-                    c='lightgray',
-                    alpha=0.4,
-                    s=12,
-                    edgecolors='none',
-                    label='Noise')
+        # display unclustered points in light gray with low opacity
+        if noise_mask.any():
+            plt.scatter(df.loc[noise_mask, 'tsne1'],
+                        df.loc[noise_mask, 'tsne2'],
+                        c='lightgray',
+                        alpha=0.4,
+                        s=12,
+                        edgecolors='none',
+                        label='Noise')
 
-    # ========================
-    # Plot clustered points
-    # ========================
-    if clustered_mask.any():
-        unique_clusters = df.loc[clustered_mask, 'cluster'].unique()
+        # ========================
+        # Plot clustered points
+        # ========================
+        if clustered_mask.any():
+            unique_clusters = df.loc[clustered_mask, 'cluster'].unique()
 
-        # use tab20 colormap for up to 20 clusters, switch to hsv for more
-        colors = plt.cm.tab20(np.linspace(0, 1, len(unique_clusters)))
-        if len(unique_clusters) > 20:
-            colors = plt.cm.hsv(np.linspace(0, 1, len(unique_clusters)))
+            # use tab20 colormap for up to 20 clusters, switch to hsv for more
+            colors = plt.cm.tab20(np.linspace(0, 1, len(unique_clusters)))
+            if len(unique_clusters) > 20:
+                colors = plt.cm.hsv(np.linspace(0, 1, len(unique_clusters)))
 
-        logger.info(f"Plotting {len(unique_clusters)} unique clusters")
+            logger.info(f"Plotting {len(unique_clusters)} unique clusters")
 
-        # plot each cluster with unique color
-        for i, cluster in enumerate(unique_clusters):
-            cluster_mask = df['cluster'] == cluster
-            cluster_size = cluster_mask.sum()
-            logger.debug(f"Cluster {cluster}: {cluster_size} points")
-            plt.scatter(df.loc[cluster_mask, 'tsne1'],
-                        df.loc[cluster_mask, 'tsne2'],
-                        c=[colors[i]],
-                        s=15,
-                        alpha=0.7,
-                        edgecolors='white',
-                        linewidths=0.3,
-                        label=f'Cluster {cluster}')
+            # plot each cluster with unique color
+            for i, cluster in enumerate(unique_clusters):
+                cluster_mask = df['cluster'] == cluster
+                cluster_size = cluster_mask.sum()
+                logger.debug(f"Cluster {cluster}: {cluster_size} points")
+                plt.scatter(df.loc[cluster_mask, 'tsne1'],
+                            df.loc[cluster_mask, 'tsne2'],
+                            c=[colors[i]],
+                            s=15,
+                            alpha=0.7,
+                            edgecolors='white',
+                            linewidths=0.3,
+                            label=f'Cluster {cluster}')
 
-            # optionally annotate cluster centers with cluster numbers
-            if show_cluster_numbers:
-                centroid_x = df.loc[cluster_mask, 'tsne1'].mean()
-                centroid_y = df.loc[cluster_mask, 'tsne2'].mean()
-                plt.annotate(str(cluster),
-                            xy=(centroid_x, centroid_y),
-                            fontsize=16,
-                            fontweight='bold',
-                            ha='center',
-                            va='center',
-                            color='black',
-                            alpha=1)
+                # optionally annotate cluster centers with cluster numbers
+                if show_cluster_numbers:
+                    centroid_x = df.loc[cluster_mask, 'tsne1'].mean()
+                    centroid_y = df.loc[cluster_mask, 'tsne2'].mean()
+                    plt.annotate(str(cluster),
+                                xy=(centroid_x, centroid_y),
+                                fontsize=16,
+                                fontweight='bold',
+                                ha='center',
+                                va='center',
+                                color='black',
+                                alpha=1)
+    else:
+        unique_vals = df[color_column].dropna().unique()
+        n_vals = len(unique_vals)
+
+        na_mask = df[color_column].isna()
+        if na_mask.any():
+            plt.scatter(df.loc[na_mask, 'tsne1'], df.loc[na_mask, 'tsne2'],
+                        c='lightgray', alpha=0.4, s=12, edgecolors='none', label='No data')
+
+        if df[color_column].dtype in ['object', 'category']:
+            colors = plt.cm.tab20(np.linspace(0, 1, n_vals))
+            if n_vals > 20:
+                colors = plt.cm.hsv(np.linspace(0, 1, n_vals))
+            for i, val in enumerate(unique_vals):
+                mask = df[color_column] == val
+                plt.scatter(df.loc[mask, 'tsne1'], df.loc[mask, 'tsne2'],
+                            c=[colors[i]], s=15, alpha=0.7,
+                            edgecolors='white', linewidths=0.3, label=str(val))
+        else:
+            scatter = plt.scatter(df['tsne1'], df['tsne2'],
+                                  c=df[color_column], cmap='viridis', s=15,
+                                  alpha=0.7, edgecolors='white', linewidths=0.3)
+            plt.colorbar(scatter, label=color_column)
 
     # =============================
     # Configure plot appearance
@@ -650,9 +780,14 @@ def plot_clusters(tsv_file: str,
     plt.ylabel('t-SNE 2', fontsize=12)
     plt.title('t-SNE Embedding with DBSCAN Clusters', fontsize=14)
 
-    # only show legend if number of clusters is manageable (≤15)
-    if len(df.loc[clustered_mask, 'cluster'].unique()) <= 15:
-        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=10)
+    if color_column == 'cluster' and 'cluster' in df.columns:
+        unique_clusters = df[df['cluster'] != -1]['cluster'].unique()
+        if len(unique_clusters) <= 60:
+            plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=10)
+    elif color_column != 'cluster':
+        unique_vals = df[color_column].dropna().unique()
+        if len(unique_vals) <= 60:
+            plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=10)
 
     plt.tight_layout()
 
@@ -664,18 +799,18 @@ def plot_clusters(tsv_file: str,
     # parse input filename to determine if early or final embedding
     if 'early_clust' in tsv_file:
         prefix = determine_dataset_name(tsv_file, '.', 0, '_tsne_early_clust')
-        if svg:
-            filename = f'{prefix}_tsne_early_clusters.svg'
-        else:
-            filename = f'{prefix}_tsne_early_clusters.png'
+        base_name = f"{prefix}_tsne_early"
     elif 'final_clust' in tsv_file:
         prefix = determine_dataset_name(tsv_file, '.', 0, '_tsne_final_clust')
-        if svg:
-            filename = f'{prefix}_tsne_final_clusters.svg'
-        else:
-            filename = f'{prefix}_tsne_final_clusters.png'
+        base_name = f"{prefix}_tsne_final"
     else:
         raise ValueError(f"Unexpected TSV filename: {tsv_file}")
+
+    if color_column and color_column != 'cluster':
+        filename = f"{base_name}_by_{color_column}.{ 'svg' if svg else 'png' }"
+    else:
+        filename = f"{base_name}_clusters.{ 'svg' if svg else 'png' }"
+
 
     # ========================
     # Save plot
@@ -810,8 +945,6 @@ def cluster(matrix_path: str,
          iterations: int = 500,
          exaggeration: int = 6,
          threads: int = 1,
-         metadata_protein: str = None,
-         metadata_genome: str = None,
          force: bool = False,
          ):
     """
@@ -853,8 +986,6 @@ def cluster(matrix_path: str,
                               iterations=iterations,
                               exaggeration=exaggeration,
                               threads=threads,
-                              metadata_protein=metadata_protein,
-                              metadata_genome=metadata_genome,
                               force=force,
                               )
     logger.info("=== t-SNE Embedding Completed ===")
@@ -864,6 +995,9 @@ def cluster(matrix_path: str,
 def casm_plot(early_clust_path: str,
         full_clust_path: str,
         output: str,
+        db_path: str = None,
+        metadata_protein: str = None,
+        metadata_genome: str = None,
         svg: bool = False,
         force: bool = False,
         show_cluster_numbers: bool = False):
@@ -889,10 +1023,24 @@ def casm_plot(early_clust_path: str,
 
     # Generate plots
     logger.info("Generating early clustering plot")
-    plot_clusters(early_clust_path, output=output, force=force, svg=svg, show_cluster_numbers=show_cluster_numbers)
+    plot_clusters(early_clust_path,
+                  output=output,
+                  db_path=db_path,
+                  metadata_protein=metadata_protein,
+                  metadata_genome=metadata_genome,
+                  force=force,
+                  svg=svg,
+                  show_cluster_numbers=show_cluster_numbers)
 
     logger.info("Generating full clustering plot")
-    plot_clusters(full_clust_path, output=output, force=force, svg=svg, show_cluster_numbers=show_cluster_numbers)
+    plot_clusters(full_clust_path,
+                  output=output,
+                  db_path=db_path,
+                  metadata_protein=metadata_protein,
+                  metadata_genome=metadata_genome,
+                  force=force,
+                  svg=svg,
+                  show_cluster_numbers=show_cluster_numbers)
 
     logger.info("=== Plot Generation Completed ===")
 
@@ -901,6 +1049,7 @@ def casm(fasta: str,
          output: str,
          subset: str,
          subset_size: int,
+         db_path: str = None,
          threads: int = 1,
          perplexity: int = 50,
          iterations: int = 500,
@@ -958,8 +1107,6 @@ def casm(fasta: str,
         iterations=iterations,
         exaggeration=exaggeration,
         threads=threads,
-        metadata_protein=metadata_protein,
-        metadata_genome=metadata_genome,
         force=force
     )
 
@@ -969,6 +1116,9 @@ def casm(fasta: str,
         early_clust_path=early_filename,
         full_clust_path=final_filename,
         output=output,
+        db_path=db_path,
+        metadata_protein=metadata_protein,
+        metadata_genome=metadata_genome,
         svg=svg,
         force=force,
         show_cluster_numbers=show_cluster_numbers

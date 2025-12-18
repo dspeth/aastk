@@ -177,11 +177,11 @@ def __max_scores(group, required=False):
 
 def __metadata_genome(group, required=False):
     group.add_argument('--metadata_genome', type=str, required=required,
-                       help='Path to genome metadata file')
+                       help='Select genome metadata for plotting (Options: domain, phylum, class, order_tax, family, genus, species)')
 
 def __metadata_protein(group, required=False):
     group.add_argument('--metadata_protein', type=str, required=required,
-                       help='Path to protein metadata file')
+                       help='Select protein metadata for plotting (Options: COG_ID, KEGG_ID, Pfam_ID)')
 
 def __metadata_matrix(group, required=False):
     group.add_argument('--metadata_matrix', type=str, required=required,
@@ -505,8 +505,6 @@ def get_main_parser():
             __iterations(grp)
             __exaggeration(grp)
             __threads(grp)
-            __metadata_protein(grp)
-            __metadata_genome(grp)
             __force(grp)
 
 
@@ -516,6 +514,9 @@ def get_main_parser():
             __full_clust(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __db_path(grp)
+            __metadata_protein(grp)
+            __metadata_genome(grp)
             __show(grp)
             __svg(grp)
 
@@ -528,6 +529,7 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __threads(grp)
             __output(grp)
+            __db_path(grp)
             __perplexity(grp)
             __iterations(grp)
             __exaggeration(grp)

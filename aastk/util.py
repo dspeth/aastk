@@ -103,7 +103,6 @@ def parse_protein_identifier(id: str):
 	genome_id = id.rsplit("___", 1)[0]
 	return genome_id
 
-
 def read_fasta_to_dict(fasta: str):
 	"""
 	Reads a FASTA file and returns a dictionary of headers and sequences.
