@@ -363,11 +363,11 @@ def create_embedding_file(output_file: str,
     """
     logger.info(f"Creating embedding TSV with {len(queries)} proteins")
 
-    loci = [prot_id.rsplit("_", 1)[1] for prot_id in queries]
-    genome_ids = [prot_id.rsplit("_", 1)[0] for prot_id in queries]
+    loci = [seqID.rsplit("_", 1)[1] for seqID in queries]
+    genome_ids = [seqID.rsplit("_", 1)[0] for seqID in queries]
 
     with open(output_file, "w", encoding="utf-8") as f:
-        base_cols = ["prot_ID", "locus_nr", "genome_ID"] + col_names + ["cluster"]
+        base_cols = ["seqID", "locus_nr", "genome_ID"] + col_names + ["cluster"]
 
         f.write("\t".join(base_cols) + "\n")
         for q, c, l, g, emb in zip(queries, clusters, loci, genome_ids, embedding):
@@ -398,17 +398,17 @@ def create_embedding_dataframe(embedding: np.ndarray,
     """
     logger.debug(f"Creating embedding dataframe with {len(queries)} proteins")
     df = pd.DataFrame(embedding, columns=col_names)
-    df['prot_ID'] = queries
+    df['seqID'] = queries
     df['cluster'] = clusters
 
     logger.debug("Extracting locus and genome information from protein IDs")
 
     # extract locus and genome info from protein IDs
-    df['locus_nr'] = df['prot_ID'].astype(str).str.rsplit("_", n=1).str[1]
-    df['genome_ID'] = df['prot_ID'].astype(str).str.rsplit("_", n=1).str[0]
+    df['locus_nr'] = df['seqID'].astype(str).str.rsplit("_", n=1).str[1]
+    df['genome_ID'] = df['seqID'].astype(str).str.rsplit("_", n=1).str[0]
 
     # reorder columns
-    base_cols = ['prot_ID', 'locus_nr', 'genome_ID'] + col_names + ['cluster']
+    base_cols = ['seqID', 'locus_nr', 'genome_ID'] + col_names + ['cluster']
     df = df[base_cols]
 
     logger.debug(f"Final dataframe shape: {df.shape}")
@@ -541,7 +541,7 @@ def fetch_protein_metadata(db_path: str,
 
     if column not in valid_cols:
         logger.warning(f"No valid protein metadata columns requested")
-        return pd.DataFrame({'prot_ID': protein_ids})
+        return pd.DataFrame({'seqID': protein_ids})
 
     conn = sqlite3.connect(db_path)
 
@@ -614,8 +614,8 @@ def extend_embedding_with_metadata(df: pd.DataFrame,
 
     if protein_col is not None:
         logger.info(f"Fetching protein metadata: {protein_col}")
-        protein_metadata = fetch_protein_metadata(db_path, df['prot_ID'].tolist(), protein_col)
-        df = pd.merge(df, protein_metadata, on='prot_ID', how='left')
+        protein_metadata = fetch_protein_metadata(db_path, df['seqID'].tolist(), protein_col)
+        df = pd.merge(df, protein_metadata, on='seqID', how='left')
 
     if genome_col is not None:
         logger.info(f"Fetching genome metadata: {genome_col}")
@@ -653,12 +653,12 @@ def plot_clusters(tsv_file: str,
     df = pd.read_csv(tsv_file, sep='\t')
     logger.info(f"Loaded {len(df)} data points for plotting")
 
-    if 'prot_ID' not in df.columns:
-        raise KeyError("Expected column 'prot_ID' not found in TSV")
+    if 'seqID' not in df.columns:
+        raise KeyError("Expected column 'seqID' not found in TSV")
 
-    df['prot_ID'] = df['prot_ID'].astype(str).str.strip()
+    df['seqID'] = df['seqID'].astype(str).str.strip()
     df['genome_ID'] = (
-        df['prot_ID']
+        df['seqID']
         .apply(parse_protein_identifier)
         .astype(str)
         .str.strip()
@@ -852,21 +852,21 @@ def pick(final_embedding_file: str,
     # ============================================
     # Extract protein IDs from target cluster
     # ============================================
-    cluster_prot_ids = []
+    cluster_seqIDs = []
     with open(final_embedding_file, 'r') as file:
         # parse header to find column indices
         header = file.readline().strip().split()
         cluster_idx = header.index("cluster")
-        prot_idx = header.index("prot_ID")
+        seqIDx = header.index("seqID")
 
         # iterate through data rows and collect protein IDs matching target cluster
         for line in file:
             parts = line.strip().split('\t')
-            prot_ID = parts[prot_idx]
+            seqID = parts[seqIDx]
             prot_cluster_no = parts[cluster_idx]
 
             if int(prot_cluster_no) == int(no_cluster):
-                cluster_prot_ids.append(prot_ID)
+                cluster_seqIDs.append(seqID)
 
     # ==================================
     # Load original FASTA sequences
@@ -879,7 +879,7 @@ def pick(final_embedding_file: str,
 
     # write sequences for all proteins in the selected cluster
     with open(cluster_fasta, 'w') as file:
-        for id in cluster_prot_ids:
+        for id in cluster_seqIDs:
             if id in input_fasta_dict:
                 file.write(f">{id}\n{input_fasta_dict[id]}\n")
 
