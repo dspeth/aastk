@@ -48,6 +48,7 @@ def setup_database(db_path: str) -> sqlite3.Connection:
                      other REAL,
                      sediment REAL,
                      soil REAL,
+                     unassigned REAL,
                      human REAL,
                      invertebrate REAL,
                      other_vertebrate REAL,
@@ -206,7 +207,7 @@ def populate_high_level_environment(conn: sqlite3.Connection,
             high_level_environment_data = []
             for line in f:
                 parts = line.strip().split('\t')
-                if len(parts) < 7:
+                if len(parts) < 9:
                     continue
 
                 genome_id = parts[0]
@@ -244,7 +245,7 @@ def populate_low_level_environment(conn: sqlite3.Connection,
             low_level_environment_data = []
             for line in f:
                 parts = line.strip().split('\t')
-                if len(parts) < 35:
+                if len(parts) < 37:
                     continue
 
                 genome_id = parts[0]
