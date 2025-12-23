@@ -6,6 +6,7 @@ from aastk.cli import get_main_parser
 from aastk.pasr import *
 from aastk.cugo import *
 from aastk.casm import *
+from aastk.database import *
 
 def main():
     parser = get_main_parser()
@@ -110,8 +111,8 @@ def main():
             )
 
         ### PARSER FOR CUGO FUNCTIONALITIES AND WORKFLOW ###
-        elif args.subparser_name == 'parse':
-            parse(
+        elif args.subparser_name == 'database':
+            database(
                 cog_gff_tar_path=args.cog_gff,
                 kegg_gff_tar_path=args.kegg_gff,
                 pfam_gff_tar_path=args.pfam_gff,

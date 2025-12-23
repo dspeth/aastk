@@ -405,7 +405,7 @@ def get_main_parser():
             __force(grp)
 
     ### PARSER FOR CUGO FUNCTIONALITIES AND WORKFLOW ###
-    with subparser(sub_parsers, 'parse', 'Create AASTK SQLite database') as parser:
+    with subparser(sub_parsers, 'database', 'Create AASTK SQLite database') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __cog_gff(grp, required=True)
             __kegg_gff(grp, required=True)
