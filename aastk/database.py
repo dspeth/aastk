@@ -48,7 +48,7 @@ def setup_database(db_path: str) -> sqlite3.Connection:
                      other REAL,
                      sediment REAL,
                      soil REAL,
-                     unassigned REAL,
+                     unassigned_high_level REAL,
                      human REAL,
                      invertebrate REAL,
                      other_vertebrate REAL,
@@ -82,7 +82,7 @@ def setup_database(db_path: str) -> sqlite3.Connection:
                      soil_other REAL,
                      soil_unspecified REAL,
                      tundra_wetland REAL,
-                     unassigned REAL     
+                     unassigned_low_level REAL     
                  )
                  ''')
 
@@ -217,12 +217,14 @@ def populate_high_level_environment(conn: sqlite3.Connection,
                 other = float(parts[4])
                 sediment = float(parts[5])
                 soil = float(parts[6])
+                unassigned_high_level = float(parts[7])
 
-                high_level_environment_data.append((soil, sediment, other, built, aquatic, animal_associated, genome_id))
+                high_level_environment_data.append((unassigned_high_level, soil, sediment, other, built, aquatic, animal_associated, genome_id))
 
             conn.executemany("""
                 UPDATE genome_data
                 SET 
+                    unassigned_high_level = ?,
                     soil = ?,
                     sediment = ?,
                     other = ?,
@@ -282,9 +284,9 @@ def populate_low_level_environment(conn: sqlite3.Connection,
                 soil_other = float(parts[31])
                 soil_unspecified = float(parts[32])
                 tundra_wetland = float(parts[33])
-                unassigned = float(parts[34])
+                unassigned_low_level = float(parts[34])
 
-                low_level_environment_data.append((unassigned, tundra_wetland, soil_unspecified, soil_other,
+                low_level_environment_data.append((unassigned_low_level, tundra_wetland, soil_unspecified, soil_other,
                                                    soil_agricultural, rhizosphere, forest, desert, sediment_unspecified,
                                                    marine_sediment, freshwater_sediment, viral, synthetic, subsurface,
                                                    plant_associated, other_unspecified, hypersaline, geothermal, food,
@@ -296,7 +298,7 @@ def populate_low_level_environment(conn: sqlite3.Connection,
             conn.executemany("""
                 UPDATE genome_data
                 SET
-                    unassigned = ?,
+                    unassigned_low_level = ?,
                     tundra_wetland = ?, 
                     soil_unspecified = ?, 
                     soil_other = ?,
@@ -413,7 +415,7 @@ def database(cog_gff_tar_path: str,
     from logging import getLogger
     logger = getLogger(__name__)
 
-    logger.info("Processing files: COG → TMHMM → KEGG → Pfam → Taxonomy → Culture collection "
+    logger.info("Processing files: COG → TMHMM → KEGG → Pfam → Protein sequences → Taxonomy → Culture collection "
                 "→ High level environment data → Low level environment data ")
 
     # db_path = ensure_path(target=f"globdb_{globdb_version}_cugo.db")
