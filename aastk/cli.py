@@ -79,6 +79,10 @@ def __cugo_range(group, required=False):
     group.add_argument('-r', '--cugo_range', type=int, required=required,
                        help='CUGO range of interest for genomic context analysis')
 
+def __culture_collection_path(group, required=False):
+    group.add_argument('-c', '--culture_collection_path', type=str, required=required,
+                       help='Path to culture collection data TSV file')
+
 def __dataset(group, required=False):
     group.add_argument('-d', '--dataset', type=str, required=required,
                        help='Dataset name')
@@ -135,6 +139,10 @@ def __help(group, required=False):
     group.add_argument('-h', '--help', action='help',
                        help='Display help text')
 
+def __high_level_environment_path(group, required=False):
+    group.add_argument('-h', '--high_level_environment_path', type=str, required=required,
+                       help='Path to high level environment data TSV file')
+
 def __id_list(group, required=False):
     group.add_argument('-i', '--id_list', type=str, required=required,
                        help='Path to list of GlobDB protein IDs')
@@ -158,6 +166,10 @@ def __kegg_gff(group, required=False):
 def __key_column(group, required=False):
     group.add_argument('-k', '--key_column', type=int, default=0, required=required,
                        help='Column index in the BLAST tab file to pull unique IDs from (default is 0)')
+
+def __low_level_environment_path(group, required=False):
+    group.add_argument('-l', '--low_level_environment_path', type=str, required=required,
+                       help='Path to high level environment data TSV file')
 
 def __matched(group, required=False):
     group.add_argument('-m', '--matched', type=str, required=required,
@@ -266,7 +278,7 @@ def __tabular(group, required=False):
 
 def __taxonomy_path(group, required=False):
     group.add_argument('-t', '--taxonomy_path', type=str, default=None, required=required,
-                       help='Path to taxonomy file')
+                       help='Path to gzipped taxonomy TSV file')
 
 def __threads(group, required=False):
     group.add_argument('-n', '--threads', type=int, default=1, required=required,
@@ -412,10 +424,12 @@ def get_main_parser():
             __pfam_gff(grp, required=True)
             __all_proteins(grp, required=True)
             __taxonomy_path(grp, required=True)
+            __culture_collection_path(grp, required=True)
+            __high_level_environment_path(grp, required=True)
+            __low_level_environment_path(grp, required=True)
             __globdb_version(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
-            __force(grp)
             __tmhmm_dir(grp)
 
     with subparser(sub_parsers, 'metadata', 'Retrieve metadata from AASTK SQLite database') as parser:

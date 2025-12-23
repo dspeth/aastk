@@ -18,29 +18,70 @@ def setup_database(db_path: str) -> sqlite3.Connection:
 
     conn.execute('''
                  CREATE TABLE IF NOT EXISTS protein_data (
-                                                             seqID TEXT PRIMARY KEY,
-                                                             parent_ID TEXT,
-                                                             aa_length INTEGER,
-                                                             strand TEXT,
-                                                             COG_ID TEXT,
-                                                             KEGG_ID TEXT,
-                                                             Pfam_ID TEXT,
-                                                             cugo_number INTEGER,
-                                                             no_tmh INTEGER,
-                                                             protein_seq BLOB
+                     seqID TEXT PRIMARY KEY,
+                     parent_ID TEXT,
+                     aa_length INTEGER,
+                     strand TEXT,
+                     COG_ID TEXT,
+                     KEGG_ID TEXT,
+                     Pfam_ID TEXT,
+                     cugo_number INTEGER,
+                     no_tmh INTEGER,
+                     protein_seq BLOB
                  )
                  ''')
 
     conn.execute('''
                  CREATE TABLE IF NOT EXISTS genome_data (
-                                                            genome_ID TEXT PRIMARY KEY,
-                                                            domain TEXT,
-                                                            phylum TEXT,
-                                                            class TEXT,
-                                                            order_tax TEXT,
-                                                            family TEXT,
-                                                            genus TEXT,
-                                                            species TEXT
+                     genome_ID TEXT PRIMARY KEY,
+                     domain TEXT,
+                     phylum TEXT,
+                     class TEXT,
+                     order_tax TEXT,
+                     family TEXT,
+                     genus TEXT,
+                     species TEXT,
+                     culture_collection INT,
+                     animal_associated REAL,
+                     aquatic REAL,
+                     built REAL,
+                     other REAL,
+                     sediment REAL,
+                     soil REAL,
+                     human REAL,
+                     invertebrate REAL,
+                     other_vertebrate REAL,
+                     unspecified_animal REAL,
+                     aquatic_other REAL,
+                     aquatic_unspecified REAL,
+                     freshwater REAL,
+                     groundwater REAL,
+                     marine REAL,
+                     built_other REAL,
+                     drinking_water REAL,
+                     wastewater REAL,
+                     air REAL,
+                     bacteria REAL,
+                     eukaryote_other REAL,
+                     food REAL,
+                     geothermal REAL,
+                     hypersaline REAL,
+                     other_unspecified REAL,
+                     plant_associated REAL,
+                     subsurface REAL,
+                     synthetic REAL,
+                     viral REAL,
+                     freshwater_sediment REAL,
+                     marine_sediment REAL,
+                     sediment_unspecified REAL,
+                     desert REAL,
+                     forest REAL,
+                     rhizosphere REAL,
+                     soil_agricultural REAL,
+                     soil_other REAL,
+                     soil_unspecified REAL,
+                     tundra_wetland REAL,
+                     unassigned REAL     
                  )
                  ''')
 
@@ -90,7 +131,14 @@ def process_tmhmm_file(tmhmm_filepath):
 def populate_taxonomy_table(conn: sqlite3.Connection,
                             taxonomy_filepath: str):
     try:
-        with gzip.open(taxonomy_filepath, 'rt') as f:
+        filepath = Path(taxonomy_filepath)
+
+        if filepath.suffix == '.gz':
+            file_handle = gzip.open(filepath, 'rt')
+        else:
+            file_handle = open(filepath, 'r')
+
+        with file_handle as f:
             next(f)
 
             taxonomy_data = []
@@ -120,7 +168,173 @@ def populate_taxonomy_table(conn: sqlite3.Connection,
         logger.info(f"Inserted taxonomy data for {len(taxonomy_data)} genomes")
 
     except Exception as e:
-        logger.error(f"Error populating taxonomy table: {e}")
+        logger.error(f"Error populating taxonomy data: {e}")
+
+def populate_culture_collection(conn: sqlite3.Connection,
+                                cc_file: str):
+    try:
+        with open(cc_file, 'r') as f:
+            next(f)
+
+            culture_collection_data = []
+            for line in f:
+                parts = line.strip().split('\t')
+                if len(parts) < 2:
+                    continue
+
+                genome_id = parts[0]
+                culture_collection = int(parts[1])
+
+                culture_collection_data.append((culture_collection, genome_id))
+
+            conn.executemany("""
+                UPDATE genome_data
+                SET culture_collection = ?
+                WHERE genome_id = ?
+            """, culture_collection_data)
+            conn.commit()
+
+    except Exception as e:
+        logger.error(f"Error populating culture collection data: {e}")
+
+def populate_high_level_environment(conn: sqlite3.Connection,
+                                    high_level_environment_file: str):
+    try:
+        with open(high_level_environment_file, 'r') as f:
+            next(f)
+
+            high_level_environment_data = []
+            for line in f:
+                parts = line.strip().split('\t')
+                if len(parts) < 7:
+                    continue
+
+                genome_id = parts[0]
+                animal_associated = float(parts[1])
+                aquatic = float(parts[2])
+                built = float(parts[3])
+                other = float(parts[4])
+                sediment = float(parts[5])
+                soil = float(parts[6])
+
+                high_level_environment_data.append((soil, sediment, other, built, aquatic, animal_associated, genome_id))
+
+            conn.executemany("""
+                UPDATE genome_data
+                SET 
+                    soil = ?,
+                    sediment = ?,
+                    other = ?,
+                    built = ?,
+                    aquatic = ?,
+                    animal_associated = ?
+                WHERE genome_id = ?
+            """, high_level_environment_data)
+            conn.commit()
+
+    except Exception as e:
+        logger.error(f"Error populating high level environment data: {e}")
+
+def populate_low_level_environment(conn: sqlite3.Connection,
+                                   low_level_environment_file: str):
+    try:
+        with open(low_level_environment_file, 'r') as f:
+            next(f)
+
+            low_level_environment_data = []
+            for line in f:
+                parts = line.strip().split('\t')
+                if len(parts) < 35:
+                    continue
+
+                genome_id = parts[0]
+                human = float(parts[1])
+                invertebrate = float(parts[2])
+                other_vertebrate = float(parts[3])
+                unspecified_animal = float(parts[4])
+                aquatic_other = float(parts[5])
+                aquatic_unspecified = float(parts[6])
+                freshwater = float(parts[7])
+                groundwater = float(parts[8])
+                marine = float(parts[9])
+                built_other = float(parts[10])
+                drinking_water = float(parts[11])
+                wastewater = float(parts[12])
+                air = float(parts[13])
+                bacteria = float(parts[14])
+                eukaryote_other = float(parts[15])
+                food = float(parts[16])
+                geothermal = float(parts[17])
+                hypersaline = float(parts[18])
+                other_unspecified = float(parts[19])
+                plant_associated = float(parts[20])
+                subsurface = float(parts[21])
+                synthetic = float(parts[22])
+                viral = float(parts[23])
+                freshwater_sediment = float(parts[24])
+                marine_sediment = float(parts[25])
+                sediment_unspecified = float(parts[26])
+                desert = float(parts[27])
+                forest = float(parts[28])
+                rhizosphere = float(parts[29])
+                soil_agricultural = float(parts[30])
+                soil_other = float(parts[31])
+                soil_unspecified = float(parts[32])
+                tundra_wetland = float(parts[33])
+                unassigned = float(parts[34])
+
+                low_level_environment_data.append((unassigned, tundra_wetland, soil_unspecified, soil_other,
+                                                   soil_agricultural, rhizosphere, forest, desert, sediment_unspecified,
+                                                   marine_sediment, freshwater_sediment, viral, synthetic, subsurface,
+                                                   plant_associated, other_unspecified, hypersaline, geothermal, food,
+                                                   eukaryote_other,bacteria, air, wastewater, drinking_water, built_other,
+                                                   marine, groundwater, freshwater, aquatic_unspecified, aquatic_other,
+                                                   unspecified_animal, other_vertebrate, invertebrate, human, genome_id
+                                                   ))
+
+            conn.executemany("""
+                UPDATE genome_data
+                SET
+                    unassigned = ?,
+                    tundra_wetland = ?, 
+                    soil_unspecified = ?, 
+                    soil_other = ?,
+                    soil_agricultural = ?,
+                    rhizosphere = ?,
+                    forest = ?,
+                    desert = ?, 
+                    sediment_unspecified = ?,
+                    marine_sediment = ?, 
+                    freshwater_sediment = ?, 
+                    viral = ?, 
+                    synthetic = ?, 
+                    subsurface = ?,
+                    plant_associated = ?, 
+                    other_unspecified = ?, 
+                    hypersaline = ?, 
+                    geothermal = ?, 
+                    food = ?,
+                    eukaryote_other = ?, 
+                    bacteria = ?, 
+                    air = ?, 
+                    wastewater = ?, 
+                    drinking_water = ?, 
+                    built_other = ?,
+                    marine = ?,
+                    groundwater = ?, 
+                    freshwater = ?, 
+                    aquatic_unspecified = ?, 
+                    aquatic_other = ?,
+                    unspecified_animal = ?, 
+                    other_vertebrate = ?, 
+                    invertebrate = ?, 
+                    human = ?
+                WHERE genome_id = ?
+            """, low_level_environment_data)
+            conn.commit()
+
+    except Exception as e:
+        logger.error(f"Error populating low level environment data: {e}")
 
 def stream_all_proteins(fasta: str,
                         batch_size: int = 10000):
@@ -185,9 +399,11 @@ def database(cog_gff_tar_path: str,
           tmhmm_tar_path: str = None,
           protein_fasta_path: str = None,
           taxonomy_path: str = None,
+          culture_collection_path: str = None,
+          high_level_environment_path: str = None,
+          low_level_environment_path: str = None,
           output_dir: str = None,
           globdb_version: int = None,
-          force: bool = False,
           ):
     """
     Main parsing function - processes COG first with full data, then updates with KEGG and Pfam.
@@ -196,7 +412,8 @@ def database(cog_gff_tar_path: str,
     from logging import getLogger
     logger = getLogger(__name__)
 
-    logger.info("Processing files: COG → TMHMM → KEGG → Pfam → Taxonomy")
+    logger.info("Processing files: COG → TMHMM → KEGG → Pfam → Taxonomy → Culture collection "
+                "→ High level environment data → Low level environment data ")
 
     # db_path = ensure_path(target=f"globdb_{globdb_version}_cugo.db")
     db_path = f"globdb_{globdb_version}_cugo.db"
@@ -302,8 +519,23 @@ def database(cog_gff_tar_path: str,
 
     # ===== STEP 6: Process Taxonomy file =====
     if taxonomy_path:
-        logger.info("STEP 6: Populating taxonomy table...")
+        logger.info("STEP 6: Processing taxonomy data...")
         populate_taxonomy_table(conn, taxonomy_path)
+
+    # ==== STEP 7: Process culture collection file ====
+    if culture_collection_path:
+        logger.info("STEP 7: Processing culture collection data...")
+        populate_culture_collection(conn, culture_collection_path)
+
+    # ==== STEP 8: Process high level environment data ====
+    if high_level_environment_path:
+        logger.info("STEP 8: Processing high level environment data...")
+        populate_high_level_environment(conn, high_level_environment_path)
+
+    # ==== STEP 9: Process low level environment data ====
+    if low_level_environment_path:
+        logger.info("STEP 9: Processing low level environment data...")
+        populate_low_level_environment(conn, low_level_environment_path)
 
     logger.info("Optimizing database with VACUUM...")
     conn.execute("VACUUM")

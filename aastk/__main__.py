@@ -119,9 +119,11 @@ def main():
                 tmhmm_tar_path=args.tmhmm_dir,
                 protein_fasta_path=args.all_proteins,
                 taxonomy_path=args.taxonomy_path,
+                culture_collection_path=args.culture_collection_path,
+                high_level_environment_path=args.high_level_environment_path,
+                low_level_environment_path=args.low_level_environment_path,
                 output_dir=args.output,
-                globdb_version=args.globdb_version,
-                force=args.force
+                globdb_version=args.globdb_version
             )
 
         elif args.subparser_name == 'metadata':
