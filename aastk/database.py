@@ -86,10 +86,6 @@ def setup_database(db_path: str) -> sqlite3.Connection:
                  )
                  ''')
 
-    conn.execute('CREATE INDEX IF NOT EXISTS idx_all_seqid ON protein_data(seqID)')
-    conn.execute('CREATE INDEX IF NOT EXISTS idx_parent_id ON protein_data(parent_ID)')
-    conn.execute('CREATE INDEX IF NOT EXISTS idx_genome_id ON genome_data(genome_ID)')
-
     conn.execute('''
                  CREATE VIEW IF NOT EXISTS protein_data_readable AS
                  SELECT
@@ -211,13 +207,13 @@ def populate_high_level_environment(conn: sqlite3.Connection,
                     continue
 
                 genome_id = parts[0]
-                animal_associated = float(parts[1])
-                aquatic = float(parts[2])
-                built = float(parts[3])
-                other = float(parts[4])
-                sediment = float(parts[5])
-                soil = float(parts[6])
-                unassigned_high_level = float(parts[7])
+                animal_associated = float(parts[1]) if parts[1].strip() else None
+                aquatic = float(parts[2]) if parts[2].strip() else None
+                built = float(parts[3]) if parts[3].strip() else None
+                other = float(parts[4]) if parts[4].strip() else None
+                sediment = float(parts[5]) if parts[5].strip() else None
+                soil = float(parts[6]) if parts[6].strip() else None
+                unassigned_high_level = float(parts[7]) if parts[7].strip() else None
 
                 high_level_environment_data.append((unassigned_high_level, soil, sediment, other, built, aquatic, animal_associated, genome_id))
 
@@ -251,40 +247,40 @@ def populate_low_level_environment(conn: sqlite3.Connection,
                     continue
 
                 genome_id = parts[0]
-                human = float(parts[1])
-                invertebrate = float(parts[2])
-                other_vertebrate = float(parts[3])
-                unspecified_animal = float(parts[4])
-                aquatic_other = float(parts[5])
-                aquatic_unspecified = float(parts[6])
-                freshwater = float(parts[7])
-                groundwater = float(parts[8])
-                marine = float(parts[9])
-                built_other = float(parts[10])
-                drinking_water = float(parts[11])
-                wastewater = float(parts[12])
-                air = float(parts[13])
-                bacteria = float(parts[14])
-                eukaryote_other = float(parts[15])
-                food = float(parts[16])
-                geothermal = float(parts[17])
-                hypersaline = float(parts[18])
-                other_unspecified = float(parts[19])
-                plant_associated = float(parts[20])
-                subsurface = float(parts[21])
-                synthetic = float(parts[22])
-                viral = float(parts[23])
-                freshwater_sediment = float(parts[24])
-                marine_sediment = float(parts[25])
-                sediment_unspecified = float(parts[26])
-                desert = float(parts[27])
-                forest = float(parts[28])
-                rhizosphere = float(parts[29])
-                soil_agricultural = float(parts[30])
-                soil_other = float(parts[31])
-                soil_unspecified = float(parts[32])
-                tundra_wetland = float(parts[33])
-                unassigned_low_level = float(parts[34])
+                human = float(parts[1]) if parts[1].strip() else None
+                invertebrate = float(parts[2]) if parts[2].strip() else None
+                other_vertebrate = float(parts[3]) if parts[3].strip() else None
+                unspecified_animal = float(parts[4]) if parts[4].strip() else None
+                aquatic_other = float(parts[5]) if parts[5].strip() else None
+                aquatic_unspecified = float(parts[6]) if parts[6].strip() else None
+                freshwater = float(parts[7]) if parts[7].strip() else None
+                groundwater = float(parts[8]) if parts[8].strip() else None
+                marine = float(parts[9]) if parts[9].strip() else None
+                built_other = float(parts[10]) if parts[10].strip() else None
+                drinking_water = float(parts[11]) if parts[11].strip() else None
+                wastewater = float(parts[12]) if parts[12].strip() else None
+                air = float(parts[13]) if parts[13].strip() else None
+                bacteria = float(parts[14]) if parts[14].strip() else None
+                eukaryote_other = float(parts[15]) if parts[15].strip() else None
+                food = float(parts[16]) if parts[16].strip() else None
+                geothermal = float(parts[17]) if parts[17].strip() else None
+                hypersaline = float(parts[18]) if parts[18].strip() else None
+                other_unspecified = float(parts[19]) if parts[19].strip() else None
+                plant_associated = float(parts[20]) if parts[20].strip() else None
+                subsurface = float(parts[21]) if parts[21].strip() else None
+                synthetic = float(parts[22]) if parts[22].strip() else None
+                viral = float(parts[23]) if parts[23].strip() else None
+                freshwater_sediment = float(parts[24]) if parts[24].strip() else None
+                marine_sediment = float(parts[25]) if parts[25].strip() else None
+                sediment_unspecified = float(parts[26]) if parts[26].strip() else None
+                desert = float(parts[27]) if parts[27].strip() else None
+                forest = float(parts[28]) if parts[28].strip() else None
+                rhizosphere = float(parts[29]) if parts[29].strip() else None
+                soil_agricultural = float(parts[30]) if parts[30].strip() else None
+                soil_other = float(parts[31]) if parts[31].strip() else None
+                soil_unspecified = float(parts[32]) if parts[32].strip() else None
+                tundra_wetland = float(parts[33]) if parts[33].strip() else None
+                unassigned_low_level = float(parts[34]) if parts[34].strip() else None
 
                 low_level_environment_data.append((unassigned_low_level, tundra_wetland, soil_unspecified, soil_other,
                                                    soil_agricultural, rhizosphere, forest, desert, sediment_unspecified,
@@ -450,6 +446,12 @@ def database(cog_gff_tar_path: str,
             """, gff_data)
             conn.commit()
 
+    logger.info("Creating protein_data indexes...")
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_all_seqid ON protein_data(seqID)')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_parent_id ON protein_data(parent_ID)')
+    conn.commit()
+    logger.info("protein_data indexes created")
+
     shutil.rmtree(tempdir)
     tempdir.mkdir(parents=True, exist_ok=True)
 
@@ -524,6 +526,11 @@ def database(cog_gff_tar_path: str,
     if taxonomy_path:
         logger.info("STEP 6: Processing taxonomy data...")
         populate_taxonomy_table(conn, taxonomy_path)
+
+    logger.info("Creating genome_data index...")
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_genome_id ON genome_data(genome_ID)')
+    conn.commit()
+    logger.info("genome_data index created")
 
     # ==== STEP 7: Process culture collection file ====
     if culture_collection_path:
