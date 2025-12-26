@@ -243,7 +243,7 @@ def populate_low_level_environment(conn: sqlite3.Connection,
             low_level_environment_data = []
             for line in f:
                 parts = line.strip().split('\t')
-                if len(parts) < 37:
+                if len(parts) < 36:
                     continue
 
                 genome_id = parts[0]
