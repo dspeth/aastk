@@ -2,7 +2,7 @@
 
 ### NOTE: aastk is currently in active development, and not yet ready for broad public use. Please be patient
 ## AASTK synopsis
-The amino acid sequence toolkit (AASTK) is a suite of tools that enables construction and analyses of protein sequence datasets from the [GlobDB](https://globdb.org/) genomes. The GlobDB is the most comprehensive genomic resource of species-representative microbial genomes of Bacteria and Archaea, and contains the largest phylogenetic sequence diversity currently available in a single resource. AASTK is designed to leverage the microbial diversity captured in the GlobDB to create and analyze protein sequence datasets capturing the known diversity of Bacteria and Archaea for evolutionary and functional studies.
+The amino acid sequence toolkit (AASTK) is a suite of tools that enables construction and analyses of protein sequence datasets from the [GlobDB](https://globdb.org/) genomes. The GlobDB is the most comprehensive genomic resource of species-representative microbial genomes of Bacteria and Archaea, and contains the largest phylogenetic sequence diversity currently available in a single resource. AASTK is designed to leverage the GlobDB to create and analyze protein sequence datasets for evolutionary and functional studies.
 
 AASTK uses a precomputed SQL database that includes the protein sequences, their genomic context, functional annotations from KEGG, COG, and PFAM, and metadata on the genomes the protein sequences. This SQL database is available for download on the [GlobDB website](https://globdb.org/downloads).
 
