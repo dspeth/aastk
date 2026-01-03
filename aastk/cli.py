@@ -133,7 +133,7 @@ def __full_clust(group, required=False):
 
 def __globdb_version(group, required=False):
     group.add_argument('-g', '--globdb_version', type=int, required=required,
-                       help='GlobDB version')
+                       help='GlobDB version (example: r226)')
 
 def __help(group, required=False):
     group.add_argument('-h', '--help', action='help',

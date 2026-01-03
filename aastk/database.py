@@ -402,7 +402,7 @@ def database(cog_gff_tar_path: str,
           high_level_environment_path: str = None,
           low_level_environment_path: str = None,
           output_dir: str = None,
-          globdb_version: int = None,
+          globdb_version: str = None,
           ):
     """
     Main parsing function - processes COG first with full data, then updates with KEGG and Pfam.
