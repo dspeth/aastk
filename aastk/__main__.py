@@ -7,6 +7,40 @@ from aastk.pasr import *
 from aastk.cugo import *
 from aastk.casm import *
 from aastk.database import *
+from aastk import __version__
+
+def print_help():
+    print('''\
+
+              ...::: AASTK v%s :::...
+
+  Workflows:
+    pasr (Protein Alignment Score Ratio) -> Generate comprehensive datasets of homologous proteins by querying GlobDB with curated reference sets using DIAMOND and filtering hits based on alignment score ratio thresholds.
+                     (build -> search -> extract -> calculate -> bsr -> pasr_plot)
+    casm  (Clustering Alignment Score Matrix) -> Identify functional heterogeneity within these homologous datasets by constructing alignment score matrices from random subsampling, embedding them using dimensionality reduction methods such as t-distributed stochastic neighbourhood embedding (t-SNE), and  subsequent clustering with density-based algorithms.
+                     (matrix -> cluster -> casm_plot)
+    cugo (Co-localized Unidirectional Gene Organization) -> Analyze and visualize consensus genomic neighborhoods of selected protein clusters, providing insights into operon structure, subunit composition, and potential protein complex architecture.
+                     (context -> cugo_plot)
+ 
+
+  Workflow-adjacent methods:
+    PASR:
+        build -> Build DIAMOND database from seed sequence(s)
+        search -> Search DIAMOND reference database for homologous sequences
+        extract -> Extract reads that have DIAMOND hits against custom database
+        calculate -> Calculate max scores for extracted sequences using BLOSUM matrix
+        bsr -> Compute BSR (Blast Score Ratio) using a BLAST tab file and max scores from a TSV.
+        pasr_plot -> Plot the Blast Score Ratio of query sequences against the DIAMOND database
+
+  Standalone tools:
+
+ 
+  Testing:
+
+
+  Use: aastk <command> -h for command specific help
+    ''' % __version__)
+
 
 def main():
     parser = get_main_parser()
