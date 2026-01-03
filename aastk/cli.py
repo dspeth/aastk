@@ -432,7 +432,7 @@ def get_main_parser():
             __output(grp)
             __tmhmm_dir(grp)
 
-    with subparser(sub_parsers, 'metadata', 'Retrieve metadata from AASTK SQLite database') as parser:
+    with subparser(sub_parsers, 'meta', 'Retrieve metadata from AASTK SQLite database') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __db_path(grp, required=True)
             __fasta(grp, required=True)

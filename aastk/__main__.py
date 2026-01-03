@@ -126,8 +126,8 @@ def main():
                 globdb_version=args.globdb_version
             )
 
-        elif args.subparser_name == 'metadata':
-            metadata(
+        elif args.subparser_name == 'meta':
+            meta(
                 db_path=args.db_path,
                 fasta=args.fasta,
                 output=args.output,

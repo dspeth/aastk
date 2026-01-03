@@ -622,7 +622,7 @@ def process_batch(db_path: str,
     conn.close()
     return batch, result_dict
 
-def metadata(db_path: str,
+def meta(db_path: str,
              fasta: str,
              output: str,
              threads: int = 1,
