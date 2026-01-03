@@ -7,7 +7,8 @@ from aastk.pasr import *
 from aastk.cugo import *
 from aastk.casm import *
 from aastk.database import *
-from aastk import __version__
+from aastk import __version__, __copyright__, __author__
+import sys
 
 def print_help():
     print('''\
@@ -15,36 +16,66 @@ def print_help():
               ...::: AASTK v%s :::...
 
   Workflows:
-    pasr (Protein Alignment Score Ratio) -> Generate comprehensive datasets of homologous proteins by querying GlobDB with curated reference sets using DIAMOND and filtering hits based on alignment score ratio thresholds.
-                     (build -> search -> extract -> calculate -> bsr -> pasr_plot)
-    casm  (Clustering Alignment Score Matrix) -> Identify functional heterogeneity within these homologous datasets by constructing alignment score matrices from random subsampling, embedding them using dimensionality reduction methods such as t-distributed stochastic neighbourhood embedding (t-SNE), and  subsequent clustering with density-based algorithms.
-                     (matrix -> cluster -> casm_plot)
-    cugo (Co-localized Unidirectional Gene Organization) -> Analyze and visualize consensus genomic neighborhoods of selected protein clusters, providing insights into operon structure, subunit composition, and potential protein complex architecture.
-                     (context -> cugo_plot)
+    pasr (Protein Alignment Score Ratio) -> Generate comprehensive datasets of homologous protein complexes.
+                                            (build -> search -> extract -> calculate -> bsr -> pasr_plot)
+                                            
+    casm  (Clustering Alignment Score Matrix) -> Identify functional heterogeneity within homologous datasets by clustering alignment score matrices.
+                                                 (matrix -> cluster -> casm_plot)
+                                                 
+    cugo (Co-localized Unidirectional Gene Organization) -> Analyze consensus genomic context of selected protein complex clusters.
+                                                            (context -> cugo_plot)
  
 
   Workflow-adjacent methods:
-    PASR:
+    pasr:
         build -> Build DIAMOND database from seed sequence(s)
         search -> Search DIAMOND reference database for homologous sequences
         extract -> Extract reads that have DIAMOND hits against custom database
         calculate -> Calculate max scores for extracted sequences using BLOSUM matrix
         bsr -> Compute BSR (Blast Score Ratio) using a BLAST tab file and max scores from a TSV.
         pasr_plot -> Plot the Blast Score Ratio of query sequences against the DIAMOND database
+        
+        Standalone:
+        select -> Select target sequences in accordance with metadata cutoffs
+        
+    casm:
+        matrix -> Create alignment matrix for tSNE embedding and DBSCAN clustering
+        cluster -> Run tSNE embedding and DBSCAN clustering on input matrix and matrix metadata
+        casm_plot -> Plot CASM .tsv output files
+        
+        Standalone:
+        pick -> Pick CASM clusters to generate .faa file for further analysis
+        
+    cugo:
+        context -> Parse context information from CUGO input file
+        cugo_plot -> Plot CUGO context
+        
+        Standalone:
+        retrieve -> Retrieve protein IDs for select CUGO position
 
   Standalone tools:
+    meta -> Retrieve metadata from AASTK SQLite database
 
  
-  Testing:
 
 
-  Use: aastk <command> -h for command specific help
+  Use: aastk <command> -h for command specific help; aastk --silent <command> to suppress all console output except errors
     ''' % __version__)
 
 
 def main():
     parser = get_main_parser()
-    args = parser.parse_args()
+
+    if len(sys.argv) == 1:
+        print_help()
+        sys.exit(0)
+    elif sys.argv[1] in {'-v', '--v', '-version', '--version'}:
+        print(f"AASTK: version {__version__} {__copyright__} {__author__}")
+    elif sys.argv[1] in {'-h', '--h', '-help', '--help'}:
+        print_help()
+        sys.exit(0)
+    else:
+        args = parser.parse_args()
 
     output_dir = getattr(args, 'output', getattr(args, 'output_dir', None))
     logger = logger_setup(silent=args.silent, output_dir=output_dir)

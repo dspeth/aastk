@@ -314,7 +314,7 @@ def __y_range(group, required=False):
 
 def get_main_parser():
     main_parser = argparse.ArgumentParser(
-        prog='aastk', add_help=True, conflict_handler='resolve')
+        prog='aastk', add_help=False, conflict_handler='resolve')
 
     main_parser.add_argument('--silent', action='store_true',
                              help='Suppress all console output except errors')
