@@ -15,7 +15,6 @@ import yaml
 import gzip
 import sqlite3
 from tqdm import tqdm
-import subprocess
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -25,44 +24,6 @@ logger = logging.getLogger(__name__)
 # ===========================
 # CUGO GFF PARSER
 # ===========================
-def setup_database(db_path: str) -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path)
-
-    conn.execute('''
-                 CREATE TABLE IF NOT EXISTS all_data (
-                                                         seqID TEXT PRIMARY KEY,
-                                                         parent_ID TEXT,
-                                                         aa_length INTEGER,
-                                                         strand TEXT,
-                                                         COG_ID TEXT,
-                                                         KEGG_ID TEXT,
-                                                         Pfam_ID TEXT,
-                                                         cugo_number INTEGER,
-                                                         no_tmh INTEGER
-                 )
-                 ''')
-
-    conn.execute('''
-                 CREATE TABLE IF NOT EXISTS taxonomy (
-                                                         genome_ID TEXT PRIMARY KEY,
-                                                         domain TEXT,
-                                                         phylum TEXT,
-                                                         class TEXT,
-                                                         order_tax TEXT,
-                                                         family TEXT,
-                                                         genus TEXT,
-                                                         species TEXT
-                 )
-                 ''')
-
-    conn.execute('CREATE INDEX IF NOT EXISTS idx_all_seqid ON all_data(seqID)')
-    conn.execute('CREATE INDEX IF NOT EXISTS idx_parent_id ON all_data(parent_ID)')
-    conn.execute('CREATE INDEX IF NOT EXISTS idx_taxonomy_genome ON taxonomy(genome_ID)')
-
-    conn.commit()
-    return conn
-
-
 def extract_gene_info(line: list) -> tuple:
     """
     Extracts gene information from a GFF/GTF annotation line.
@@ -397,188 +358,8 @@ def process_gff_file(filepath: str,
         else:
             return parse_single_gff(content)
     except Exception as e:
-        # Optional: log the error
-        # logger.warning(f"Failed to process {filepath}: {e}")
+        logger.warning(f"Failed to process {filepath}: {e}")
         return []
-
-def process_tmhmm_file(tmhmm_filepath):
-    try:
-        with open(tmhmm_filepath, 'r') as f:
-            tmhmm_data = []
-            for line in f:
-                if line.startswith('prot_ID'):
-                    continue
-                parts = line.strip().split('\t')
-                if len(parts) >= 2:
-                    prot_id = parts[0]
-                    try:
-                        no_tmh = int(parts[1])
-                    except ValueError:
-                        no_tmh = 0
-                    tmhmm_data.append((no_tmh, prot_id))
-        return tmhmm_data
-    except Exception:
-        return []
-
-def populate_taxonomy_table(conn: sqlite3.Connection,
-                            taxonomy_filepath: str):
-    try:
-        with gzip.open(taxonomy_filepath, 'rt') as f:
-            next(f)
-
-            taxonomy_data = []
-            for line in f:
-                parts = line.strip().split('\t')
-                if len(parts) < 8:
-                    continue
-
-                genome_id = parts[0]
-                domain = parts[1]
-                phylum = parts[2]
-                class_ = parts[3]
-                order = parts[4]
-                family = parts[5]
-                genus = parts[6]
-                species = parts[7]
-
-                taxonomy_data.append((genome_id, domain, phylum, class_, order, family, genus, species))
-
-            conn.executemany("""
-                INSERT OR REPLACE INTO taxonomy
-                (genome_id, domain, phylum, class, order_tax, family, genus, species)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?) 
-            """, taxonomy_data)
-
-        conn.commit()
-        logger.info(f"Inserted taxonomy data for {len(taxonomy_data)} genomes")
-
-    except Exception as e:
-        logger.error(f"Error populating taxonomy table: {e}")
-
-
-def parse(cog_gff_tar_path: str,
-          kegg_gff_tar_path: str = None,
-          pfam_gff_tar_path: str = None,
-          tmhmm_tar_path: str = None,
-          taxonomy_path: str = None,
-          output_dir: str = None,
-          globdb_version: int = None,
-          force: bool = False,
-          ):
-    """
-    Main parsing function - processes COG first with full data, then updates with KEGG and Pfam.
-    All annotations use Name= attribute from GFF files.
-    """
-    from logging import getLogger
-    logger = getLogger(__name__)
-
-    logger.info("Processing files: COG → TMHMM → KEGG → Pfam → Taxonomy")
-
-    # db_path = ensure_path(target=f"globdb_{globdb_version}_cugo.db")
-    db_path = f"globdb_{globdb_version}_cugo.db"
-
-    if output_dir is None:
-        output_dir = '.'
-
-    output_path = Path(output_dir)
-    tempdir = output_path / 'tempdir'
-    if tempdir.exists():
-        shutil.rmtree(tempdir)
-    tempdir.mkdir(parents=True, exist_ok=True)
-
-    # Setup database
-    conn = setup_database(db_path)
-
-    # ===== STEP 1: Process COG GFF files =====
-    logger.info("STEP 1: Processing COG GFF files...")
-    subprocess.run(["tar", "-xzf", cog_gff_tar_path, "-C", str(tempdir)], check=True)
-
-    cog_gff_files = list(tempdir.rglob("*.gff.gz")) + list(tempdir.rglob("*.gff"))
-    logger.info(f"Found {len(cog_gff_files)} COG GFF files")
-
-    for gff_file in tqdm(cog_gff_files, desc="Processing COG GFF"):
-        gff_data = process_gff_file(str(gff_file), update_mode=False)
-        if gff_data:
-            conn.executemany("""
-                INSERT OR REPLACE INTO all_data
-                (seqID, parent_ID, aa_length, strand, COG_ID, cugo_number)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, gff_data)
-            conn.commit()
-
-    shutil.rmtree(tempdir)
-    tempdir.mkdir(parents=True, exist_ok=True)
-
-    # ===== STEP 2: Process TMHMM files =====
-    if tmhmm_tar_path:
-        logger.info("STEP 2: Processing TMHMM files...")
-        subprocess.run(["tar", "-xzf", tmhmm_tar_path, "-C", str(tempdir)], check=True)
-
-        tmhmm_files = list(tempdir.rglob("*_tmhmm_clean"))
-        logger.info(f"Found {len(tmhmm_files)} TMHMM files")
-
-        for tmhmm_file in tqdm(tmhmm_files, desc="Processing TMHMM"):
-            tmhmm_data = process_tmhmm_file(str(tmhmm_file))
-            if tmhmm_data:
-                conn.executemany("""
-                                 UPDATE all_data
-                                 SET no_tmh = ?
-                                 WHERE seqID = ?
-                                 """, tmhmm_data)
-                conn.commit()
-
-        shutil.rmtree(tempdir)
-        tempdir.mkdir(parents=True, exist_ok=True)
-
-    # ===== STEP 3: Process KEGG GFF files =====
-    if kegg_gff_tar_path:
-        logger.info("STEP 3: Updating KEGG annotations...")
-        subprocess.run(["tar", "-xzf", kegg_gff_tar_path, "-C", str(tempdir)], check=True)
-
-        kegg_gff_files = list(tempdir.rglob("*.gff.gz")) + list(tempdir.rglob("*.gff"))
-        logger.info(f"Found {len(kegg_gff_files)} KEGG GFF files")
-
-        for gff_file in tqdm(kegg_gff_files, desc="Updating KEGG IDs"):
-            kegg_data = process_gff_file(str(gff_file), update_mode=True)
-            if kegg_data:
-                conn.executemany("""
-                                 UPDATE all_data
-                                 SET KEGG_ID = ?
-                                 WHERE seqID = ?
-                                 """, kegg_data)
-                conn.commit()
-
-        shutil.rmtree(tempdir)
-        tempdir.mkdir(parents=True, exist_ok=True)
-
-    # ===== STEP 4: Process Pfam GFF files =====
-    if pfam_gff_tar_path:
-        logger.info("STEP 4: Updating Pfam annotations...")
-        subprocess.run(["tar", "-xzf", pfam_gff_tar_path, "-C", str(tempdir)], check=True)
-
-        pfam_gff_files = list(tempdir.rglob("*.gff.gz")) + list(tempdir.rglob("*.gff"))
-        logger.info(f"Found {len(pfam_gff_files)} Pfam GFF files")
-
-        for gff_file in tqdm(pfam_gff_files, desc="Updating Pfam IDs"):
-            pfam_data = process_gff_file(str(gff_file), update_mode=True)
-            if pfam_data:
-                conn.executemany("""
-                                 UPDATE all_data
-                                 SET Pfam_ID = ?
-                                 WHERE seqID = ?
-                                 """, pfam_data)
-                conn.commit()
-
-        shutil.rmtree(tempdir)
-
-    # ===== STEP 5: Process Taxonomy file =====
-    if taxonomy_path:
-        logger.info("STEP 5: Populating taxonomy table...")
-        populate_taxonomy_table(conn, taxonomy_path)
-
-    conn.close()
-    logger.info("Database creation complete!")
-
 
 # ======================================
 # FUNCTION DEFINITIONS FOR CUGO PLOTTING
@@ -646,7 +427,8 @@ def plot_top_cogs_per_position(
 
     # Load COG color mapping
     script_dir = Path(__file__).resolve().parent
-    color_yaml_path = script_dir / 'cog_colors.yaml'
+    yaml_dir = script_dir / "yaml"
+    color_yaml_path = yaml_dir / 'cog_colors.yaml'
     with open(color_yaml_path, 'r') as f:
         cog_color_map = yaml.safe_load(f)
 
@@ -1140,7 +922,7 @@ def fetch_seqid_batch(batch, cugo_path):
     placeholders = ",".join("?" * len(batch))
     query = f"""
         SELECT seqID, parent_ID, aa_length, strand, COG_ID, CUGO_number, no_TMH
-        FROM all_data
+        FROM protein_data
         WHERE seqID IN ({placeholders})
     """
     cursor.execute(query, batch)
@@ -1158,7 +940,7 @@ def fetch_parent_context(parent_ID, needed_numbers, cugo_path, batch_size=500):
         placeholders = ",".join("?" * len(batch))
         query = f"""
             SELECT seqID, parent_ID, aa_length, strand, COG_ID, CUGO_number, no_TMH
-            FROM all_data
+            FROM protein_data
             WHERE parent_ID = ? AND CUGO_number IN ({placeholders})
             ORDER BY CUGO_number
         """
@@ -1324,9 +1106,11 @@ def cugo(cugo_path: str,
 
 def retrieve(context_path: str,
              position: int,
-             output: str):
+             db_path: str,
+             output: str,
+             force: bool = False):
     dataset_name = determine_dataset_name(context_path, '.', 0, '_context')
-    output_path = ensure_path(output, f'{dataset_name}_{position}_ids.txt')
+    output_path = ensure_path(output, f'{dataset_name}_{position}_ids.txt', force=force)
 
     # load context data
     df = pd.read_csv(context_path, sep='\t')
@@ -1335,11 +1119,32 @@ def retrieve(context_path: str,
     pos_data = df[df['position'] == position]
 
     # get unique seqIDs
-    seq_ids = pos_data['seqID'].dropna().unique()
+    seq_ids = pos_data['seqID'].dropna().unique().tolist()
+
+    if not seq_ids:
+        logger.warning(f"No sequences found for position {position}")
+        return output_path
+
+    # connect to database
+    conn = sqlite3.connect(db_path)
+
+    # query database for sequences
+    placeholders = ','.join('?' * len(seq_ids))
+    cursor = conn.execute(f"""
+        SELECT seqID, protein_seq 
+        FROM protein_data 
+        WHERE seqID IN ({placeholders}) AND protein_seq IS NOT NULL
+    """, seq_ids)
 
     # write to file
-    with open(output_path, 'w') as f:
-        for seq_id in seq_ids:
-            f.write(f"{seq_id}\n")
+    with open(output_path, 'w') as file:
+        count = 0
+        for seqid, compressed_seq in tqdm(cursor, total=len(seq_ids), desc="Retrieving sequences"):
+            sequence = decompress_sequence(compressed_seq)
+            file.write(f">{seqid}\n{sequence}\n")
+            count += 1
 
-    return len(seq_ids)
+    conn.close()
+    logger.info(f"Retrieved {count} sequences to {output_path}")
+
+    return output_path

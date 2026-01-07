@@ -6,10 +6,76 @@ from aastk.cli import get_main_parser
 from aastk.pasr import *
 from aastk.cugo import *
 from aastk.casm import *
+from aastk.database import *
+from aastk import __version__, __copyright__, __author__
+import sys
+
+def print_help():
+    print('''\
+
+              ...::: AASTK v%s :::...
+
+  Workflows:
+    pasr (Protein Alignment Score Ratio) -> Generate comprehensive datasets of homologous protein complexes.
+                                            (build -> search -> extract -> calculate -> bsr -> pasr_plot)
+                                            
+    casm  (Clustering Alignment Score Matrix) -> Identify functional heterogeneity within homologous datasets by clustering alignment score matrices.
+                                                 (matrix -> cluster -> casm_plot)
+                                                 
+    cugo (Co-localized Unidirectional Gene Organization) -> Analyze consensus genomic context of selected protein complex clusters.
+                                                            (context -> cugo_plot)
+ 
+
+  Workflow-adjacent methods:
+    pasr:
+        build -> Build DIAMOND database from seed sequence(s)
+        search -> Search DIAMOND reference database for homologous sequences
+        extract -> Extract reads that have DIAMOND hits against custom database
+        calculate -> Calculate max scores for extracted sequences using BLOSUM matrix
+        bsr -> Compute BSR (Blast Score Ratio) using a BLAST tab file and max scores from a TSV.
+        pasr_plot -> Plot the Blast Score Ratio of query sequences against the DIAMOND database
+        
+        Standalone:
+        select -> Select target sequences in accordance with metadata cutoffs
+        
+    casm:
+        matrix -> Create alignment matrix for tSNE embedding and DBSCAN clustering
+        cluster -> Run tSNE embedding and DBSCAN clustering on input matrix and matrix metadata
+        casm_plot -> Plot CASM .tsv output files
+        
+        Standalone:
+        pick -> Pick CASM clusters to generate .faa file for further analysis
+        
+    cugo:
+        context -> Parse context information from CUGO input file
+        cugo_plot -> Plot CUGO context
+        
+        Standalone:
+        retrieve -> Retrieve protein IDs for select CUGO position
+
+  Standalone tools:
+    meta -> Retrieve metadata from AASTK SQLite database
+
+ 
+
+
+  Use: aastk <command> -h for command specific help; aastk --silent <command> to suppress all console output except errors
+    ''' % __version__)
+
 
 def main():
     parser = get_main_parser()
-    args = parser.parse_args()
+
+    if len(sys.argv) == 1:
+        print_help()
+        sys.exit(0)
+    elif sys.argv[1] in {'-v', '--v', '-version', '--version'}:
+        print(f"AASTK: version {__version__} {__copyright__} {__author__}")
+    elif sys.argv[1] in {'-h', '--h', '-help', '--help'}:
+        print_help()
+        sys.exit(0)
+    else:
+        args = parser.parse_args()
 
     output_dir = getattr(args, 'output', getattr(args, 'output_dir', None))
     logger = logger_setup(silent=args.silent, output_dir=output_dir)
@@ -78,16 +144,6 @@ def main():
                 update=args.update
             )
 
-        elif args.subparser_name == 'metadata':
-            metadata(
-                selfmin=args.selfmin,
-                selfmax=args.selfmax,
-                dbmin=args.dbmin,
-                bsr=args.bsr_cutoff,
-                output_dir=args.output,
-                force=args.force
-            )
-
         elif args.subparser_name == 'select':
             select(
                 yaml_path=args.yaml,
@@ -120,18 +176,32 @@ def main():
             )
 
         ### PARSER FOR CUGO FUNCTIONALITIES AND WORKFLOW ###
-        elif args.subparser_name == 'parse':
-            parse(
+        elif args.subparser_name == 'database':
+            database(
                 cog_gff_tar_path=args.cog_gff,
                 kegg_gff_tar_path=args.kegg_gff,
                 pfam_gff_tar_path=args.pfam_gff,
                 tmhmm_tar_path=args.tmhmm_dir,
+                protein_fasta_path=args.all_proteins,
                 taxonomy_path=args.taxonomy_path,
+                culture_collection_path=args.culture_collection_path,
+                high_level_environment_path=args.high_level_environment_path,
+                low_level_environment_path=args.low_level_environment_path,
                 output_dir=args.output,
-                globdb_version=args.globdb_version,
-                force=args.force
+                globdb_version=args.globdb_version
             )
 
+        elif args.subparser_name == 'meta':
+            meta(
+                db_path=args.db_path,
+                fasta=args.fasta,
+                output=args.output,
+                threads=args.threads,
+                include_annotation=args.include_annotation,
+                include_taxonomy=args.include_taxonomy,
+                all_metadata=args.all_metadata,
+                force=args.force
+            )
 
         elif args.subparser_name == 'context':
             context(
@@ -141,7 +211,7 @@ def main():
                 cugo_range=args.cugo_range,
                 output_dir=args.output,
                 threads=args.threads,
-                force=args.force,
+                force=args.force
             )
 
         elif args.subparser_name == 'cugo_plot':
@@ -153,7 +223,7 @@ def main():
                 output=args.output,
                 cugo=args.cugo,
                 size=args.size,
-                all_plots=args.all,
+                all_plots=args.all_plots,
                 bin_width=args.bin_width,
                 y_range=args.y_range,
                 tmh_y_range=args.tmh_y_range,
@@ -183,7 +253,9 @@ def main():
             retrieve(
                 context_path=args.context_path,
                 position=args.position,
-                output=args.output
+                db_path=args.db_path,
+                output=args.output,
+                force=args.force
             )
 
         ### PARSER FOR CASM FUNCTIONALITIES AND WORKFLOW ###
@@ -206,8 +278,6 @@ def main():
                 iterations=args.iterations,
                 exaggeration=args.exagerration,
                 threads=args.threads,
-                metadata_protein=args.metadata_protein,
-                metadata_genome=args.metadata_genome,
                 force=args.force,
             )
 
@@ -217,6 +287,9 @@ def main():
                 early_clust_path=args.early_clust,
                 full_clust_path=args.full_clust,
                 output=args.output,
+                db_path=args.db_path,
+                metadata_protein=args.metadata_protein,
+                metadata_genome=args.metadata_genome,
                 force=args.force,
                 svg=args.svg,
                 show_cluster_numbers=args.show
@@ -226,6 +299,7 @@ def main():
             casm(
                 fasta=args.fasta,
                 output=args.output,
+                db_path=args.db_path,
                 subset=args.subset,
                 subset_size=args.subset_size,
                 threads=args.threads,

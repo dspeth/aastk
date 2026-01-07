@@ -18,9 +18,17 @@ def mutex_group(parser, required):
 def arg_group(parser, name):
     yield parser.add_argument_group(name)
 
-def __all(group, required=False):
-    group.add_argument('--all', action='store_true', required=required,
+def __all_plots(group, required=False):
+    group.add_argument('--all_plots', action='store_true', required=required,
                        help='Generate a combined plot for CUGO, AA sequence length and TMHMM')
+
+def __all_proteins(group, required=False):
+    group.add_argument('-a', '--all_proteins', type=str, required=required,
+                       help='Path to FASTA file containing all GlobDB protein sequences')
+
+def __all_metadata(group, required=False):
+    group.add_argument('--all_metadata', action='store_true', required=required,
+                       help='Include all metadata in output file')
 
 def __bin_width(group, required=False):
     group.add_argument('-b', '--bin_width', type=int, default=50, required=required,
@@ -71,6 +79,10 @@ def __cugo_range(group, required=False):
     group.add_argument('-r', '--cugo_range', type=int, required=required,
                        help='CUGO range of interest for genomic context analysis')
 
+def __culture_collection_path(group, required=False):
+    group.add_argument('-c', '--culture_collection_path', type=str, required=required,
+                       help='Path to culture collection data TSV file')
+
 def __dataset(group, required=False):
     group.add_argument('-d', '--dataset', type=str, required=required,
                        help='Dataset name')
@@ -85,7 +97,7 @@ def __dbmin(group, required=False):
 
 def __db_path(group, required=False):
     group.add_argument('-d', '--db_path', type=str, default='temp_genome_data.db', required=required,
-                       help='Path to temporary sqlite DB for merging CUGO and TMHMM data')
+                       help='Path to SQLite database')
 
 def __early_clust(group, required=False):
     group.add_argument('-e', '--early_clust', type=str, required=required,
@@ -121,15 +133,27 @@ def __full_clust(group, required=False):
 
 def __globdb_version(group, required=False):
     group.add_argument('-g', '--globdb_version', type=int, required=required,
-                       help='GlobDB version')
+                       help='GlobDB version (example: r226)')
 
 def __help(group, required=False):
     group.add_argument('-h', '--help', action='help',
                        help='Display help text')
 
+def __high_level_environment_path(group, required=False):
+    group.add_argument('-h', '--high_level_environment_path', type=str, required=required,
+                       help='Path to high level environment data TSV file')
+
 def __id_list(group, required=False):
     group.add_argument('-i', '--id_list', type=str, required=required,
                        help='Path to list of GlobDB protein IDs')
+
+def __include_annotation(group, required=False):
+    group.add_argument('--include_annotation', action='store_true', required=required,
+                       help='Include annotation metadata in output')
+
+def __include_taxonomy(group, required=False):
+    group.add_argument('--include_taxonomy', action='store_true', required=required,
+                       help='Include taxonomy metadata in output')
 
 def __iterations(group, required=False):
     group.add_argument('-i', '--iterations', type=str, default=500, required=required,
@@ -142,6 +166,10 @@ def __kegg_gff(group, required=False):
 def __key_column(group, required=False):
     group.add_argument('-k', '--key_column', type=int, default=0, required=required,
                        help='Column index in the BLAST tab file to pull unique IDs from (default is 0)')
+
+def __low_level_environment_path(group, required=False):
+    group.add_argument('-l', '--low_level_environment_path', type=str, required=required,
+                       help='Path to high level environment data TSV file')
 
 def __matched(group, required=False):
     group.add_argument('-m', '--matched', type=str, required=required,
@@ -161,11 +189,11 @@ def __max_scores(group, required=False):
 
 def __metadata_genome(group, required=False):
     group.add_argument('--metadata_genome', type=str, required=required,
-                       help='Path to genome metadata file')
+                       help='Select genome metadata for plotting (Options: domain, phylum, class, order_tax, family, genus, species)')
 
 def __metadata_protein(group, required=False):
     group.add_argument('--metadata_protein', type=str, required=required,
-                       help='Path to protein metadata file')
+                       help='Select protein metadata for plotting (Options: COG_ID, KEGG_ID, Pfam_ID)')
 
 def __metadata_matrix(group, required=False):
     group.add_argument('--metadata_matrix', type=str, required=required,
@@ -250,7 +278,7 @@ def __tabular(group, required=False):
 
 def __taxonomy_path(group, required=False):
     group.add_argument('-t', '--taxonomy_path', type=str, default=None, required=required,
-                       help='Path to taxonomy file')
+                       help='Path to gzipped taxonomy TSV file')
 
 def __threads(group, required=False):
     group.add_argument('-n', '--threads', type=int, default=1, required=required,
@@ -286,7 +314,7 @@ def __y_range(group, required=False):
 
 def get_main_parser():
     main_parser = argparse.ArgumentParser(
-        prog='aastk', add_help=True, conflict_handler='resolve')
+        prog='aastk', add_help=False, conflict_handler='resolve')
 
     main_parser.add_argument('--silent', action='store_true',
                              help='Suppress all console output except errors')
@@ -353,21 +381,6 @@ def get_main_parser():
             __update(grp)
             __yaml(grp)
 
-    with subparser(sub_parsers, 'metadata', 'Create a metadata file for dataset update', ) as parser:
-        # for consistent naming of analysis files; it is unlikely that users will create metadata without access to one of these files
-        with mutex_group(parser, required=True) as grp:
-            __seed(grp)
-            __bsr(grp)
-        with mutex_group(parser, required=True) as grp:
-            __dbmin(grp)
-            __bsr_cutoff(grp)
-        with arg_group(parser, 'Required arguments') as grp:
-            __selfmax(grp, required=True)
-            __selfmin(grp, required=True)
-        with arg_group(parser, 'Optional') as grp:
-            __output(grp)
-            __force(grp)
-
 
     with subparser(sub_parsers, 'select', 'Select target sequences in accordance with metadata cutoffs') as parser:
         with mutex_group(parser, required=True) as grp:
@@ -404,17 +417,33 @@ def get_main_parser():
             __force(grp)
 
     ### PARSER FOR CUGO FUNCTIONALITIES AND WORKFLOW ###
-    with subparser(sub_parsers, 'parse', 'Parse GFF input file') as parser:
+    with subparser(sub_parsers, 'database', 'Create AASTK SQLite database') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __cog_gff(grp, required=True)
             __kegg_gff(grp, required=True)
             __pfam_gff(grp, required=True)
+            __all_proteins(grp, required=True)
             __taxonomy_path(grp, required=True)
+            __culture_collection_path(grp, required=True)
+            __high_level_environment_path(grp, required=True)
+            __low_level_environment_path(grp, required=True)
             __globdb_version(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
-            __force(grp)
             __tmhmm_dir(grp)
+
+    with subparser(sub_parsers, 'meta', 'Retrieve metadata from AASTK SQLite database') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __db_path(grp, required=True)
+            __fasta(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
+            __threads(grp)
+            __include_annotation(grp)
+            __include_taxonomy(grp)
+            __all_metadata(grp)
+            __force(grp)
+
 
 
 
@@ -439,7 +468,7 @@ def get_main_parser():
             __top_n(grp)
             __cugo(grp)
             __size(grp)
-            __all(grp)
+            __all_plots(grp)
             __bin_width(grp)
             __y_range(grp)
             __tmh_y_range(grp)
@@ -490,8 +519,6 @@ def get_main_parser():
             __iterations(grp)
             __exaggeration(grp)
             __threads(grp)
-            __metadata_protein(grp)
-            __metadata_genome(grp)
             __force(grp)
 
 
@@ -501,6 +528,9 @@ def get_main_parser():
             __full_clust(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __db_path(grp)
+            __metadata_protein(grp)
+            __metadata_genome(grp)
             __show(grp)
             __svg(grp)
 
@@ -513,6 +543,7 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __threads(grp)
             __output(grp)
+            __db_path(grp)
             __perplexity(grp)
             __iterations(grp)
             __exaggeration(grp)
@@ -539,7 +570,9 @@ def get_main_parser():
         with arg_group(parser, 'Required arguments') as grp:
             __context_path(grp, required=True)
             __position(grp, required=True)
+            __db_path(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __force(grp)
 
     return main_parser
