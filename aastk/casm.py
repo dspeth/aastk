@@ -784,10 +784,14 @@ def plot_clusters(tsv_file: str,
         unique_clusters = df[df['cluster'] != -1]['cluster'].unique()
         if len(unique_clusters) <= 60:
             plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=10)
+        else:
+            logger.info("Cluster number exceeds 60, omitting legend.")
     elif color_column != 'cluster':
         unique_vals = df[color_column].dropna().unique()
         if len(unique_vals) <= 60:
             plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=10)
+        else:
+            logger.info("Cluster number exceeds 60, omitting legend.")
 
     plt.tight_layout()
 
@@ -962,8 +966,6 @@ def cluster(matrix_path: str,
         iterations (int): Number of optimization iterations per phase
         exaggeration (int): Early exaggeration factor
         threads (int): Number of threads for parallel processing
-        metadata_protein (str, optional): Path to protein metadata TSV file
-        metadata_genome (str, optional): Path to genome metadata TSV file
         force (bool): Overwrite existing files if True
 
     Returns:
