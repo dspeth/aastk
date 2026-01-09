@@ -417,6 +417,7 @@ def create_embedding_dataframe(embedding: np.ndarray,
 
 def tsne_embedding(matrix: np.ndarray,
                    queries: list,
+                   output: str,
                    basename: str,
                    perplexity: int,
                    iterations: int,
@@ -506,7 +507,7 @@ def tsne_embedding(matrix: np.ndarray,
     # Save early embedding results
     # ================================
     logger.debug("Saving early embedding results")
-    early_filename = ensure_path(target=f"{basename}_tsne_early_clust.tsv", force=force)
+    early_filename = ensure_path(output, f"{basename}_tsne_early_clust.tsv", force=force)
     create_embedding_file(early_filename, tsne_embed, queries, clustering.labels_, ['tsne1', 'tsne2'])
     logger.info(f"Early embedding saved to: {early_filename}")
 
@@ -526,7 +527,7 @@ def tsne_embedding(matrix: np.ndarray,
     # Save final embedding results
     # ===============================
     logger.debug("Saving final embedding results")
-    final_filename = ensure_path(target=f"{basename}_tsne_final_clust.tsv", force=force)
+    final_filename = ensure_path(output, f"{basename}_tsne_final_clust.tsv", force=force)
     create_embedding_file(final_filename, tsne_embed, queries, clustering.labels_, ['tsne1', 'tsne2'])
     logger.info(f"Final embedding saved to: {final_filename}")
 
@@ -554,7 +555,7 @@ def fetch_protein_metadata(db_path: str,
     for i in range(0, len(protein_ids), batch_size):
         batch = protein_ids[i:i + batch_size]
         placeholders = ','.join(['?'] * len(batch))
-        query = f"""SELECT {col_str} from all_data where seqID in ({placeholders})"""
+        query = f"""SELECT {col_str} from protein_datagit where seqID in ({placeholders})"""
 
         batch_df = pd.read_sql_query(query, conn, params=batch)
         all_results.append(batch_df)
@@ -590,7 +591,7 @@ def fetch_genome_metadata(db_path: str,
     for i in range(0, len(genome_ids), batch_size):
         batch = genome_ids[i:i + batch_size]
         placeholders = ','.join(['?'] * len(batch))
-        query = f"SELECT {col_str} FROM taxonomy WHERE genome_ID IN ({placeholders})"
+        query = f"SELECT {col_str} FROM genome_data WHERE genome_ID IN ({placeholders})"
 
         batch_df = pd.read_sql_query(query, conn, params=batch)
         all_results.append(batch_df)
@@ -983,6 +984,7 @@ def cluster(matrix_path: str,
 
     early_filename, final_filename = tsne_embedding(matrix=matrix,
                               queries=queries,
+                              output=output,
                               basename=prefix,
                               perplexity=perplexity,
                               iterations=iterations,
