@@ -86,9 +86,6 @@ def build(seed_fasta: str,
         if stderr:
             logger.log(99, stderr)
 
-    except FileNotFoundError as e:
-        logger.error("DIAMOND executable not found")
-        raise RuntimeError("DIAMOND executable not found. Is it installed and in PATH?") from e
     except Exception as e:
         if not isinstance(e, RuntimeError):
             logger.error(f"Unexpected error in building the DIAMOND database: {e}")
@@ -212,9 +209,6 @@ def search(db_path: str,
         if stderr:
             logger.log(99, stderr)
 
-    except FileNotFoundError as e:
-        logger.error("DIAMOND executable not found")
-        raise RuntimeError("DIAMOND executable not found. Is it installed and in PATH?") from e
     except Exception as e:
         if not isinstance(e, RuntimeError):
             logger.error(f"Unexpected error in DIAMOND blastp search: {e}")
