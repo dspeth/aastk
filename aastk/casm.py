@@ -88,6 +88,14 @@ def run_diamond_alignment(fasta: str,
     Returns:
         align_output (str): Path to Blast Tabular Output file for the alignment
     """
+    check_dependency_availability('diamond')
+
+    if Path(fasta).is_file():
+        pass
+    else:
+        logger.error("Input seed FASTA not found")
+        raise FileNotFoundError(f"FASTA file does not exist: {fasta}")
+
     logger.info(f"Starting DIAMOND alignment process")
     logger.info(f"Query FASTA: {fasta}")
     logger.info(f"Reference subset: {align_subset}")
@@ -144,13 +152,28 @@ def run_diamond_alignment(fasta: str,
         )
         _, stderr = proc.communicate()
 
+        if proc.returncode != 0:
+            logger.error(f"DIAMOND makedb failed with return code {proc.returncode}")
+            if stderr:
+                logger.error(f"STDERR: {stderr}")
+            raise RuntimeError(f"DIAMOND database creation failed with return code {proc.returncode}")
+
         if stderr:
             logger.log(99, stderr)
 
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Error in building the DIAMOND database: {e}")
-        logger.error(f"STDERR: {e.stderr}")
-        raise RuntimeError(f"DIAMOND database creation failed: {e}") from e
+    except FileNotFoundError as e:
+        logger.error("DIAMOND executable not found")
+        raise RuntimeError("DIAMOND executable not found. Is it installed and in PATH?") from e
+    except Exception as e:
+        if not isinstance(e, RuntimeError):
+            logger.error(f"Unexpected error in building the DIAMOND database: {e}")
+            raise RuntimeError(f"DIAMOND database creation failed: {e}") from e
+        raise
+
+    db_file = Path(f"{dbname}.dmnd")
+    if not db_file.exists():
+        logger.error(f"DIAMOND database file not found at {db_file}")
+        raise RuntimeError(f"DIAMOND database was not created at {db_file}")
 
     logger.info(f"Successfully built DIAMOND database at {dbname}")
 
@@ -164,13 +187,26 @@ def run_diamond_alignment(fasta: str,
         )
         _, stderr = proc.communicate()
 
+        if proc.returncode != 0:
+            logger.error(f"DIAMOND blastp failed with return code {proc.returncode}")
+            if stderr:
+                logger.error(f"STDERR: {stderr}")
+            raise RuntimeError(f"DIAMOND blastp search failed with return code {proc.returncode}")
+
         if stderr:
             logger.log(99, stderr)
-    except subprocess.CalledProcessError as e:
+    except FileNotFoundError as e:
+        logger.error("DIAMOND executable not found")
+        raise RuntimeError("DIAMOND executable not found. Is it installed and in PATH?") from e
+    except Exception as e:
+        if not isinstance(e, RuntimeError):
+            logger.error(f"Unexpected error in DIAMOND blastp search: {e}")
+            raise RuntimeError(f"DIAMOND blastp search failed: {e}") from e
+        raise
 
-        logger.error(f"Error in DIAMOND blastp search: {e}")
-        logger.error(f"STDERR: {e.stderr}")
-        raise RuntimeError(f"DIAMOND blastp search failed: {e}") from e
+    if not Path(align_output).exists():
+        logger.error(f"DIAMOND output file not found at {align_output}")
+        raise RuntimeError(f"DIAMOND search did not produce output at {align_output}")
 
     logger.info(f"Successfully completed DIAMOND search. Results at {align_output}")
 
