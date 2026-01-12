@@ -227,9 +227,9 @@ def search(db_path: str,
 
 
 # ===============================
-# aastk extract CLI FUNCTION
+# aastk get_hit_seqs CLI FUNCTION
 # ===============================
-def extract(blast_tab: str,
+def get_hit_seqs(blast_tab: str,
                                query_path: str,
                                output_dir: str,
                                key_column: int = 0,
@@ -312,9 +312,9 @@ def extract(blast_tab: str,
 
 
 # ===============================
-# aastk calculate CLI FUNCTION
+# aastk max_score CLI FUNCTION
 # ===============================
-def calculate(extracted: str,
+def max_score(extracted: str,
                          matrix: str,
                          output_dir: str,
                          force: bool = False):
@@ -482,7 +482,7 @@ def bsr(blast_tab: str,
     logger.info(f"Loaded {len(max_scores)} max scores")
 
     # ===============================
-    # Process BLAST results and calculate BSR
+    # Process BLAST results and caclulate BSR
     # ===============================
     processed_count = 0
     error_count = 0
@@ -836,9 +836,9 @@ def pasr_metadata(selfmin: int,
 
 
 # ===============================
-# aastk select CLI FUNCTION
+# aastk pasr_select CLI FUNCTION
 # ===============================
-def select(yaml_path: str,
+def pasr_select(yaml_path: str,
            matched_fasta: str,
            bsr_table: str,
            output_dir: str,
@@ -1050,13 +1050,13 @@ def pasr(seed_fasta: str,
     Runs:
     aastk build
     aastk search
-    aastk extract
-    aastk calculate
+    aastk get_hit_seqs
+    aastk max_score
     aastk bsr
     aastk pasr_plot
 
     Optional (with provided metadata YAML file):
-    aastk select
+    aastk pasr_select
     aastk pasr_plot
 
     Args:
@@ -1110,7 +1110,7 @@ def pasr(seed_fasta: str,
         # Sequence extraction
         # ===============================
         logger.info("Extracting matching sequences")
-        matched_fasta, stats_path = extract(search_output, query_fasta, output_dir, key_column, force=force)
+        matched_fasta, stats_path = get_hit_seqs(search_output, query_fasta, output_dir, key_column, force=force)
         results['matched_fasta'] = matched_fasta
         results['stats_path'] = stats_path
 
@@ -1118,7 +1118,7 @@ def pasr(seed_fasta: str,
         # Score calculations
         # ===============================
         logger.info("Calculating max scores")
-        max_scores = calculate(matched_fasta, matrix_name, output_dir, force=force)
+        max_scores = max_score(matched_fasta, matrix_name, output_dir, force=force)
         results['max_scores'] = max_scores
 
         logger.info("Calculating blast score ratios")
@@ -1137,7 +1137,7 @@ def pasr(seed_fasta: str,
         # ===============================
         if update:
             logger.info("Running update for specified data")
-            subset_fasta, update_stats_path = select(yaml_path, matched_fasta, bsr_file, output_dir, force=force)
+            subset_fasta, update_stats_path = pasr_select(yaml_path, matched_fasta, bsr_file, output_dir, force=force)
             results['subset_fasta'] = subset_fasta
             results['update_stats_path'] = update_stats_path
             updated_plot = pasr_plot(bsr_file, output_dir,  yaml_path, svg=svg, force=force, update=update)

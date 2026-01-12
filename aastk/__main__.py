@@ -94,8 +94,8 @@ def main():
                 force=args.force
             )
 
-        elif args.subparser_name == 'extract':
-            extract(
+        elif args.subparser_name == 'get_hit_seqs':
+            get_hit_seqs(
                 blast_tab=args.tabular,
                 query_path=args.query,
                 output_dir=args.output,
@@ -103,8 +103,8 @@ def main():
                 force=args.force
             )
 
-        elif args.subparser_name == 'calculate':
-            calculate(
+        elif args.subparser_name == 'max_score':
+            max_score(
                 extracted=args.extracted,
                 matrix=args.matrix,
                 output_dir=args.output
@@ -131,8 +131,8 @@ def main():
                 update=args.update
             )
 
-        elif args.subparser_name == 'select':
-            select(
+        elif args.subparser_name == 'pasr_select':
+            pasr_select(
                 yaml_path=args.yaml,
                 matched_fasta=args.matched,
                 bsr_table=args.bsr,
@@ -236,8 +236,8 @@ def main():
                 tmh_y_range=args.tmh_y_range
             )
 
-        elif args.subparser_name == 'retrieve':
-            retrieve(
+        elif args.subparser_name == 'cugo_select':
+            cugo_select(
                 context_path=args.context_path,
                 position=args.position,
                 db_path=args.db_path,
@@ -300,8 +300,8 @@ def main():
                 show_cluster_numbers=args.show
             )
 
-        elif args.subparser_name == 'pick':
-            pick(
+        elif args.subparser_name == 'casm_select':
+            casm_select(
                 final_embedding_file=args.full_clust,
                 fasta=args.fasta,
                 no_cluster=args.no_cluster,

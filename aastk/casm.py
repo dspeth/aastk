@@ -858,7 +858,7 @@ def plot_clusters(tsv_file: str,
     logger.info(f"Plot saved to: {output_file}")
 
 
-def pick(final_embedding_file: str,
+def casm_select(final_embedding_file: str,
          fasta: str,
          no_cluster: int,
          output: str,
