@@ -99,7 +99,9 @@ def main():
                 blast_tab=args.tabular,
                 query_path=args.query,
                 output_dir=args.output,
+                db_path=args.db_path,
                 key_column=args.key_column,
+                sql=args.sql,
                 force=args.force
             )
 

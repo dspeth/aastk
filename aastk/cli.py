@@ -260,6 +260,10 @@ def __size(group, required=False):
     group.add_argument('--size', action='store_true', required=required,
                        help='Generate AA sequence length plot')
 
+def __sql(group, required=False):
+    group.add_argument('--sql', action='store_true', required=required,
+                       help='Use AASTK SQLite database for sequence retrieval')
+
 def __subset(group, required=False):
     group.add_argument('-s', '--subset', type=str, required=required,
                        help='Path to subset fasta to use as DIAMOND alignment reference set')
@@ -343,11 +347,14 @@ def get_main_parser():
             __force(grp)
 
     with subparser(sub_parsers, 'get_hit_seqs', 'Extract reads that have DIAMOND hits against custom database') as parser:
+        with mutex_group(parser, required=True) as grp:
+            __sql(grp)
+            __query(grp)
         with arg_group(parser, 'Required arguments') as grp:
-            __tabular(grp, required=True),
-            __query(grp, required=True),
+            __tabular(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __db_path(grp)
             __key_column(grp)
             __force(grp)
 

@@ -10,6 +10,8 @@ import json
 from pathlib import Path
 import numpy as np
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+import sqlite3
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -230,10 +232,12 @@ def search(db_path: str,
 # aastk get_hit_seqs CLI FUNCTION
 # ===============================
 def get_hit_seqs(blast_tab: str,
-                               query_path: str,
-                               output_dir: str,
-                               key_column: int = 0,
-                               force: bool = False):
+                 query_path: str,
+                 output_dir: str,
+                 db_path: str,
+                 key_column: int = 0,
+                 sql: bool = False,
+                 force: bool = False):
     """
     Extracts reads that have BLAST/DIAMOND hits against a custom database.
 
@@ -241,7 +245,9 @@ def get_hit_seqs(blast_tab: str,
         blast_tab: Tabular BLAST/DIAMOND output file.
         query_path: Fasta or fastq file containing sequencing reads used as BLAST/DIAMOND queries.
         output_dir (str): Directory where extracted sequences should be stored.
+        db_path (str): Path to AASTK SQLiteDB
         key_column: Column index in the BLAST tab file to pull unique IDs from (default is 0).
+        sql (bool): If true, retrieve sequences from AASTK SQLite database.
         force (bool): If true, existing files/directories in output path are overwritten
 
     Returns:
@@ -264,12 +270,6 @@ def get_hit_seqs(blast_tab: str,
     matching_ids = extract_unique_keys(blast_tab, key_column)
     logger.info(f"Extracted {len(matching_ids)} unique matching sequence IDs")
 
-    # ===============================
-    # Input file type detection
-    # ===============================
-    file_type = determine_file_type(query_path)
-    logger.info(f"Determined input file type: {file_type}")
-
     # ======================================
     # Extract and write matching sequences
     # ======================================
@@ -277,22 +277,51 @@ def get_hit_seqs(blast_tab: str,
     sequences_written = 0
 
     with open(out_fasta, "w") as out:
-        # use the appropriate generator based on the file type
-        if file_type == "fasta":
-            logger.info(f"Processing FASTA format from {query_path}")
-            for header, sequence in write_fa_matches(query_path, matching_ids):
-                out.write(f"{header}\n{sequence}\n")
-                sequences_written += 1
-        elif file_type == "fastq":
-            logger.info(f"Processing FASTQ format from {query_path}")
-            for header, sequence in write_fq_matches(query_path, matching_ids):
-                out.write(f"{header}\n{sequence}\n")
-                sequences_written += 1
-        else:
-            logger.error(f"Unsupported file type: {file_type}")
-            raise ValueError(f"Unsupported file type: {file_type}")
+        if sql:
+            conn = sqlite3.connect(db_path)
 
-        logger.info(f"Successfully wrote {sequences_written} matching sequences to {out_fasta}")
+            # Convert set to list for batching
+            matching_ids_list = list(matching_ids)
+            total_ids = len(matching_ids_list)
+
+            # process in batches to avoid SQL variable limit
+            batch_size = 900
+
+            for i in tqdm(range(0, total_ids, batch_size), desc="Processing batches"):
+                batch = matching_ids_list[i:i + batch_size]
+                placeholders = ','.join('?' * len(batch))
+
+                cursor = conn.execute(f"""
+                    SELECT seqID, protein_seq 
+                    FROM protein_data 
+                    WHERE seqID IN ({placeholders}) AND protein_seq IS NOT NULL
+                """, batch)
+
+                for seqid, compressed_seq in cursor:
+                    sequence = decompress_sequence(compressed_seq)
+                    out.write(f">{seqid}\n{sequence}\n")
+                    sequences_written += 1
+
+            conn.close()
+            logger.info(f"Retrieved {sequences_written} sequences to {out_fasta}")
+        else:
+            file_type = determine_file_type(query_path)
+            logger.info(f"Determined input file type: {file_type}")
+            if file_type == "fasta":
+                logger.info(f"Processing FASTA format from {query_path}")
+                for header, sequence in write_fa_matches(query_path, matching_ids):
+                    out.write(f"{header}\n{sequence}\n")
+                    sequences_written += 1
+            elif file_type == "fastq":
+                logger.info(f"Processing FASTQ format from {query_path}")
+                for header, sequence in write_fq_matches(query_path, matching_ids):
+                    out.write(f"{header}\n{sequence}\n")
+                    sequences_written += 1
+            else:
+                logger.error(f"Unsupported file type: {file_type}")
+                raise ValueError(f"Unsupported file type: {file_type}")
+
+            logger.info(f"Successfully wrote {sequences_written} matching sequences to {out_fasta}")
 
     # ===============================
     # Generate sequence statistics
