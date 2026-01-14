@@ -88,6 +88,14 @@ def run_diamond_alignment(fasta: str,
     Returns:
         align_output (str): Path to Blast Tabular Output file for the alignment
     """
+    check_dependency_availability('diamond')
+
+    if Path(fasta).is_file():
+        pass
+    else:
+        logger.error("Input seed FASTA not found")
+        raise FileNotFoundError(f"FASTA file does not exist: {fasta}")
+
     logger.info(f"Starting DIAMOND alignment process")
     logger.info(f"Query FASTA: {fasta}")
     logger.info(f"Reference subset: {align_subset}")
@@ -144,13 +152,25 @@ def run_diamond_alignment(fasta: str,
         )
         _, stderr = proc.communicate()
 
+        if proc.returncode != 0:
+            logger.error(f"DIAMOND makedb failed with return code {proc.returncode}")
+            if stderr:
+                logger.error(f"STDERR: {stderr}")
+            raise RuntimeError(f"DIAMOND database creation failed with return code {proc.returncode}")
+
         if stderr:
             logger.log(99, stderr)
 
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Error in building the DIAMOND database: {e}")
-        logger.error(f"STDERR: {e.stderr}")
-        raise RuntimeError(f"DIAMOND database creation failed: {e}") from e
+    except Exception as e:
+        if not isinstance(e, RuntimeError):
+            logger.error(f"Unexpected error in building the DIAMOND database: {e}")
+            raise RuntimeError(f"DIAMOND database creation failed: {e}") from e
+        raise
+
+    db_file = Path(f"{dbname}.dmnd")
+    if not db_file.exists():
+        logger.error(f"DIAMOND database file not found at {db_file}")
+        raise RuntimeError(f"DIAMOND database was not created at {db_file}")
 
     logger.info(f"Successfully built DIAMOND database at {dbname}")
 
@@ -164,13 +184,26 @@ def run_diamond_alignment(fasta: str,
         )
         _, stderr = proc.communicate()
 
+        if proc.returncode != 0:
+            logger.error(f"DIAMOND blastp failed with return code {proc.returncode}")
+            if stderr:
+                logger.error(f"STDERR: {stderr}")
+            raise RuntimeError(f"DIAMOND blastp search failed with return code {proc.returncode}")
+
         if stderr:
             logger.log(99, stderr)
-    except subprocess.CalledProcessError as e:
+    except FileNotFoundError as e:
+        logger.error("DIAMOND executable not found")
+        raise RuntimeError("DIAMOND executable not found. Is it installed and in PATH?") from e
+    except Exception as e:
+        if not isinstance(e, RuntimeError):
+            logger.error(f"Unexpected error in DIAMOND blastp search: {e}")
+            raise RuntimeError(f"DIAMOND blastp search failed: {e}") from e
+        raise
 
-        logger.error(f"Error in DIAMOND blastp search: {e}")
-        logger.error(f"STDERR: {e.stderr}")
-        raise RuntimeError(f"DIAMOND blastp search failed: {e}") from e
+    if not Path(align_output).exists():
+        logger.error(f"DIAMOND output file not found at {align_output}")
+        raise RuntimeError(f"DIAMOND search did not produce output at {align_output}")
 
     logger.info(f"Successfully completed DIAMOND search. Results at {align_output}")
 
@@ -417,6 +450,7 @@ def create_embedding_dataframe(embedding: np.ndarray,
 
 def tsne_embedding(matrix: np.ndarray,
                    queries: list,
+                   output: str,
                    basename: str,
                    perplexity: int,
                    iterations: int,
@@ -506,7 +540,7 @@ def tsne_embedding(matrix: np.ndarray,
     # Save early embedding results
     # ================================
     logger.debug("Saving early embedding results")
-    early_filename = ensure_path(target=f"{basename}_tsne_early_clust.tsv", force=force)
+    early_filename = ensure_path(output, f"{basename}_tsne_early_clust.tsv", force=force)
     create_embedding_file(early_filename, tsne_embed, queries, clustering.labels_, ['tsne1', 'tsne2'])
     logger.info(f"Early embedding saved to: {early_filename}")
 
@@ -526,7 +560,7 @@ def tsne_embedding(matrix: np.ndarray,
     # Save final embedding results
     # ===============================
     logger.debug("Saving final embedding results")
-    final_filename = ensure_path(target=f"{basename}_tsne_final_clust.tsv", force=force)
+    final_filename = ensure_path(output, f"{basename}_tsne_final_clust.tsv", force=force)
     create_embedding_file(final_filename, tsne_embed, queries, clustering.labels_, ['tsne1', 'tsne2'])
     logger.info(f"Final embedding saved to: {final_filename}")
 
@@ -554,7 +588,7 @@ def fetch_protein_metadata(db_path: str,
     for i in range(0, len(protein_ids), batch_size):
         batch = protein_ids[i:i + batch_size]
         placeholders = ','.join(['?'] * len(batch))
-        query = f"""SELECT {col_str} from all_data where seqID in ({placeholders})"""
+        query = f"""SELECT {col_str} from protein_data where seqID in ({placeholders})"""
 
         batch_df = pd.read_sql_query(query, conn, params=batch)
         all_results.append(batch_df)
@@ -590,7 +624,7 @@ def fetch_genome_metadata(db_path: str,
     for i in range(0, len(genome_ids), batch_size):
         batch = genome_ids[i:i + batch_size]
         placeholders = ','.join(['?'] * len(batch))
-        query = f"SELECT {col_str} FROM taxonomy WHERE genome_ID IN ({placeholders})"
+        query = f"SELECT {col_str} FROM genome_data WHERE genome_ID IN ({placeholders})"
 
         batch_df = pd.read_sql_query(query, conn, params=batch)
         all_results.append(batch_df)
@@ -784,10 +818,14 @@ def plot_clusters(tsv_file: str,
         unique_clusters = df[df['cluster'] != -1]['cluster'].unique()
         if len(unique_clusters) <= 60:
             plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=10)
+        else:
+            logger.info("Cluster number exceeds 60, omitting legend.")
     elif color_column != 'cluster':
         unique_vals = df[color_column].dropna().unique()
         if len(unique_vals) <= 60:
             plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=10)
+        else:
+            logger.info("Cluster number exceeds 60, omitting legend.")
 
     plt.tight_layout()
 
@@ -819,8 +857,9 @@ def plot_clusters(tsv_file: str,
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     logger.info(f"Plot saved to: {output_file}")
 
+    return output_file
 
-def pick(final_embedding_file: str,
+def casm_select(final_embedding_file: str,
          fasta: str,
          no_cluster: int,
          output: str,
@@ -962,8 +1001,6 @@ def cluster(matrix_path: str,
         iterations (int): Number of optimization iterations per phase
         exaggeration (int): Early exaggeration factor
         threads (int): Number of threads for parallel processing
-        metadata_protein (str, optional): Path to protein metadata TSV file
-        metadata_genome (str, optional): Path to genome metadata TSV file
         force (bool): Overwrite existing files if True
 
     Returns:
@@ -981,6 +1018,7 @@ def cluster(matrix_path: str,
 
     early_filename, final_filename = tsne_embedding(matrix=matrix,
                               queries=queries,
+                              output=output,
                               basename=prefix,
                               perplexity=perplexity,
                               iterations=iterations,
@@ -1014,7 +1052,8 @@ def casm_plot(early_clust_path: str,
         output (str): Base name for output plot files
 
     Returns:
-        None: Saves plots to disk as files
+        early_cluster_plot
+        full_cluster_plot
     """
     logger.info("=== Starting Plot Generation ===")
     logger.info(f"Early clustering file: {early_clust_path}")
@@ -1023,26 +1062,28 @@ def casm_plot(early_clust_path: str,
 
     # Generate plots
     logger.info("Generating early clustering plot")
-    plot_clusters(early_clust_path,
-                  output=output,
-                  db_path=db_path,
-                  metadata_protein=metadata_protein,
-                  metadata_genome=metadata_genome,
-                  force=force,
-                  svg=svg,
-                  show_cluster_numbers=show_cluster_numbers)
+    early_cluster_plot = plot_clusters(early_clust_path,
+                                       output=output,
+                                       db_path=db_path,
+                                       metadata_protein=metadata_protein,
+                                       metadata_genome=metadata_genome,
+                                       force=force,
+                                       svg=svg,
+                                       show_cluster_numbers=show_cluster_numbers)
 
     logger.info("Generating full clustering plot")
-    plot_clusters(full_clust_path,
-                  output=output,
-                  db_path=db_path,
-                  metadata_protein=metadata_protein,
-                  metadata_genome=metadata_genome,
-                  force=force,
-                  svg=svg,
-                  show_cluster_numbers=show_cluster_numbers)
+    full_cluster_plot = plot_clusters(full_clust_path,
+                                      output=output,
+                                      db_path=db_path,
+                                      metadata_protein=metadata_protein,
+                                      metadata_genome=metadata_genome,
+                                      force=force,
+                                      svg=svg,
+                                      show_cluster_numbers=show_cluster_numbers)
 
     logger.info("=== Plot Generation Completed ===")
+
+    return early_cluster_plot, full_cluster_plot
 
 
 def casm(fasta: str,
@@ -1056,6 +1097,7 @@ def casm(fasta: str,
          exaggeration: int = 6,
          metadata_protein: str = None,
          metadata_genome: str = None,
+         keep: bool = False,
          svg: bool = False,
          force: bool = False,
          show_cluster_numbers: bool = False
@@ -1087,6 +1129,9 @@ def casm(fasta: str,
     logger.info(f"Subset size: {subset_size}")
     logger.info(f"Threads: {threads}")
 
+    intermediate_results = {}
+    results = {}
+
     # Phase 1: Matrix construction
     logger.info("=== Phase 1: Matrix Construction ===")
     matrix_file, metadata_file = matrix(fasta=fasta,
@@ -1096,6 +1141,8 @@ def casm(fasta: str,
                                         threads=threads,
                                         force=force
                                         )
+    intermediate_results['matrix_file'] = matrix_file
+    intermediate_results['metadata_file'] = metadata_file
 
     # Phase 2: t-SNE embedding
     logger.info("=== Phase 2: t-SNE Embedding ===")
@@ -1109,10 +1156,12 @@ def casm(fasta: str,
         threads=threads,
         force=force
     )
+    results['early_filename'] = early_filename
+    results['final_filename'] = final_filename
 
     # Phase 3: Plot generation
     logger.info("=== Phase 3: Plot Generation ===")
-    casm_plot(
+    early_cluster_plot, full_cluster_plot = casm_plot(
         early_clust_path=early_filename,
         full_clust_path=final_filename,
         output=output,
@@ -1123,17 +1172,22 @@ def casm(fasta: str,
         force=force,
         show_cluster_numbers=show_cluster_numbers
     )
+    results['early_cluster_plot'] = early_cluster_plot
+    results['full_cluster_plot'] = full_cluster_plot
 
     logger.info("=== Complete CASM Analysis Completed ===")
 
-    sum_dict = {
-        "matrix_file": matrix_file,
-        "metadata_file": metadata_file,
-        "early_embedding": early_filename,
-        "final_embedding": final_filename
-    }
+    if not keep and intermediate_results:
+        logger.info("Cleaning up intermediate files")
+        for key, filepath in intermediate_results.items():
+            try:
+                file_path = Path(filepath)
+                if file_path.exists():
+                    file_path.unlink()
+                    logger.debug(f"Deleted {filepath}")
+            except Exception as e:
+                logger.warning(f"Failed to delete {filepath}: {e}")
 
-    return sum_dict
-
+    return
 
 

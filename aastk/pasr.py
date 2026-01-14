@@ -10,6 +10,8 @@ import json
 from pathlib import Path
 import numpy as np
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+import sqlite3
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,12 @@ def build(seed_fasta: str,
     """
     # check if diamond is in path
     check_dependency_availability('diamond')
+
+    if Path(seed_fasta).is_file():
+        pass
+    else:
+        logger.error("Input seed FASTA not found")
+        raise FileNotFoundError(f"Seed FASTA file does not exist: {seed_fasta}")
 
     seed_fasta_filename = Path(seed_fasta).name
     protein_name = determine_dataset_name(seed_fasta_filename, '.', 0)
@@ -71,13 +79,26 @@ def build(seed_fasta: str,
         )
         _, stderr = proc.communicate()
 
+        if proc.returncode != 0:
+            logger.error(f"DIAMOND makedb failed with return code {proc.returncode}")
+            if stderr:
+                logger.error(f"STDERR: {stderr}")
+            raise RuntimeError(f"DIAMOND database creation failed with return code {proc.returncode}")
+
         if stderr:
             logger.log(99, stderr)
 
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Error in building the DIAMOND database: {e}")
-        logger.error(f"STDERR: {e.stderr}")
-        raise RuntimeError(f"DIAMOND database creation failed: {e}") from e
+    except Exception as e:
+        if not isinstance(e, RuntimeError):
+            logger.error(f"Unexpected error in building the DIAMOND database: {e}")
+            raise RuntimeError(f"DIAMOND database creation failed: {e}") from e
+        raise
+
+    db_file = Path(f"{db_path}.dmnd")
+    if not db_file.exists():
+        logger.error(f"DIAMOND database file not found at {db_file}")
+        raise RuntimeError(f"DIAMOND database was not created at {db_file}")
+
 
     logger.info(f"Successfully built DIAMOND database at {db_path}")
     return db_path
@@ -181,13 +202,24 @@ def search(db_path: str,
         )
         _, stderr = proc.communicate()
 
+        if proc.returncode != 0:
+            logger.error(f"DIAMOND blastp failed with return code {proc.returncode}")
+            if stderr:
+                logger.error(f"STDERR: {stderr}")
+            raise RuntimeError(f"DIAMOND blastp search failed with return code {proc.returncode}")
+
         if stderr:
             logger.log(99, stderr)
-    except subprocess.CalledProcessError as e:
 
-        logger.error(f"Error in DIAMOND blastp search: {e}")
-        logger.error(f"STDERR: {e.stderr}")
-        raise RuntimeError(f"DIAMOND blastp search failed: {e}") from e
+    except Exception as e:
+        if not isinstance(e, RuntimeError):
+            logger.error(f"Unexpected error in DIAMOND blastp search: {e}")
+            raise RuntimeError(f"DIAMOND blastp search failed: {e}") from e
+        raise
+
+    if not Path(output_path).exists():
+        logger.error(f"DIAMOND output file not found at {output_path}")
+        raise RuntimeError(f"DIAMOND search did not produce output at {output_path}")
 
     logger.info(f"Successfully completed DIAMOND search. Results at {output_path}")
     return output_path, column_info_path
@@ -197,13 +229,15 @@ def search(db_path: str,
 
 
 # ===============================
-# aastk extract CLI FUNCTION
+# aastk get_hit_seqs CLI FUNCTION
 # ===============================
-def extract(blast_tab: str,
-                               query_path: str,
-                               output_dir: str,
-                               key_column: int = 0,
-                               force: bool = False):
+def get_hit_seqs(blast_tab: str,
+                 query_path: str,
+                 output_dir: str,
+                 db_path: str,
+                 key_column: int = 0,
+                 sql: bool = False,
+                 force: bool = False):
     """
     Extracts reads that have BLAST/DIAMOND hits against a custom database.
 
@@ -211,7 +245,9 @@ def extract(blast_tab: str,
         blast_tab: Tabular BLAST/DIAMOND output file.
         query_path: Fasta or fastq file containing sequencing reads used as BLAST/DIAMOND queries.
         output_dir (str): Directory where extracted sequences should be stored.
+        db_path (str): Path to AASTK SQLiteDB
         key_column: Column index in the BLAST tab file to pull unique IDs from (default is 0).
+        sql (bool): If true, retrieve sequences from AASTK SQLite database.
         force (bool): If true, existing files/directories in output path are overwritten
 
     Returns:
@@ -234,12 +270,6 @@ def extract(blast_tab: str,
     matching_ids = extract_unique_keys(blast_tab, key_column)
     logger.info(f"Extracted {len(matching_ids)} unique matching sequence IDs")
 
-    # ===============================
-    # Input file type detection
-    # ===============================
-    file_type = determine_file_type(query_path)
-    logger.info(f"Determined input file type: {file_type}")
-
     # ======================================
     # Extract and write matching sequences
     # ======================================
@@ -247,22 +277,51 @@ def extract(blast_tab: str,
     sequences_written = 0
 
     with open(out_fasta, "w") as out:
-        # use the appropriate generator based on the file type
-        if file_type == "fasta":
-            logger.info(f"Processing FASTA format from {query_path}")
-            for header, sequence in write_fa_matches(query_path, matching_ids):
-                out.write(f"{header}\n{sequence}\n")
-                sequences_written += 1
-        elif file_type == "fastq":
-            logger.info(f"Processing FASTQ format from {query_path}")
-            for header, sequence in write_fq_matches(query_path, matching_ids):
-                out.write(f"{header}\n{sequence}\n")
-                sequences_written += 1
-        else:
-            logger.error(f"Unsupported file type: {file_type}")
-            raise ValueError(f"Unsupported file type: {file_type}")
+        if sql:
+            conn = sqlite3.connect(db_path)
 
-        logger.info(f"Successfully wrote {sequences_written} matching sequences to {out_fasta}")
+            # Convert set to list for batching
+            matching_ids_list = list(matching_ids)
+            total_ids = len(matching_ids_list)
+
+            # process in batches to avoid SQL variable limit
+            batch_size = 900
+
+            for i in tqdm(range(0, total_ids, batch_size), desc="Processing batches"):
+                batch = matching_ids_list[i:i + batch_size]
+                placeholders = ','.join('?' * len(batch))
+
+                cursor = conn.execute(f"""
+                    SELECT seqID, protein_seq 
+                    FROM protein_data 
+                    WHERE seqID IN ({placeholders}) AND protein_seq IS NOT NULL
+                """, batch)
+
+                for seqid, compressed_seq in cursor:
+                    sequence = decompress_sequence(compressed_seq)
+                    out.write(f">{seqid}\n{sequence}\n")
+                    sequences_written += 1
+
+            conn.close()
+            logger.info(f"Retrieved {sequences_written} sequences to {out_fasta}")
+        else:
+            file_type = determine_file_type(query_path)
+            logger.info(f"Determined input file type: {file_type}")
+            if file_type == "fasta":
+                logger.info(f"Processing FASTA format from {query_path}")
+                for header, sequence in write_fa_matches(query_path, matching_ids):
+                    out.write(f"{header}\n{sequence}\n")
+                    sequences_written += 1
+            elif file_type == "fastq":
+                logger.info(f"Processing FASTQ format from {query_path}")
+                for header, sequence in write_fq_matches(query_path, matching_ids):
+                    out.write(f"{header}\n{sequence}\n")
+                    sequences_written += 1
+            else:
+                logger.error(f"Unsupported file type: {file_type}")
+                raise ValueError(f"Unsupported file type: {file_type}")
+
+            logger.info(f"Successfully wrote {sequences_written} matching sequences to {out_fasta}")
 
     # ===============================
     # Generate sequence statistics
@@ -282,9 +341,9 @@ def extract(blast_tab: str,
 
 
 # ===============================
-# aastk calculate CLI FUNCTION
+# aastk max_score CLI FUNCTION
 # ===============================
-def calculate(extracted: str,
+def max_score(extracted: str,
                          matrix: str,
                          output_dir: str,
                          force: bool = False):
@@ -452,7 +511,7 @@ def bsr(blast_tab: str,
     logger.info(f"Loaded {len(max_scores)} max scores")
 
     # ===============================
-    # Process BLAST results and calculate BSR
+    # Process BLAST results and caclulate BSR
     # ===============================
     processed_count = 0
     error_count = 0
@@ -806,9 +865,9 @@ def pasr_metadata(selfmin: int,
 
 
 # ===============================
-# aastk select CLI FUNCTION
+# aastk pasr_select CLI FUNCTION
 # ===============================
-def select(yaml_path: str,
+def pasr_select(yaml_path: str,
            matched_fasta: str,
            bsr_table: str,
            output_dir: str,
@@ -1013,6 +1072,7 @@ def pasr(seed_fasta: str,
          threads: int = 1,
          update: bool = False,
          yaml_path: str = None,
+         keep: bool = False,
          svg: bool = False,
          force: bool = False):
     """
@@ -1020,13 +1080,13 @@ def pasr(seed_fasta: str,
     Runs:
     aastk build
     aastk search
-    aastk extract
-    aastk calculate
+    aastk get_hit_seqs
+    aastk max_score
     aastk bsr
     aastk pasr_plot
 
     Optional (with provided metadata YAML file):
-    aastk select
+    aastk pasr_select
     aastk pasr_plot
 
     Args:
@@ -1041,6 +1101,7 @@ def pasr(seed_fasta: str,
         threads (int): Number of threads (default: 1).
         update (bool): Creates updated matched_fasta and bsr plot using metadata yaml file
         yaml_path (str): Path to metadata yaml file
+        svg (bool): If true, plots will be generated in SVG format
         force (bool): If true, existing files/directories in output path are overwritten
     """
     # ===============================
@@ -1057,7 +1118,8 @@ def pasr(seed_fasta: str,
     logger.info(f"Running PASR workflow for {protein_name}")
     logger.info(f"Output directory: {output_dir}")
 
-    # store all the output paths in a dictionary
+    # store all the output paths in dictionaries
+    intermediate_results = {}
     results = {}
 
     # ===============================
@@ -1066,21 +1128,21 @@ def pasr(seed_fasta: str,
     try:
         logger.info("Building protein database")
         db_path = build(seed_fasta, threads, output_dir, force=force)
-        results['db_path'] = db_path
+        intermediate_results['db_path'] = f"{db_path}.dmnd"
 
         # ===============================
         # Database search
         # ===============================
         logger.info("Searching protein database")
         search_output, column_info_path = search(db_path, query_fasta, threads, output_dir, sensitivity, block, chunk, force=force)
-        results['search_output'] = search_output
-        results['column_info_path'] = column_info_path
+        intermediate_results['search_output'] = search_output
+        intermediate_results['column_info_path'] = column_info_path
 
         # ===============================
         # Sequence extraction
         # ===============================
         logger.info("Extracting matching sequences")
-        matched_fasta, stats_path = extract(search_output, query_fasta, output_dir, key_column, force=force)
+        matched_fasta, stats_path = get_hit_seqs(search_output, query_fasta, output_dir, key_column, force=force)
         results['matched_fasta'] = matched_fasta
         results['stats_path'] = stats_path
 
@@ -1088,8 +1150,8 @@ def pasr(seed_fasta: str,
         # Score calculations
         # ===============================
         logger.info("Calculating max scores")
-        max_scores = calculate(matched_fasta, matrix_name, output_dir, force=force)
-        results['max_scores'] = max_scores
+        max_scores = max_score(matched_fasta, matrix_name, output_dir, force=force)
+        intermediate_results['max_scores'] = max_scores
 
         logger.info("Calculating blast score ratios")
         bsr_file = bsr(search_output, max_scores, output_dir, key_column, column_info_path, score_column=None, force=force)
@@ -1107,7 +1169,7 @@ def pasr(seed_fasta: str,
         # ===============================
         if update:
             logger.info("Running update for specified data")
-            subset_fasta, update_stats_path = select(yaml_path, matched_fasta, bsr_file, output_dir, force=force)
+            subset_fasta, update_stats_path = pasr_select(yaml_path, matched_fasta, bsr_file, output_dir, force=force)
             results['subset_fasta'] = subset_fasta
             results['update_stats_path'] = update_stats_path
             updated_plot = pasr_plot(bsr_file, output_dir,  yaml_path, svg=svg, force=force, update=update)
@@ -1119,3 +1181,14 @@ def pasr(seed_fasta: str,
     except Exception as e:
         logger.error(f"PASR workflow failed: {e}")
         exit()
+    finally:
+        if not keep and intermediate_results:
+            logger.info("Cleaning up intermediate files")
+            for key, filepath in intermediate_results.items():
+                try:
+                    file_path = Path(filepath)
+                    if file_path.exists():
+                        file_path.unlink()
+                        logger.debug(f"Deleted {filepath}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete {filepath}: {e}")

@@ -159,6 +159,10 @@ def __iterations(group, required=False):
     group.add_argument('-i', '--iterations', type=str, default=500, required=required,
                        help='Number of clustering iterations')
 
+def __keep(group, required=False):
+    group.add_argument('--keep', action='store_true', required=required,
+                       help='Keep intermediate files in specified paths')
+
 def __kegg_gff(group, required=False):
     group.add_argument('-k', '--kegg_gff', type=str, required=required,
                        help='Path to (.tar.gz) GFF directory containing KEGG annotations')
@@ -260,6 +264,10 @@ def __size(group, required=False):
     group.add_argument('--size', action='store_true', required=required,
                        help='Generate AA sequence length plot')
 
+def __sql(group, required=False):
+    group.add_argument('--sql', action='store_true', required=required,
+                       help='Use AASTK SQLite database for sequence retrieval')
+
 def __subset(group, required=False):
     group.add_argument('-s', '--subset', type=str, required=required,
                        help='Path to subset fasta to use as DIAMOND alignment reference set')
@@ -342,16 +350,19 @@ def get_main_parser():
             __sensitivity(grp)
             __force(grp)
 
-    with subparser(sub_parsers, 'extract', 'Extract reads that have DIAMOND hits against custom database') as parser:
+    with subparser(sub_parsers, 'get_hit_seqs', 'Extract reads that have DIAMOND hits against custom database') as parser:
+        with mutex_group(parser, required=True) as grp:
+            __sql(grp)
+            __query(grp)
         with arg_group(parser, 'Required arguments') as grp:
-            __tabular(grp, required=True),
-            __query(grp, required=True),
+            __tabular(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __db_path(grp)
             __key_column(grp)
             __force(grp)
 
-    with subparser(sub_parsers, 'calculate', 'Calculate max scores for extracted sequences using BLOSUM matrix') as parser:
+    with subparser(sub_parsers, 'max_score', 'Calculate max scores for extracted sequences using BLOSUM matrix') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __extracted(grp, required=True)
             __matrix(grp, required=True)
@@ -382,7 +393,7 @@ def get_main_parser():
             __yaml(grp)
 
 
-    with subparser(sub_parsers, 'select', 'Select target sequences in accordance with metadata cutoffs') as parser:
+    with subparser(sub_parsers, 'pasr_select', 'Select target sequences in accordance with metadata cutoffs') as parser:
         with mutex_group(parser, required=True) as grp:
             __yaml(grp)
             __params(grp)
@@ -413,6 +424,7 @@ def get_main_parser():
             __sensitivity(grp)
             __update(grp)
             __yaml(grp)
+            __keep(grp)
             __svg(grp)
             __force(grp)
 
@@ -498,6 +510,15 @@ def get_main_parser():
             __threads(grp)
             __svg(grp)
 
+    with subparser(sub_parsers, 'cugo_select', 'Retrieve protein IDs for select CUGO position') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __context_path(grp, required=True)
+            __position(grp, required=True)
+            __db_path(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
+            __force(grp)
+
     with subparser(sub_parsers, 'matrix', 'Create alignment matrix for tSNE embedding and DBSCAN clustering') as parser:
         with mutex_group(parser, required=True) as grp:
             __subset(grp)
@@ -554,10 +575,11 @@ def get_main_parser():
             __full_clust(grp)
             __matrix_path(grp)
             __metadata_matrix(grp)
+            __keep(grp)
             __show(grp)
             __svg(grp)
 
-    with subparser(sub_parsers, 'pick', 'Pick CASM clusters to generate .faa file for further analysis') as parser:
+    with subparser(sub_parsers, 'casm_select', 'Pick CASM clusters to generate .faa file for further analysis') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __full_clust(grp, required=True)
             __fasta(grp, required=True)
@@ -566,13 +588,5 @@ def get_main_parser():
             __output(grp)
             __force(grp)
 
-    with subparser(sub_parsers, 'retrieve', 'Retrieve protein IDs for select CUGO position') as parser:
-        with arg_group(parser, 'Required arguments') as grp:
-            __context_path(grp, required=True)
-            __position(grp, required=True)
-            __db_path(grp, required=True)
-        with arg_group(parser, 'Optional') as grp:
-            __output(grp)
-            __force(grp)
 
     return main_parser

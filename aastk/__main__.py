@@ -13,53 +13,40 @@ import sys
 def print_help():
     print('''\
 
-              ...::: AASTK v%s :::...
+            ...::: AASTK v%s :::...
 
-  Workflows:
-    pasr (Protein Alignment Score Ratio) -> Generate comprehensive datasets of homologous protein complexes.
-                                            (build -> search -> extract -> calculate -> bsr -> pasr_plot)
-                                            
-    casm  (Clustering Alignment Score Matrix) -> Identify functional heterogeneity within homologous datasets by clustering alignment score matrices.
-                                                 (matrix -> cluster -> casm_plot)
-                                                 
-    cugo (Co-localized Unidirectional Gene Organization) -> Analyze consensus genomic context of selected protein complex clusters.
-                                                            (context -> cugo_plot)
- 
+  Usage:
+    aastk <command> <arguments>    to run the tools or commands
+    aastk <command> -h             for command specific help
+    aastk --silent <command>       to suppress all console output except errors
 
-  Workflow-adjacent methods:
-    pasr:
-        build -> Build DIAMOND database from seed sequence(s)
-        search -> Search DIAMOND reference database for homologous sequences
-        extract -> Extract reads that have DIAMOND hits against custom database
-        calculate -> Calculate max scores for extracted sequences using BLOSUM matrix
-        bsr -> Compute BSR (Blast Score Ratio) using a BLAST tab file and max scores from a TSV.
-        pasr_plot -> Plot the Blast Score Ratio of query sequences against the DIAMOND database
-        
-        Standalone:
-        select -> Select target sequences in accordance with metadata cutoffs
-        
-    casm:
-        matrix -> Create alignment matrix for tSNE embedding and DBSCAN clustering
-        cluster -> Run tSNE embedding and DBSCAN clustering on input matrix and matrix metadata
-        casm_plot -> Plot CASM .tsv output files
-        
-        Standalone:
-        pick -> Pick CASM clusters to generate .faa file for further analysis
-        
-    cugo:
-        context -> Parse context information from CUGO input file
-        cugo_plot -> Plot CUGO context
-        
-        Standalone:
-        retrieve -> Retrieve protein IDs for select CUGO position
+  Main Tools:
+    pasr         Generate or update a comprehensive dataset of homologous proteins
+                    Runs the subcommands: build, search, get_hit_seqs, max_score, bsr, and pasr_plot
+    casm         Cluster and visualize a complex dataset of proteins (eg. a superfamily)
+                    Runs the subcommands: matrix, cluster, and casm_plot
+    cugo         Retrieve, calculate, and visualise consensus genomic context of protein data sets
+                    Runs the subcommands: context, cugo_plot
+    meta         Retrieve protein metadata from AASTK SQLite database
 
-  Standalone tools:
-    meta -> Retrieve metadata from AASTK SQLite database
+  Helper tools:
+    pasr_select  Select target sequences from pasr run based on bsr and score cutoffs
+    casm_select  Select cluster(s) from casm analysis, and retrieve sequences
+    cugo_select  Select genomic posiiton from cugo analysis and retrieve sequences
+    filter       Filter sequence dataset to remove non-homologous seqeunces
 
- 
-
-
-  Use: aastk <command> -h for command specific help; aastk --silent <command> to suppress all console output except errors
+  Subcommands:
+    build        Build DIAMOND database from seed sequence(s)
+    search       Search query sequences against DIAMOND database
+    get_hit_seqs Extract sequences that have DIAMOND hits against custom database
+    max_score    Calculate max scores for extracted sequences using BLOSUM matrix
+    bsr          Compute BSR (Blast Score Ratio) using a BLAST tab file and max scores from a TSV
+    pasr_plot    Scatterplot with max score on the x-axis and score against the seed db on y-axis
+    matrix       Create alignment score matrix for tSNE embedding and DBSCAN clustering
+    cluster      Run tSNE embedding and DBSCAN clustering on input matrix
+    casm_plot    Scatterplot of sequences with tSNE coordinates as axes
+    context      Parse context information from AASTK SQL database
+    cugo_plot    Consensus genomic context plot of annotation, length, and transmembrane segments
     ''' % __version__)
 
 
@@ -107,17 +94,19 @@ def main():
                 force=args.force
             )
 
-        elif args.subparser_name == 'extract':
-            extract(
+        elif args.subparser_name == 'get_hit_seqs':
+            get_hit_seqs(
                 blast_tab=args.tabular,
                 query_path=args.query,
                 output_dir=args.output,
+                db_path=args.db_path,
                 key_column=args.key_column,
+                sql=args.sql,
                 force=args.force
             )
 
-        elif args.subparser_name == 'calculate':
-            calculate(
+        elif args.subparser_name == 'max_score':
+            max_score(
                 extracted=args.extracted,
                 matrix=args.matrix,
                 output_dir=args.output
@@ -144,8 +133,8 @@ def main():
                 update=args.update
             )
 
-        elif args.subparser_name == 'select':
-            select(
+        elif args.subparser_name == 'pasr_select':
+            pasr_select(
                 yaml_path=args.yaml,
                 matched_fasta=args.matched,
                 bsr_table=args.bsr,
@@ -171,6 +160,7 @@ def main():
                 sensitivity=args.sensitivity,
                 update=args.update,
                 yaml_path=args.yaml,
+                keep=args.keep,
                 svg=args.svg,
                 force=args.force
             )
@@ -249,8 +239,8 @@ def main():
                 tmh_y_range=args.tmh_y_range
             )
 
-        elif args.subparser_name == 'retrieve':
-            retrieve(
+        elif args.subparser_name == 'cugo_select':
+            cugo_select(
                 context_path=args.context_path,
                 position=args.position,
                 db_path=args.db_path,
@@ -308,13 +298,14 @@ def main():
                 exaggeration=args.exaggeration,
                 metadata_protein=args.metadata_protein,
                 metadata_genome=args.metadata_genome,
+                keep=args.keep,
                 force=args.force,
                 svg=args.svg,
                 show_cluster_numbers=args.show
             )
 
-        elif args.subparser_name == 'pick':
-            pick(
+        elif args.subparser_name == 'casm_select':
+            casm_select(
                 final_embedding_file=args.full_clust,
                 fasta=args.fasta,
                 no_cluster=args.no_cluster,

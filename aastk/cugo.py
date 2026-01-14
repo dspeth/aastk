@@ -1104,7 +1104,7 @@ def cugo(cugo_path: str,
 
     return context_file, plot_file
 
-def retrieve(context_path: str,
+def cugo_select(context_path: str,
              position: int,
              db_path: str,
              output: str,
