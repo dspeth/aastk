@@ -1052,7 +1052,8 @@ def casm_plot(early_clust_path: str,
         output (str): Base name for output plot files
 
     Returns:
-        None: Saves plots to disk as files
+        early_cluster_plot
+        full_cluster_plot
     """
     logger.info("=== Starting Plot Generation ===")
     logger.info(f"Early clustering file: {early_clust_path}")
