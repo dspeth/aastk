@@ -857,6 +857,7 @@ def plot_clusters(tsv_file: str,
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     logger.info(f"Plot saved to: {output_file}")
 
+    return output_file
 
 def casm_select(final_embedding_file: str,
          fasta: str,
@@ -1060,26 +1061,28 @@ def casm_plot(early_clust_path: str,
 
     # Generate plots
     logger.info("Generating early clustering plot")
-    plot_clusters(early_clust_path,
-                  output=output,
-                  db_path=db_path,
-                  metadata_protein=metadata_protein,
-                  metadata_genome=metadata_genome,
-                  force=force,
-                  svg=svg,
-                  show_cluster_numbers=show_cluster_numbers)
+    early_cluster_plot = plot_clusters(early_clust_path,
+                                       output=output,
+                                       db_path=db_path,
+                                       metadata_protein=metadata_protein,
+                                       metadata_genome=metadata_genome,
+                                       force=force,
+                                       svg=svg,
+                                       show_cluster_numbers=show_cluster_numbers)
 
     logger.info("Generating full clustering plot")
-    plot_clusters(full_clust_path,
-                  output=output,
-                  db_path=db_path,
-                  metadata_protein=metadata_protein,
-                  metadata_genome=metadata_genome,
-                  force=force,
-                  svg=svg,
-                  show_cluster_numbers=show_cluster_numbers)
+    full_cluster_plot = plot_clusters(full_clust_path,
+                                      output=output,
+                                      db_path=db_path,
+                                      metadata_protein=metadata_protein,
+                                      metadata_genome=metadata_genome,
+                                      force=force,
+                                      svg=svg,
+                                      show_cluster_numbers=show_cluster_numbers)
 
     logger.info("=== Plot Generation Completed ===")
+
+    return early_cluster_plot, full_cluster_plot
 
 
 def casm(fasta: str,
@@ -1093,6 +1096,7 @@ def casm(fasta: str,
          exaggeration: int = 6,
          metadata_protein: str = None,
          metadata_genome: str = None,
+         keep: bool = False,
          svg: bool = False,
          force: bool = False,
          show_cluster_numbers: bool = False
@@ -1124,6 +1128,9 @@ def casm(fasta: str,
     logger.info(f"Subset size: {subset_size}")
     logger.info(f"Threads: {threads}")
 
+    intermediate_results = {}
+    results = {}
+
     # Phase 1: Matrix construction
     logger.info("=== Phase 1: Matrix Construction ===")
     matrix_file, metadata_file = matrix(fasta=fasta,
@@ -1133,6 +1140,8 @@ def casm(fasta: str,
                                         threads=threads,
                                         force=force
                                         )
+    intermediate_results['matrix_file'] = matrix_file
+    intermediate_results['metadata_file'] = metadata_file
 
     # Phase 2: t-SNE embedding
     logger.info("=== Phase 2: t-SNE Embedding ===")
@@ -1146,10 +1155,12 @@ def casm(fasta: str,
         threads=threads,
         force=force
     )
+    results['early_filename'] = early_filename
+    results['final_filename'] = final_filename
 
     # Phase 3: Plot generation
     logger.info("=== Phase 3: Plot Generation ===")
-    casm_plot(
+    early_cluster_plot, full_cluster_plot = casm_plot(
         early_clust_path=early_filename,
         full_clust_path=final_filename,
         output=output,
@@ -1160,17 +1171,22 @@ def casm(fasta: str,
         force=force,
         show_cluster_numbers=show_cluster_numbers
     )
+    results['early_cluster_plot'] = early_cluster_plot
+    results['full_cluster_plot'] = full_cluster_plot
 
     logger.info("=== Complete CASM Analysis Completed ===")
 
-    sum_dict = {
-        "matrix_file": matrix_file,
-        "metadata_file": metadata_file,
-        "early_embedding": early_filename,
-        "final_embedding": final_filename
-    }
+    if not keep and intermediate_results:
+        logger.info("Cleaning up intermediate files")
+        for key, filepath in intermediate_results.items():
+            try:
+                file_path = Path(filepath)
+                if file_path.exists():
+                    file_path.unlink()
+                    logger.debug(f"Deleted {filepath}")
+            except Exception as e:
+                logger.warning(f"Failed to delete {filepath}: {e}")
 
-    return sum_dict
-
+    return
 
 

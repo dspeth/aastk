@@ -575,6 +575,7 @@ def get_main_parser():
             __full_clust(grp)
             __matrix_path(grp)
             __metadata_matrix(grp)
+            __keep(grp)
             __show(grp)
             __svg(grp)
 
