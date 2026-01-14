@@ -588,7 +588,7 @@ def fetch_protein_metadata(db_path: str,
     for i in range(0, len(protein_ids), batch_size):
         batch = protein_ids[i:i + batch_size]
         placeholders = ','.join(['?'] * len(batch))
-        query = f"""SELECT {col_str} from protein_datagit where seqID in ({placeholders})"""
+        query = f"""SELECT {col_str} from protein_data where seqID in ({placeholders})"""
 
         batch_df = pd.read_sql_query(query, conn, params=batch)
         all_results.append(batch_df)
