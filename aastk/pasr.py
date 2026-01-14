@@ -1072,6 +1072,7 @@ def pasr(seed_fasta: str,
          threads: int = 1,
          update: bool = False,
          yaml_path: str = None,
+         keep: bool = False,
          svg: bool = False,
          force: bool = False):
     """
@@ -1100,6 +1101,7 @@ def pasr(seed_fasta: str,
         threads (int): Number of threads (default: 1).
         update (bool): Creates updated matched_fasta and bsr plot using metadata yaml file
         yaml_path (str): Path to metadata yaml file
+        svg (bool): If true, plots will be generated in SVG format
         force (bool): If true, existing files/directories in output path are overwritten
     """
     # ===============================
@@ -1116,7 +1118,8 @@ def pasr(seed_fasta: str,
     logger.info(f"Running PASR workflow for {protein_name}")
     logger.info(f"Output directory: {output_dir}")
 
-    # store all the output paths in a dictionary
+    # store all the output paths in dictionaries
+    intermediate_results = {}
     results = {}
 
     # ===============================
@@ -1125,15 +1128,15 @@ def pasr(seed_fasta: str,
     try:
         logger.info("Building protein database")
         db_path = build(seed_fasta, threads, output_dir, force=force)
-        results['db_path'] = db_path
+        intermediate_results['db_path'] = f"{db_path}.dmnd"
 
         # ===============================
         # Database search
         # ===============================
         logger.info("Searching protein database")
         search_output, column_info_path = search(db_path, query_fasta, threads, output_dir, sensitivity, block, chunk, force=force)
-        results['search_output'] = search_output
-        results['column_info_path'] = column_info_path
+        intermediate_results['search_output'] = search_output
+        intermediate_results['column_info_path'] = column_info_path
 
         # ===============================
         # Sequence extraction
@@ -1148,7 +1151,7 @@ def pasr(seed_fasta: str,
         # ===============================
         logger.info("Calculating max scores")
         max_scores = max_score(matched_fasta, matrix_name, output_dir, force=force)
-        results['max_scores'] = max_scores
+        intermediate_results['max_scores'] = max_scores
 
         logger.info("Calculating blast score ratios")
         bsr_file = bsr(search_output, max_scores, output_dir, key_column, column_info_path, score_column=None, force=force)
@@ -1178,3 +1181,14 @@ def pasr(seed_fasta: str,
     except Exception as e:
         logger.error(f"PASR workflow failed: {e}")
         exit()
+    finally:
+        if not keep and intermediate_results:
+            logger.info("Cleaning up intermediate files")
+            for key, filepath in intermediate_results.items():
+                try:
+                    file_path = Path(filepath)
+                    if file_path.exists():
+                        file_path.unlink()
+                        logger.debug(f"Deleted {filepath}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete {filepath}: {e}")

@@ -159,6 +159,10 @@ def __iterations(group, required=False):
     group.add_argument('-i', '--iterations', type=str, default=500, required=required,
                        help='Number of clustering iterations')
 
+def __keep(group, required=False):
+    group.add_argument('--keep', action='store_true', required=required,
+                       help='Keep intermediate files in specified paths')
+
 def __kegg_gff(group, required=False):
     group.add_argument('-k', '--kegg_gff', type=str, required=required,
                        help='Path to (.tar.gz) GFF directory containing KEGG annotations')
@@ -420,6 +424,7 @@ def get_main_parser():
             __sensitivity(grp)
             __update(grp)
             __yaml(grp)
+            __keep(grp)
             __svg(grp)
             __force(grp)
 

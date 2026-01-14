@@ -160,6 +160,7 @@ def main():
                 sensitivity=args.sensitivity,
                 update=args.update,
                 yaml_path=args.yaml,
+                keep=args.keep,
                 svg=args.svg,
                 force=args.force
             )
