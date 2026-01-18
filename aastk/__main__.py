@@ -189,6 +189,9 @@ def main():
                 threads=args.threads,
                 include_annotation=args.include_annotation,
                 include_taxonomy=args.include_taxonomy,
+                include_culture_collection=args.include_culture_collection,
+                include_high_level_environment=args.include_high_level_environment,
+                include_low_level_environment=args.include_low_level_environment,
                 all_metadata=args.all_metadata,
                 force=args.force
             )

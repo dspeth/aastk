@@ -151,6 +151,18 @@ def __include_annotation(group, required=False):
     group.add_argument('--include_annotation', action='store_true', required=required,
                        help='Include annotation metadata in output')
 
+def __include_culture_collection(group, required=False):
+    group.add_argument('--include_culture_collection', action='store_true', required=required,
+                       help='Include culture collection metadata in output')
+
+def __include_high_level_environment(group, required=False):
+    group.add_argument('--include_high_level_environment', action='store_true', required=required,
+                       help='Include high level environment metadata in output')
+
+def __include_low_level_environment(group, required=False):
+    group.add_argument('--include_low_level_environment', action='store_true', required=required,
+                       help='Include low level environment metadata in output')
+
 def __include_taxonomy(group, required=False):
     group.add_argument('--include_taxonomy', action='store_true', required=required,
                        help='Include taxonomy metadata in output')
@@ -452,6 +464,9 @@ def get_main_parser():
             __output(grp)
             __threads(grp)
             __include_annotation(grp)
+            __include_culture_collection(grp)
+            __include_high_level_environment(grp)
+            __include_low_level_environment(grp)
             __include_taxonomy(grp)
             __all_metadata(grp)
             __force(grp)
