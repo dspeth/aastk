@@ -132,7 +132,7 @@ def __full_clust(group, required=False):
                        help='Path to full clustering TSV file')
 
 def __globdb_version(group, required=False):
-    group.add_argument('-g', '--globdb_version', type=int, required=required,
+    group.add_argument('-g', '--globdb_version', type=str, required=required,
                        help='GlobDB version (example: r226)')
 
 def __help(group, required=False):
@@ -371,6 +371,7 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __db_path(grp)
+            __threads(grp)
             __key_column(grp)
             __force(grp)
 

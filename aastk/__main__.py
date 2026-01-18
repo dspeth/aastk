@@ -100,6 +100,7 @@ def main():
                 query_path=args.query,
                 output_dir=args.output,
                 db_path=args.db_path,
+                threads=args.threads,
                 key_column=args.key_column,
                 sql=args.sql,
                 force=args.force

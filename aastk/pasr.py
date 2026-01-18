@@ -12,6 +12,7 @@ import numpy as np
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import sqlite3
 from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logger = logging.getLogger(__name__)
 
@@ -231,11 +232,43 @@ def search(db_path: str,
 # ===============================
 # aastk get_hit_seqs CLI FUNCTION
 # ===============================
+def fetch_sequence_batch(db_path: str, batch: list, batch_num: int):
+    """
+    Fetch a single batch of sequences from the database.
+
+    Args:
+        db_path: Path to SQLite database
+        batch: List of sequence IDs to fetch
+        batch_num: Batch number for tracking
+
+    Returns:
+        List of tuples (seqid, sequence)
+    """
+    conn = sqlite3.connect(db_path)
+
+    placeholders = ','.join('?' * len(batch))
+
+    cursor = conn.execute(f"""
+        SELECT seqID, protein_seq 
+        FROM protein_data 
+        WHERE seqID IN ({placeholders}) AND protein_seq IS NOT NULL
+    """, batch)
+
+    results = []
+    for seqid, compressed_seq in cursor:
+        sequence = decompress_sequence(compressed_seq)
+        results.append((seqid, sequence))
+
+    conn.close()
+    return results
+
+
 def get_hit_seqs(blast_tab: str,
                  query_path: str,
                  output_dir: str,
                  db_path: str,
                  key_column: int = 0,
+                 threads: int = 1,
                  sql: bool = False,
                  force: bool = False):
     """
@@ -273,50 +306,63 @@ def get_hit_seqs(blast_tab: str,
     # ======================================
     # Extract and write matching sequences
     # ======================================
-    # keep track of number of sequences written to the output file; set up zero count
     sequences_written = 0
+    batch_size = 500
 
     with open(out_fasta, "w") as out:
         if sql:
-            conn = sqlite3.connect(db_path)
-
-            # Convert set to list for batching
+            # convert set to list for batching
             matching_ids_list = list(matching_ids)
             total_ids = len(matching_ids_list)
 
-            # process in batches to avoid SQL variable limit
-            batch_size = 900
+            # create batches
+            batches = [matching_ids_list[i:i + batch_size]
+                       for i in range(0, total_ids, batch_size)]
 
-            for i in tqdm(range(0, total_ids, batch_size), desc="Processing batches"):
-                batch = matching_ids_list[i:i + batch_size]
-                placeholders = ','.join('?' * len(batch))
+            logger.info(f"Processing {len(batches)} batches with {threads} workers")
 
-                cursor = conn.execute(f"""
-                    SELECT seqID, protein_seq 
-                    FROM protein_data 
-                    WHERE seqID IN ({placeholders}) AND protein_seq IS NOT NULL
-                """, batch)
+            # process batches in parallel
+            with ThreadPoolExecutor(max_workers=threads) as executor:
+                future_to_batch = {
+                    executor.submit(fetch_sequence_batch, db_path, batch, i): i
+                    for i, batch in enumerate(batches)
+                }
 
-                for seqid, compressed_seq in cursor:
-                    sequence = decompress_sequence(compressed_seq)
-                    out.write(f">{seqid}\n{sequence}\n")
-                    sequences_written += 1
+                # Process completed batches as they finish
+                for future in tqdm(as_completed(future_to_batch),
+                                   total=len(batches),
+                                   desc="Fetching sequences"):
+                    try:
+                        results = future.result()
 
-            conn.close()
+                        # Write results to file
+                        for seqid, sequence in results:
+                            out.write(f">{seqid}\n{sequence}\n")
+                            sequences_written += 1
+
+                    except Exception as e:
+                        batch_num = future_to_batch[future]
+                        logger.error(f"Error processing batch {batch_num}: {e}")
+                        raise
+
             logger.info(f"Retrieved {sequences_written} sequences to {out_fasta}")
+
         else:
             file_type = determine_file_type(query_path)
             logger.info(f"Determined input file type: {file_type}")
+
             if file_type == "fasta":
                 logger.info(f"Processing FASTA format from {query_path}")
                 for header, sequence in write_fa_matches(query_path, matching_ids):
                     out.write(f"{header}\n{sequence}\n")
                     sequences_written += 1
+
             elif file_type == "fastq":
                 logger.info(f"Processing FASTQ format from {query_path}")
                 for header, sequence in write_fq_matches(query_path, matching_ids):
                     out.write(f"{header}\n{sequence}\n")
                     sequences_written += 1
+
             else:
                 logger.error(f"Unsupported file type: {file_type}")
                 raise ValueError(f"Unsupported file type: {file_type}")
@@ -327,9 +373,9 @@ def get_hit_seqs(blast_tab: str,
     # Generate sequence statistics
     # ===============================
     cmd = ["seqkit", "stats",
-            out_fasta,
-            "-o", stats_path,
-            "-a"]
+           out_fasta,
+           "-o", stats_path,
+           "-a"]
 
     logger.debug(f"Running command: {' '.join(cmd)}")
     subprocess.run(cmd, check=True)
