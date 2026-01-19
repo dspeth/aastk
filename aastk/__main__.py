@@ -32,7 +32,7 @@ def print_help():
   Helper tools:
     pasr_select  Select target sequences from pasr run based on bsr and score cutoffs
     casm_select  Select cluster(s) from casm analysis, and retrieve sequences
-    cugo_select  Select genomic posiiton from cugo analysis and retrieve sequences
+    cugo_select  Select genomic position from cugo analysis and retrieve sequences
     filter       Filter sequence dataset to remove non-homologous seqeunces
 
   Subcommands:
@@ -318,6 +318,9 @@ def main():
                 output=args.output,
                 force=args.force
             )
+
+        elif args.subparser_name == 'metadata_categories':
+            metadata_categories()
 
 
     except Exception as e:

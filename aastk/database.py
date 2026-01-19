@@ -5,6 +5,8 @@ import sqlite3
 import subprocess
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from textwrap import dedent
+
 
 logger = logging.getLogger(__name__)
 
@@ -776,3 +778,45 @@ def meta(db_path: str,
         logger.warning(
             f"{len(missing_ids)} sequence IDs were not found in the database"
         )
+
+
+
+def metadata_categories():
+    print()
+    print("Available metadata categories\n")
+
+    print("───────────────────────────")
+    print("Protein metadata")
+    print("───────────────────────────")
+    print()
+    print("  • sequence information")
+    for item in BASE_COLUMNS[1:]:
+        print(f"      - {item}")
+    print()
+    print("  • annotations")
+    for item in ANNOTATION_COLUMNS:
+        print(f"      - {item}")
+    print()  # blank line
+
+    print("───────────────────────────")
+    print("Genome metadata")
+    print("───────────────────────────")
+    print("  • taxonomy")
+    for item in TAXONOMY_COLUMNS:
+        print(f"      - {item}")
+    print()
+
+    print("  • culture information")
+    for item in CULTURE_COLLECTION_COLUMNS:
+        print(f"      - {item}")
+    print()
+
+    print("  • high-level environment data")
+    for item in HIGH_LEVEL_ENV_COLUMNS:
+        print(f"      - {item}")
+    print()
+
+    print("  • low-level environment data")
+    for item in LOW_LEVEL_ENV_COLUMNS:
+        print(f"      - {item}")
+    print()

@@ -205,11 +205,11 @@ def __max_scores(group, required=False):
 
 def __metadata_genome(group, required=False):
     group.add_argument('--metadata_genome', type=str, required=required,
-                       help='Select genome metadata for plotting (Options: domain, phylum, class, order_tax, family, genus, species)')
+                       help='Select genome metadata for plotting; run "aastk metadata_categories" to view available categories')
 
 def __metadata_protein(group, required=False):
     group.add_argument('--metadata_protein', type=str, required=required,
-                       help='Select protein metadata for plotting (Options: COG_ID, KEGG_ID, Pfam_ID)')
+                       help='Select protein metadata for plotting; run "aastk metadata_categories" to view available categories"')
 
 def __metadata_matrix(group, required=False):
     group.add_argument('--metadata_matrix', type=str, required=required,
@@ -605,6 +605,9 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __force(grp)
+
+    with subparser(sub_parsers, 'metadata_categories', 'Display avaiilable metadata categories') as parser:
+        pass
 
 
     return main_parser
