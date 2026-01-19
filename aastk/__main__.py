@@ -156,11 +156,13 @@ def main():
                 matrix_name=args.matrix,
                 threads=args.threads,
                 output_dir=args.output,
+                db_path=args.db_path,
                 block=args.block,
                 chunk=args.chunk,
                 sensitivity=args.sensitivity,
                 update=args.update,
                 yaml_path=args.yaml,
+                sql=args.sql,
                 keep=args.keep,
                 svg=args.svg,
                 force=args.force

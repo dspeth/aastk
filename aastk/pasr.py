@@ -1112,12 +1112,14 @@ def pasr(seed_fasta: str,
          matrix_name: str,
          output_dir: str,
          sensitivity: str,
+         db_path: str,
          block: int,
          chunk: int,
          key_column: int = 0,
          threads: int = 1,
          update: bool = False,
          yaml_path: str = None,
+         sql: bool = False,
          keep: bool = False,
          svg: bool = False,
          force: bool = False):
@@ -1173,14 +1175,14 @@ def pasr(seed_fasta: str,
     # ===============================
     try:
         logger.info("Building protein database")
-        db_path = build(seed_fasta, threads, output_dir, force=force)
+        diamond_db_path = build(seed_fasta, threads, output_dir, force=force)
         intermediate_results['db_path'] = f"{db_path}.dmnd"
 
         # ===============================
         # Database search
         # ===============================
         logger.info("Searching protein database")
-        search_output, column_info_path = search(db_path, query_fasta, threads, output_dir, sensitivity, block, chunk, force=force)
+        search_output, column_info_path = search(diamond_db_path, query_fasta, threads, output_dir, sensitivity, block, chunk, force=force)
         intermediate_results['search_output'] = search_output
         intermediate_results['column_info_path'] = column_info_path
 
@@ -1188,7 +1190,7 @@ def pasr(seed_fasta: str,
         # Sequence extraction
         # ===============================
         logger.info("Extracting matching sequences")
-        matched_fasta, stats_path = get_hit_seqs(search_output, query_fasta, output_dir, key_column, force=force)
+        matched_fasta, stats_path = get_hit_seqs(search_output, query_fasta, output_dir, db_path, key_column, threads=threads, sql=sql, force=force)
         results['matched_fasta'] = matched_fasta
         results['stats_path'] = stats_path
 
