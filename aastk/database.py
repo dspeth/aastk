@@ -222,13 +222,13 @@ def populate_culture_collection(conn: sqlite3.Connection,
                 genome_id = parts[0]
                 culture_collection = int(parts[1])
 
-                culture_collection_data.append((culture_collection, genome_id))
+                culture_collection_data.append((genome_id, culture_collection))
 
-            set_clause = ', '.join([f'{col} = ?' for col in CULTURE_COLLECTION_COLUMNS])
-            query = f"""
-                UPDATE genome_data
-                SET {set_clause}
-                WHERE genome_id = ?
+            query = """
+                INSERT INTO genome_data (genome_ID, culture_collection)
+                VALUES (?, ?)
+                ON CONFLICT(genome_ID) DO UPDATE SET
+                    culture_collection = excluded.culture_collection
             """
 
             conn.executemany(query, culture_collection_data)
@@ -252,26 +252,32 @@ def populate_high_level_environment(conn: sqlite3.Connection,
 
                 genome_id = parts[0]
 
-                env_values = []
+                env_values = [genome_id]
                 for i, col in enumerate(HIGH_LEVEL_ENV_COLUMNS, start=1):
                     value = float(parts[i]) if parts[i].strip() else None
                     env_values.append(value)
 
-                env_values.append(genome_id)
                 high_level_environment_data.append(tuple(env_values))
 
-                set_clause = ', '.join([f'{col} = ?' for col in HIGH_LEVEL_ENV_COLUMNS])
+            columns = ['genome_ID'] + HIGH_LEVEL_ENV_COLUMNS
+            placeholders = ', '.join(['?' for _ in columns])
+            column_names = ', '.join(columns)
+            update_clause = ', '.join([f'{col} = excluded.{col}' for col in HIGH_LEVEL_ENV_COLUMNS])
+
             query = f"""
-                UPDATE genome_data
-                SET {set_clause}
-                WHERE genome_id = ?
+                INSERT INTO genome_data ({column_names})
+                VALUES ({placeholders})
+                ON CONFLICT(genome_ID) DO UPDATE SET
+                    {update_clause}
             """
 
             conn.executemany(query, high_level_environment_data)
             conn.commit()
+            logger.info(f"Processed high level environment data for {len(high_level_environment_data)} genomes")
 
     except Exception as e:
         logger.error(f"Error populating high level environment data: {e}")
+
 
 def populate_low_level_environment(conn: sqlite3.Connection,
                                    low_level_environment_file: str):
@@ -287,23 +293,28 @@ def populate_low_level_environment(conn: sqlite3.Connection,
 
                 genome_id = parts[0]
 
-                env_values = []
+                env_values = [genome_id]
                 for i, col in enumerate(LOW_LEVEL_ENV_COLUMNS, start=1):
                     value = float(parts[i]) if parts[i].strip() else None
                     env_values.append(value)
 
-                env_values.append(genome_id)
                 low_level_environment_data.append(tuple(env_values))
 
-        set_clause = ', '.join([f'{col} = ?' for col in LOW_LEVEL_ENV_COLUMNS])
+        columns = ['genome_ID'] + LOW_LEVEL_ENV_COLUMNS
+        placeholders = ', '.join(['?' for _ in columns])
+        column_names = ', '.join(columns)
+        update_clause = ', '.join([f'{col} = excluded.{col}' for col in LOW_LEVEL_ENV_COLUMNS])
+
         query = f"""
-                UPDATE genome_data
-                SET {set_clause}
-                WHERE genome_id = ?
-            """
+            INSERT INTO genome_data ({column_names})
+            VALUES ({placeholders})
+            ON CONFLICT(genome_ID) DO UPDATE SET
+                {update_clause}
+        """
 
         conn.executemany(query, low_level_environment_data)
         conn.commit()
+        logger.info(f"Processed low level environment data for {len(low_level_environment_data)} genomes")
 
     except Exception as e:
         logger.error(f"Error populating low level environment data: {e}")
@@ -354,12 +365,13 @@ def populate_protein_sequences(conn: sqlite3.Connection,
     total_sequences = 0
 
     for batch in stream_all_proteins(protein_fasta_path):
-        update_data = [(seq_blob, seqid) for seqid, seq_blob in batch]
+        insert_data = [(seqid, seq_blob) for seqid, seq_blob in batch]
         conn.executemany("""
-                         UPDATE protein_data
-                         SET protein_seq = ?
-                         WHERE seqID = ?
-                         """, update_data)
+                         INSERT INTO protein_data (seqID, protein_seq)
+                         VALUES (?, ?)
+                             ON CONFLICT(seqID) DO UPDATE SET
+                             protein_seq = excluded.protein_seq
+                         """, insert_data)
         conn.commit()
         total_sequences += len(batch)
 
@@ -461,10 +473,11 @@ def database(cog_gff_tar_path: str,
             kegg_data = process_gff_file(str(gff_file), update_mode=True)
             if kegg_data:
                 conn.executemany("""
-                                 UPDATE protein_data
-                                 SET KEGG_ID = ?
-                                 WHERE seqID = ?
-                                 """, kegg_data)
+                                 INSERT INTO protein_data (seqID, KEGG_ID)
+                                 VALUES (?, ?)
+                                     ON CONFLICT(seqID) DO UPDATE SET
+                                     KEGG_ID = excluded.KEGG_ID
+                                 """, [(seqid, kegg_id) for kegg_id, seqid in kegg_data])
                 conn.commit()
 
         shutil.rmtree(tempdir)
@@ -482,14 +495,15 @@ def database(cog_gff_tar_path: str,
             pfam_data = process_gff_file(str(gff_file), update_mode=True)
             if pfam_data:
                 conn.executemany("""
-                                 UPDATE protein_data
-                                 SET Pfam_ID = ?
-                                 WHERE seqID = ?
-                                 """, pfam_data)
+                                 INSERT INTO protein_data (seqID, Pfam_ID)
+                                 VALUES (?, ?)
+                                     ON CONFLICT(seqID) DO UPDATE SET
+                                     Pfam_ID = excluded.Pfam_ID
+                                 """, [(seqid, pfam_id) for pfam_id, seqid in pfam_data])
                 conn.commit()
 
         shutil.rmtree(tempdir)
-
+        
     # ===== STEP 5: Process Protein FASTA file =====
     if protein_fasta_path:
         logger.info("STEP 5: Processing protein sequences...")
