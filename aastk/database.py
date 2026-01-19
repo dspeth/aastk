@@ -451,11 +451,13 @@ def database(cog_gff_tar_path: str,
         for tmhmm_file in tqdm(tmhmm_files, desc="Processing TMHMM"):
             tmhmm_data = process_tmhmm_file(str(tmhmm_file))
             if tmhmm_data:
+                # Changed to handle new entries
                 conn.executemany("""
-                                 UPDATE protein_data
-                                 SET no_tmh = ?
-                                 WHERE seqID = ?
-                                 """, tmhmm_data)
+                                 INSERT INTO protein_data (seqID, no_tmh)
+                                 VALUES (?, ?)
+                                     ON CONFLICT(seqID) DO UPDATE SET
+                                     no_tmh = excluded.no_tmh
+                                 """, [(seqid, no_tmh) for no_tmh, seqid in tmhmm_data])
                 conn.commit()
 
         shutil.rmtree(tempdir)
@@ -503,7 +505,7 @@ def database(cog_gff_tar_path: str,
                 conn.commit()
 
         shutil.rmtree(tempdir)
-        
+
     # ===== STEP 5: Process Protein FASTA file =====
     if protein_fasta_path:
         logger.info("STEP 5: Processing protein sequences...")
