@@ -782,13 +782,9 @@ def meta(db_path: str,
 
 
 def metadata_categories():
-    print()
-    print("Available metadata categories\n")
-
     print("───────────────────────────")
     print("Protein metadata")
     print("───────────────────────────")
-    print()
     print("  • sequence information")
     for item in BASE_COLUMNS[1:]:
         print(f"      - {item}")
