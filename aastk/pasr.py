@@ -307,7 +307,7 @@ def get_hit_seqs(blast_tab: str,
     # Extract and write matching sequences
     # ======================================
     sequences_written = 0
-    batch_size = 900
+    batch_size = 500
 
     with open(out_fasta, "w") as out:
         if sql:
