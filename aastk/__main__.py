@@ -32,7 +32,7 @@ def print_help():
   Helper tools:
     pasr_select  Select target sequences from pasr run based on bsr and score cutoffs
     casm_select  Select cluster(s) from casm analysis, and retrieve sequences
-    cugo_select  Select genomic posiiton from cugo analysis and retrieve sequences
+    cugo_select  Select genomic position from cugo analysis and retrieve sequences
     filter       Filter sequence dataset to remove non-homologous seqeunces
 
   Subcommands:
@@ -100,6 +100,7 @@ def main():
                 query_path=args.query,
                 output_dir=args.output,
                 db_path=args.db_path,
+                threads=args.threads,
                 key_column=args.key_column,
                 sql=args.sql,
                 force=args.force
@@ -155,11 +156,13 @@ def main():
                 matrix_name=args.matrix,
                 threads=args.threads,
                 output_dir=args.output,
+                db_path=args.db_path,
                 block=args.block,
                 chunk=args.chunk,
                 sensitivity=args.sensitivity,
                 update=args.update,
                 yaml_path=args.yaml,
+                sql=args.sql,
                 keep=args.keep,
                 svg=args.svg,
                 force=args.force
@@ -189,6 +192,9 @@ def main():
                 threads=args.threads,
                 include_annotation=args.include_annotation,
                 include_taxonomy=args.include_taxonomy,
+                include_culture_collection=args.include_culture_collection,
+                include_high_level_environment=args.include_high_level_environment,
+                include_low_level_environment=args.include_low_level_environment,
                 all_metadata=args.all_metadata,
                 force=args.force
             )
@@ -312,6 +318,9 @@ def main():
                 output=args.output,
                 force=args.force
             )
+
+        elif args.subparser_name == 'metadata_categories':
+            metadata_categories()
 
 
     except Exception as e:

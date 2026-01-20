@@ -5,8 +5,109 @@ import sqlite3
 import subprocess
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from textwrap import dedent
+
 
 logger = logging.getLogger(__name__)
+
+# define database table schema
+PROTEIN_SCHEMA = {
+    'seqID': 'TEXT PRIMARY KEY',
+    'parent_ID': 'TEXT',
+    'aa_length': 'INTEGER',
+    'strand': 'TEXT',
+    'COG_ID': 'TEXT',
+    'KEGG_ID': 'TEXT',
+    'Pfam_ID': 'TEXT',
+    'cugo_number': 'INTEGER',
+    'no_tmh': 'INTEGER',
+    'protein_seq': 'BLOB'
+}
+
+GENOME_SCHEMA = {
+    'genome_ID': 'TEXT PRIMARY KEY',
+    'domain': 'TEXT',
+    'phylum': 'TEXT',
+    'class': 'TEXT',
+    'order_tax': 'TEXT',
+    'family': 'TEXT',
+    'genus': 'TEXT',
+    'species': 'TEXT',
+    'culture_collection': 'INT',
+    'animal_associated': 'REAL',
+    'aquatic': 'REAL',
+    'built': 'REAL',
+    'other': 'REAL',
+    'sediment': 'REAL',
+    'soil': 'REAL',
+    'unassigned_high_level': 'REAL',
+    'human': 'REAL',
+    'invertebrate': 'REAL',
+    'other_vertebrate': 'REAL',
+    'unspecified_animal': 'REAL',
+    'aquatic_other': 'REAL',
+    'aquatic_unspecified': 'REAL',
+    'freshwater': 'REAL',
+    'groundwater': 'REAL',
+    'marine': 'REAL',
+    'built_other': 'REAL',
+    'drinking_water': 'REAL',
+    'wastewater': 'REAL',
+    'air': 'REAL',
+    'bacteria': 'REAL',
+    'eukaryote_other': 'REAL',
+    'food': 'REAL',
+    'geothermal': 'REAL',
+    'hypersaline': 'REAL',
+    'other_unspecified': 'REAL',
+    'plant_associated': 'REAL',
+    'subsurface': 'REAL',
+    'synthetic': 'REAL',
+    'viral': 'REAL',
+    'freshwater_sediment': 'REAL',
+    'marine_sediment': 'REAL',
+    'sediment_unspecified': 'REAL',
+    'desert': 'REAL',
+    'forest': 'REAL',
+    'rhizosphere': 'REAL',
+    'soil_agricultural': 'REAL',
+    'soil_other': 'REAL',
+    'soil_unspecified': 'REAL',
+    'tundra_wetland': 'REAL',
+    'unassigned_low_level': 'REAL'
+}
+
+# extract column name lists for queries (same order)
+PROTEIN_COLUMNS = list(PROTEIN_SCHEMA.keys())
+GENOME_COLUMNS = list(GENOME_SCHEMA.keys())
+
+# categorize columns for later use
+BASE_COLUMNS = ['seqID', 'parent_ID', 'aa_length', 'strand']
+
+ANNOTATION_COLUMNS = ['COG_ID', 'KEGG_ID', 'Pfam_ID']
+
+TAXONOMY_COLUMNS = [
+    'genome_ID', 'domain', 'phylum', 'class',
+    'order_tax', 'family', 'genus', 'species'
+]
+
+CULTURE_COLLECTION_COLUMNS = ['culture_collection']
+
+HIGH_LEVEL_ENV_COLUMNS = [
+    'animal_associated', 'aquatic', 'built', 'other',
+    'sediment', 'soil', 'unassigned_high_level'
+]
+
+LOW_LEVEL_ENV_COLUMNS = [
+    'human', 'invertebrate', 'other_vertebrate', 'unspecified_animal',
+    'aquatic_other', 'aquatic_unspecified', 'freshwater', 'groundwater', 'marine',
+    'built_other', 'drinking_water', 'wastewater',
+    'air', 'bacteria', 'eukaryote_other', 'food', 'geothermal', 'hypersaline',
+    'other_unspecified', 'plant_associated', 'subsurface', 'synthetic', 'viral',
+    'freshwater_sediment', 'marine_sediment', 'sediment_unspecified',
+    'desert', 'forest', 'rhizosphere', 'soil_agricultural', 'soil_other',
+    'soil_unspecified', 'tundra_wetland', 'unassigned_low_level'
+]
 
 # ====================================
 #
@@ -16,88 +117,33 @@ logger = logging.getLogger(__name__)
 def setup_database(db_path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
 
-    conn.execute('''
+    protein_cols = ',\n                     '.join(
+        [f'{col} {dtype}' for col, dtype in PROTEIN_SCHEMA.items()]
+    )
+
+    conn.execute(f'''
                  CREATE TABLE IF NOT EXISTS protein_data (
-                     seqID TEXT PRIMARY KEY,
-                     parent_ID TEXT,
-                     aa_length INTEGER,
-                     strand TEXT,
-                     COG_ID TEXT,
-                     KEGG_ID TEXT,
-                     Pfam_ID TEXT,
-                     cugo_number INTEGER,
-                     no_tmh INTEGER,
-                     protein_seq BLOB
+                    {protein_cols}
                  )
                  ''')
 
-    conn.execute('''
+    genome_cols = ',\n                     '.join(
+        [f'{col} {dtype}' for col, dtype in GENOME_SCHEMA.items()]
+    )
+
+    conn.execute(f'''
                  CREATE TABLE IF NOT EXISTS genome_data (
-                     genome_ID TEXT PRIMARY KEY,
-                     domain TEXT,
-                     phylum TEXT,
-                     class TEXT,
-                     order_tax TEXT,
-                     family TEXT,
-                     genus TEXT,
-                     species TEXT,
-                     culture_collection INT,
-                     animal_associated REAL,
-                     aquatic REAL,
-                     built REAL,
-                     other REAL,
-                     sediment REAL,
-                     soil REAL,
-                     unassigned_high_level REAL,
-                     human REAL,
-                     invertebrate REAL,
-                     other_vertebrate REAL,
-                     unspecified_animal REAL,
-                     aquatic_other REAL,
-                     aquatic_unspecified REAL,
-                     freshwater REAL,
-                     groundwater REAL,
-                     marine REAL,
-                     built_other REAL,
-                     drinking_water REAL,
-                     wastewater REAL,
-                     air REAL,
-                     bacteria REAL,
-                     eukaryote_other REAL,
-                     food REAL,
-                     geothermal REAL,
-                     hypersaline REAL,
-                     other_unspecified REAL,
-                     plant_associated REAL,
-                     subsurface REAL,
-                     synthetic REAL,
-                     viral REAL,
-                     freshwater_sediment REAL,
-                     marine_sediment REAL,
-                     sediment_unspecified REAL,
-                     desert REAL,
-                     forest REAL,
-                     rhizosphere REAL,
-                     soil_agricultural REAL,
-                     soil_other REAL,
-                     soil_unspecified REAL,
-                     tundra_wetland REAL,
-                     unassigned_low_level REAL     
+                    {genome_cols}  
                  )
                  ''')
 
-    conn.execute('''
+    view_cols = [col for col in PROTEIN_COLUMNS if col != 'protein_seq']
+    view_select = ',\n                     '.join(view_cols)
+
+    conn.execute(f'''
                  CREATE VIEW IF NOT EXISTS protein_data_readable AS
                  SELECT
-                     seqID,
-                     parent_ID,
-                     aa_length,
-                     strand,
-                     COG_ID,
-                     KEGG_ID,
-                     Pfam_ID,
-                     cugo_number,
-                     no_tmh,
+                     {view_select},
                      CASE WHEN protein_seq IS NULL THEN NULL ELSE '<COMPRESSED_BLOB>' END as protein_seq_status
                  FROM protein_data
                  ''')
@@ -141,24 +187,20 @@ def populate_taxonomy_table(conn: sqlite3.Connection,
             taxonomy_data = []
             for line in f:
                 parts = line.strip().split('\t')
-                if len(parts) < 8:
+                if len(parts) < len(TAXONOMY_COLUMNS):
                     continue
 
-                genome_id = parts[0]
-                domain = parts[1]
-                phylum = parts[2]
-                class_ = parts[3]
-                order = parts[4]
-                family = parts[5]
-                genus = parts[6]
-                species = parts[7]
+                row_values = tuple(parts[i] for i in range(len(TAXONOMY_COLUMNS)))
 
-                taxonomy_data.append((genome_id, domain, phylum, class_, order, family, genus, species))
+                taxonomy_data.append(row_values)
 
-            conn.executemany("""
+            placeholders = ', '.join(['?' for _ in TAXONOMY_COLUMNS])
+            columns = ', '.join(TAXONOMY_COLUMNS)
+
+            conn.executemany(f"""
                 INSERT OR REPLACE INTO genome_data
-                (genome_id, domain, phylum, class, order_tax, family, genus, species)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?) 
+                ({columns})
+                VALUES ({placeholders}) 
             """, taxonomy_data)
 
         conn.commit()
@@ -182,13 +224,17 @@ def populate_culture_collection(conn: sqlite3.Connection,
                 genome_id = parts[0]
                 culture_collection = int(parts[1])
 
-                culture_collection_data.append((culture_collection, genome_id))
+                culture_collection_data.append((genome_id, culture_collection))
 
-            conn.executemany("""
-                UPDATE genome_data
-                SET culture_collection = ?
-                WHERE genome_id = ?
-            """, culture_collection_data)
+            query = """
+                INSERT INTO genome_data (genome_ID, culture_collection)
+                VALUES (?, ?)
+                ON CONFLICT(genome_ID) DO UPDATE SET
+                    culture_collection = excluded.culture_collection
+            """
+
+            conn.executemany(query, culture_collection_data)
+
             conn.commit()
 
     except Exception as e:
@@ -203,36 +249,37 @@ def populate_high_level_environment(conn: sqlite3.Connection,
             high_level_environment_data = []
             for line in f:
                 parts = line.strip().split('\t')
-                if len(parts) < 9:
+                if len(parts) < len(HIGH_LEVEL_ENV_COLUMNS) + 1:
                     continue
 
                 genome_id = parts[0]
-                animal_associated = float(parts[1]) if parts[1].strip() else None
-                aquatic = float(parts[2]) if parts[2].strip() else None
-                built = float(parts[3]) if parts[3].strip() else None
-                other = float(parts[4]) if parts[4].strip() else None
-                sediment = float(parts[5]) if parts[5].strip() else None
-                soil = float(parts[6]) if parts[6].strip() else None
-                unassigned_high_level = float(parts[7]) if parts[7].strip() else None
 
-                high_level_environment_data.append((unassigned_high_level, soil, sediment, other, built, aquatic, animal_associated, genome_id))
+                env_values = [genome_id]
+                for i, col in enumerate(HIGH_LEVEL_ENV_COLUMNS, start=1):
+                    value = float(parts[i]) if parts[i].strip() else None
+                    env_values.append(value)
 
-            conn.executemany("""
-                UPDATE genome_data
-                SET 
-                    unassigned_high_level = ?,
-                    soil = ?,
-                    sediment = ?,
-                    other = ?,
-                    built = ?,
-                    aquatic = ?,
-                    animal_associated = ?
-                WHERE genome_id = ?
-            """, high_level_environment_data)
+                high_level_environment_data.append(tuple(env_values))
+
+            columns = ['genome_ID'] + HIGH_LEVEL_ENV_COLUMNS
+            placeholders = ', '.join(['?' for _ in columns])
+            column_names = ', '.join(columns)
+            update_clause = ', '.join([f'{col} = excluded.{col}' for col in HIGH_LEVEL_ENV_COLUMNS])
+
+            query = f"""
+                INSERT INTO genome_data ({column_names})
+                VALUES ({placeholders})
+                ON CONFLICT(genome_ID) DO UPDATE SET
+                    {update_clause}
+            """
+
+            conn.executemany(query, high_level_environment_data)
             conn.commit()
+            logger.info(f"Processed high level environment data for {len(high_level_environment_data)} genomes")
 
     except Exception as e:
         logger.error(f"Error populating high level environment data: {e}")
+
 
 def populate_low_level_environment(conn: sqlite3.Connection,
                                    low_level_environment_file: str):
@@ -243,94 +290,33 @@ def populate_low_level_environment(conn: sqlite3.Connection,
             low_level_environment_data = []
             for line in f:
                 parts = line.strip().split('\t')
-                if len(parts) < 36:
+                if len(parts) < len(LOW_LEVEL_ENV_COLUMNS) + 1:
                     continue
 
                 genome_id = parts[0]
-                human = float(parts[1]) if parts[1].strip() else None
-                invertebrate = float(parts[2]) if parts[2].strip() else None
-                other_vertebrate = float(parts[3]) if parts[3].strip() else None
-                unspecified_animal = float(parts[4]) if parts[4].strip() else None
-                aquatic_other = float(parts[5]) if parts[5].strip() else None
-                aquatic_unspecified = float(parts[6]) if parts[6].strip() else None
-                freshwater = float(parts[7]) if parts[7].strip() else None
-                groundwater = float(parts[8]) if parts[8].strip() else None
-                marine = float(parts[9]) if parts[9].strip() else None
-                built_other = float(parts[10]) if parts[10].strip() else None
-                drinking_water = float(parts[11]) if parts[11].strip() else None
-                wastewater = float(parts[12]) if parts[12].strip() else None
-                air = float(parts[13]) if parts[13].strip() else None
-                bacteria = float(parts[14]) if parts[14].strip() else None
-                eukaryote_other = float(parts[15]) if parts[15].strip() else None
-                food = float(parts[16]) if parts[16].strip() else None
-                geothermal = float(parts[17]) if parts[17].strip() else None
-                hypersaline = float(parts[18]) if parts[18].strip() else None
-                other_unspecified = float(parts[19]) if parts[19].strip() else None
-                plant_associated = float(parts[20]) if parts[20].strip() else None
-                subsurface = float(parts[21]) if parts[21].strip() else None
-                synthetic = float(parts[22]) if parts[22].strip() else None
-                viral = float(parts[23]) if parts[23].strip() else None
-                freshwater_sediment = float(parts[24]) if parts[24].strip() else None
-                marine_sediment = float(parts[25]) if parts[25].strip() else None
-                sediment_unspecified = float(parts[26]) if parts[26].strip() else None
-                desert = float(parts[27]) if parts[27].strip() else None
-                forest = float(parts[28]) if parts[28].strip() else None
-                rhizosphere = float(parts[29]) if parts[29].strip() else None
-                soil_agricultural = float(parts[30]) if parts[30].strip() else None
-                soil_other = float(parts[31]) if parts[31].strip() else None
-                soil_unspecified = float(parts[32]) if parts[32].strip() else None
-                tundra_wetland = float(parts[33]) if parts[33].strip() else None
-                unassigned_low_level = float(parts[34]) if parts[34].strip() else None
 
-                low_level_environment_data.append((unassigned_low_level, tundra_wetland, soil_unspecified, soil_other,
-                                                   soil_agricultural, rhizosphere, forest, desert, sediment_unspecified,
-                                                   marine_sediment, freshwater_sediment, viral, synthetic, subsurface,
-                                                   plant_associated, other_unspecified, hypersaline, geothermal, food,
-                                                   eukaryote_other,bacteria, air, wastewater, drinking_water, built_other,
-                                                   marine, groundwater, freshwater, aquatic_unspecified, aquatic_other,
-                                                   unspecified_animal, other_vertebrate, invertebrate, human, genome_id
-                                                   ))
+                env_values = [genome_id]
+                for i, col in enumerate(LOW_LEVEL_ENV_COLUMNS, start=1):
+                    value = float(parts[i]) if parts[i].strip() else None
+                    env_values.append(value)
 
-            conn.executemany("""
-                UPDATE genome_data
-                SET
-                    unassigned_low_level = ?,
-                    tundra_wetland = ?, 
-                    soil_unspecified = ?, 
-                    soil_other = ?,
-                    soil_agricultural = ?,
-                    rhizosphere = ?,
-                    forest = ?,
-                    desert = ?, 
-                    sediment_unspecified = ?,
-                    marine_sediment = ?, 
-                    freshwater_sediment = ?, 
-                    viral = ?, 
-                    synthetic = ?, 
-                    subsurface = ?,
-                    plant_associated = ?, 
-                    other_unspecified = ?, 
-                    hypersaline = ?, 
-                    geothermal = ?, 
-                    food = ?,
-                    eukaryote_other = ?, 
-                    bacteria = ?, 
-                    air = ?, 
-                    wastewater = ?, 
-                    drinking_water = ?, 
-                    built_other = ?,
-                    marine = ?,
-                    groundwater = ?, 
-                    freshwater = ?, 
-                    aquatic_unspecified = ?, 
-                    aquatic_other = ?,
-                    unspecified_animal = ?, 
-                    other_vertebrate = ?, 
-                    invertebrate = ?, 
-                    human = ?
-                WHERE genome_id = ?
-            """, low_level_environment_data)
-            conn.commit()
+                low_level_environment_data.append(tuple(env_values))
+
+        columns = ['genome_ID'] + LOW_LEVEL_ENV_COLUMNS
+        placeholders = ', '.join(['?' for _ in columns])
+        column_names = ', '.join(columns)
+        update_clause = ', '.join([f'{col} = excluded.{col}' for col in LOW_LEVEL_ENV_COLUMNS])
+
+        query = f"""
+            INSERT INTO genome_data ({column_names})
+            VALUES ({placeholders})
+            ON CONFLICT(genome_ID) DO UPDATE SET
+                {update_clause}
+        """
+
+        conn.executemany(query, low_level_environment_data)
+        conn.commit()
+        logger.info(f"Processed low level environment data for {len(low_level_environment_data)} genomes")
 
     except Exception as e:
         logger.error(f"Error populating low level environment data: {e}")
@@ -381,12 +367,13 @@ def populate_protein_sequences(conn: sqlite3.Connection,
     total_sequences = 0
 
     for batch in stream_all_proteins(protein_fasta_path):
-        update_data = [(seq_blob, seqid) for seqid, seq_blob in batch]
+        insert_data = [(seqid, seq_blob) for seqid, seq_blob in batch]
         conn.executemany("""
-                         UPDATE protein_data
-                         SET protein_seq = ?
-                         WHERE seqID = ?
-                         """, update_data)
+                         INSERT INTO protein_data (seqID, protein_seq)
+                         VALUES (?, ?)
+                             ON CONFLICT(seqID) DO UPDATE SET
+                             protein_seq = excluded.protein_seq
+                         """, insert_data)
         conn.commit()
         total_sequences += len(batch)
 
@@ -466,11 +453,13 @@ def database(cog_gff_tar_path: str,
         for tmhmm_file in tqdm(tmhmm_files, desc="Processing TMHMM"):
             tmhmm_data = process_tmhmm_file(str(tmhmm_file))
             if tmhmm_data:
+                # Changed to handle new entries
                 conn.executemany("""
-                                 UPDATE protein_data
-                                 SET no_tmh = ?
-                                 WHERE seqID = ?
-                                 """, tmhmm_data)
+                                 INSERT INTO protein_data (seqID, no_tmh)
+                                 VALUES (?, ?)
+                                     ON CONFLICT(seqID) DO UPDATE SET
+                                     no_tmh = excluded.no_tmh
+                                 """, [(seqid, no_tmh) for no_tmh, seqid in tmhmm_data])
                 conn.commit()
 
         shutil.rmtree(tempdir)
@@ -488,10 +477,11 @@ def database(cog_gff_tar_path: str,
             kegg_data = process_gff_file(str(gff_file), update_mode=True)
             if kegg_data:
                 conn.executemany("""
-                                 UPDATE protein_data
-                                 SET KEGG_ID = ?
-                                 WHERE seqID = ?
-                                 """, kegg_data)
+                                 INSERT INTO protein_data (seqID, KEGG_ID)
+                                 VALUES (?, ?)
+                                     ON CONFLICT(seqID) DO UPDATE SET
+                                     KEGG_ID = excluded.KEGG_ID
+                                 """, [(seqid, kegg_id) for kegg_id, seqid in kegg_data])
                 conn.commit()
 
         shutil.rmtree(tempdir)
@@ -509,10 +499,11 @@ def database(cog_gff_tar_path: str,
             pfam_data = process_gff_file(str(gff_file), update_mode=True)
             if pfam_data:
                 conn.executemany("""
-                                 UPDATE protein_data
-                                 SET Pfam_ID = ?
-                                 WHERE seqID = ?
-                                 """, pfam_data)
+                                 INSERT INTO protein_data (seqID, Pfam_ID)
+                                 VALUES (?, ?)
+                                     ON CONFLICT(seqID) DO UPDATE SET
+                                     Pfam_ID = excluded.Pfam_ID
+                                 """, [(seqid, pfam_id) for pfam_id, seqid in pfam_data])
                 conn.commit()
 
         shutil.rmtree(tempdir)
@@ -559,29 +550,45 @@ def database(cog_gff_tar_path: str,
 # ======================================
 # METADATA RETRIEVAL
 # ======================================
-def build_query(include_taxonomy: bool, include_annotation: bool, batch_size: int = 1) -> str:
-    select_cols = ['p.seqID', 'p.parent_ID', 'p.aa_length', 'p.strand']
+def build_query(include_taxonomy: bool = False,
+                include_annotation: bool = False,
+                include_culture_collection: bool = False,
+                include_high_level_environment: bool = False,
+                include_low_level_environment: bool = False,
+                batch_size: int = 1) -> str:
+    select_cols = [f'p.{col}' for col in BASE_COLUMNS]
 
     if include_annotation:
-        select_cols.extend(['p.COG_ID', 'p.KEGG_ID', 'p.Pfam_ID'])
+        select_cols.extend([f'p.{col}' for col in ANNOTATION_COLUMNS])
 
     if include_taxonomy:
-        select_cols.extend([
-            'g.genome_ID', 'g.domain', 'g.phylum', 'g.class',
-            'g.order_tax', 'g.family', 'g.genus', 'g.species'
-        ])
+        select_cols.extend([f'g.{col}' for col in TAXONOMY_COLUMNS])
+
+    if include_culture_collection:
+        select_cols.extend([f'g.{col}' for col in CULTURE_COLLECTION_COLUMNS])
+
+    if include_high_level_environment:
+        select_cols.extend([f'g.{col}' for col in HIGH_LEVEL_ENV_COLUMNS])
+
+    if include_low_level_environment:
+        select_cols.extend([f'g.{col}' for col in LOW_LEVEL_ENV_COLUMNS])
 
     query = f"SELECT {', '.join(select_cols)} FROM protein_data p"
 
-    if include_taxonomy:
+    needs_genome_join = (
+            include_taxonomy or include_culture_collection or
+            include_high_level_environment or include_low_level_environment
+    )
+
+    if needs_genome_join:
         query += """
-        LEFT JOIN genome_data g ON 
-        CASE 
-            WHEN instr(p.seqID, '___') > 0 
-            THEN substr(p.seqID, 1, instr(p.seqID, '___') - 1)
-            ELSE p.seqID
-        END = g.genome_ID
-        """
+            LEFT JOIN genome_data g ON 
+            CASE 
+                WHEN instr(p.seqID, '___') > 0 
+                THEN substr(p.seqID, 1, instr(p.seqID, '___') - 1)
+                ELSE p.seqID
+            END = g.genome_ID
+            """
 
     if batch_size > 1:
         placeholders = ','.join(['?' for _ in range(batch_size)])
@@ -591,89 +598,161 @@ def build_query(include_taxonomy: bool, include_annotation: bool, batch_size: in
 
     return query
 
-def get_header(include_taxonomy: bool, include_annotation: bool):
-    header = ['seqID', 'parent_ID', 'aa_length', 'strand']
+
+def get_header(include_taxonomy: bool,
+               include_annotation: bool,
+               include_culture_collection: bool,
+               include_high_level_environment: bool,
+               include_low_level_environment: bool):
+
+    header = BASE_COLUMNS.copy()
 
     if include_annotation:
-        header.extend(['COG_ID', 'KEGG_ID', 'Pfam_ID'])
+        header.extend(ANNOTATION_COLUMNS)
 
     if include_taxonomy:
-        header.extend(['genome_ID', 'domain', 'phylum', 'class',
-                       'order', 'family', 'genus', 'species'])
+        header.extend(TAXONOMY_COLUMNS)
+
+    if include_culture_collection:
+        header.extend(CULTURE_COLLECTION_COLUMNS)
+
+    if include_high_level_environment:
+        header.extend(HIGH_LEVEL_ENV_COLUMNS)
+
+    if include_low_level_environment:
+        header.extend(LOW_LEVEL_ENV_COLUMNS)
 
     return header
+
 
 def process_batch(db_path: str,
                   batch: list,
                   include_taxonomy: bool,
-                  include_annotation: bool):
+                  include_annotation: bool,
+                  include_culture_collection: bool,
+                  include_high_level_environment: bool,
+                  include_low_level_environment: bool):
+
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    query = build_query(include_taxonomy, include_annotation, len(batch))
+    query = build_query(
+        include_taxonomy=include_taxonomy,
+        include_annotation=include_annotation,
+        include_culture_collection=include_culture_collection,
+        include_high_level_environment=include_high_level_environment,
+        include_low_level_environment=include_low_level_environment,
+        batch_size=len(batch)
+    )
+
     cursor.execute(query, batch)
     results = cursor.fetchall()
 
-    result_dict = {}
-    for result in results:
-        seq_id = result[0]
-        result_dict[seq_id] = result
+    result_dict = {row[0]: row for row in results}
 
     conn.close()
     return batch, result_dict
 
+
 def meta(db_path: str,
-             fasta: str,
-             output: str,
-             threads: int = 1,
-             include_annotation: bool = False,
-             include_taxonomy: bool = False,
-             all_metadata: bool = False,
-             force: bool = False):
+         fasta: str,
+         output: str,
+         threads: int = 1,
+         include_annotation: bool = False,
+         include_taxonomy: bool = False,
+         include_culture_collection: bool = False,
+         include_high_level_environment: bool = False,
+         include_low_level_environment: bool = False,
+         all_metadata: bool = False,
+         force: bool = False):
+
     if fasta:
         seq_dict = read_fasta_to_dict(fasta)
         seq_ids = list(seq_dict.keys())
         dataset_name = determine_dataset_name(fasta, '.', 0)
-        output_path = ensure_path(output, f'{dataset_name}_metadata.tsv', force=force)
+        output_path = ensure_path(
+            output,
+            f'{dataset_name}_metadata.tsv',
+            force=force
+        )
     else:
-        logger.error("No valid input file found. Please specify path to protein FASTA")
+        logger.error(
+            "No valid input file found. Please specify path to protein FASTA"
+        )
         return
 
+    # Enable everything if --all-metadata is set
     if all_metadata:
         include_annotation = True
         include_taxonomy = True
+        include_culture_collection = True
+        include_high_level_environment = True
+        include_low_level_environment = True
 
-    if not (include_annotation or include_taxonomy):
-        logger.error("Must specify at least one data type (--taxonomy, --annotation, or --all)")
+    # Ensure at least one metadata type is requested
+    if not any([
+        include_annotation,
+        include_taxonomy,
+        include_culture_collection,
+        include_high_level_environment,
+        include_low_level_environment
+    ]):
+        logger.error(
+            "Must specify at least one metadata type "
+            "(--taxonomy, --annotation, --culture-collection, "
+            "--high-level-environment, --low-level-environment, or --all-metadata)"
+        )
         return
-
-    conn = sqlite3.connect(db_path)
 
     BATCH_SIZE = 500
 
-    header = get_header(include_taxonomy, include_annotation)
+    header = get_header(
+        include_taxonomy,
+        include_annotation,
+        include_culture_collection,
+        include_high_level_environment,
+        include_low_level_environment
+    )
 
     # Split seq_ids into batches
-    batches = [seq_ids[i:i + BATCH_SIZE] for i in range(0, len(seq_ids), BATCH_SIZE)]
+    batches = [
+        seq_ids[i:i + BATCH_SIZE]
+        for i in range(0, len(seq_ids), BATCH_SIZE)
+    ]
 
     found_ids = set()
     missing_ids = set()
-
-    # Store results with batch index to maintain order
     batch_results = {}
 
     # Process batches in parallel
     with ThreadPoolExecutor(max_workers=threads) as executor:
-        futures = {executor.submit(process_batch, db_path, batch, include_taxonomy, include_annotation): idx
-                   for idx, batch in enumerate(batches)}
+        futures = {
+            executor.submit(
+                process_batch,
+                db_path,
+                batch,
+                include_taxonomy,
+                include_annotation,
+                include_culture_collection,
+                include_high_level_environment,
+                include_low_level_environment
+            ): idx
+            for idx, batch in enumerate(batches)
+        }
 
-        for future in tqdm(as_completed(futures), total=len(batches), desc="Querying database"):
+        for future in tqdm(
+                as_completed(futures),
+                total=len(batches),
+                desc="Querying database"
+        ):
             batch_idx = futures[future]
             try:
                 batch, result_dict = future.result()
                 batch_results[batch_idx] = (batch, result_dict)
             except Exception as e:
-                logger.error(f"Error processing batch {batch_idx}: {e}")
+                logger.error(
+                    f"Error processing batch {batch_idx}: {e}"
+                )
 
     # Write results in original order
     with open(output_path, 'w') as out:
@@ -685,11 +764,55 @@ def meta(db_path: str,
             for seq_id in batch:
                 if seq_id in result_dict:
                     found_ids.add(seq_id)
-                    row = [str(x) if x is not None else '' for x in result_dict[seq_id]]
+                    row = [
+                        str(x) if x is not None else ''
+                        for x in result_dict[seq_id]
+                    ]
                     out.write('\t'.join(row) + '\n')
                 else:
                     missing_ids.add(seq_id)
 
-        logger.info(f"Metadata has been saved to {output_path}")
+    logger.info(f"Metadata has been saved to {output_path}")
 
-    conn.close()
+    if missing_ids:
+        logger.warning(
+            f"{len(missing_ids)} sequence IDs were not found in the database"
+        )
+
+
+
+def metadata_categories():
+    print("───────────────────────────")
+    print("Protein metadata")
+    print("───────────────────────────")
+    print("  • sequence information")
+    for item in BASE_COLUMNS[1:]:
+        print(f"      - {item}")
+    print()
+    print("  • annotations")
+    for item in ANNOTATION_COLUMNS:
+        print(f"      - {item}")
+    print()  # blank line
+
+    print("───────────────────────────")
+    print("Genome metadata")
+    print("───────────────────────────")
+    print("  • taxonomy")
+    for item in TAXONOMY_COLUMNS:
+        print(f"      - {item}")
+    print()
+
+    print("  • culture information")
+    for item in CULTURE_COLLECTION_COLUMNS:
+        print(f"      - {item}")
+    print()
+
+    print("  • high-level environment data")
+    for item in HIGH_LEVEL_ENV_COLUMNS:
+        print(f"      - {item}")
+    print()
+
+    print("  • low-level environment data")
+    for item in LOW_LEVEL_ENV_COLUMNS:
+        print(f"      - {item}")
+    print()

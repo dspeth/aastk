@@ -132,7 +132,7 @@ def __full_clust(group, required=False):
                        help='Path to full clustering TSV file')
 
 def __globdb_version(group, required=False):
-    group.add_argument('-g', '--globdb_version', type=int, required=required,
+    group.add_argument('-g', '--globdb_version', type=str, required=required,
                        help='GlobDB version (example: r226)')
 
 def __help(group, required=False):
@@ -150,6 +150,18 @@ def __id_list(group, required=False):
 def __include_annotation(group, required=False):
     group.add_argument('--include_annotation', action='store_true', required=required,
                        help='Include annotation metadata in output')
+
+def __include_culture_collection(group, required=False):
+    group.add_argument('--include_culture_collection', action='store_true', required=required,
+                       help='Include culture collection metadata in output')
+
+def __include_high_level_environment(group, required=False):
+    group.add_argument('--include_high_level_environment', action='store_true', required=required,
+                       help='Include high level environment metadata in output')
+
+def __include_low_level_environment(group, required=False):
+    group.add_argument('--include_low_level_environment', action='store_true', required=required,
+                       help='Include low level environment metadata in output')
 
 def __include_taxonomy(group, required=False):
     group.add_argument('--include_taxonomy', action='store_true', required=required,
@@ -193,11 +205,11 @@ def __max_scores(group, required=False):
 
 def __metadata_genome(group, required=False):
     group.add_argument('--metadata_genome', type=str, required=required,
-                       help='Select genome metadata for plotting (Options: domain, phylum, class, order_tax, family, genus, species)')
+                       help='Select genome metadata for plotting; run "aastk metadata_categories" to view available categories')
 
 def __metadata_protein(group, required=False):
     group.add_argument('--metadata_protein', type=str, required=required,
-                       help='Select protein metadata for plotting (Options: COG_ID, KEGG_ID, Pfam_ID)')
+                       help='Select protein metadata for plotting; run "aastk metadata_categories" to view available categories"')
 
 def __metadata_matrix(group, required=False):
     group.add_argument('--metadata_matrix', type=str, required=required,
@@ -359,6 +371,7 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __db_path(grp)
+            __threads(grp)
             __key_column(grp)
             __force(grp)
 
@@ -418,12 +431,14 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __threads(grp)
+            __db_path(grp)
             __key_column(grp)
             __block(grp)
             __chunk(grp)
             __sensitivity(grp)
             __update(grp)
             __yaml(grp)
+            __sql(grp)
             __keep(grp)
             __svg(grp)
             __force(grp)
@@ -452,6 +467,9 @@ def get_main_parser():
             __output(grp)
             __threads(grp)
             __include_annotation(grp)
+            __include_culture_collection(grp)
+            __include_high_level_environment(grp)
+            __include_low_level_environment(grp)
             __include_taxonomy(grp)
             __all_metadata(grp)
             __force(grp)
@@ -587,6 +605,9 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __force(grp)
+
+    with subparser(sub_parsers, 'metadata_categories', 'Display avaiilable metadata categories') as parser:
+        pass
 
 
     return main_parser
