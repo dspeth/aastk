@@ -7,7 +7,7 @@ from aastk.pasr import *
 from aastk.cugo import *
 from aastk.casm import *
 from aastk.database import *
-from aastk import __version__, __copyright__, __author__
+from aastk.version import __version__, __copyright__, __author__
 import sys
 
 def print_help():
