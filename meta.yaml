@@ -1,0 +1,45 @@
+{% set name = "aastk" %}
+{% set version = "0.0.1" %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+  # Prefer PyPI sdist for reproducible builds:
+  url: https://pypi.io/packages/source/{{ name[0] }}/{{ name }}/{{ name }}-{{ version }}.tar.gz
+  sha256: d58439c548433adcda98e695be53e526ba940a4b9c44fb9a05d92cd495cdd47f  # <- update if you switch to PyPI sdist
+
+build:
+  noarch: python
+  number: 0
+  skip: true  # [py<38]
+  script: {{ PYTHON }} -m pip install . -vv
+
+requirements:
+  host:
+    - python >=3.13
+    - pip
+  run:
+    - python>=3.13
+    - pip
+    - contourpy>=1.3.2
+    - matplotlib>=3.10.1
+    - numpy>=2.2.5
+    - opentsne>=1.0.2
+    - pandas>=2.2.3
+    - pyyaml>=6.0.2
+    - scikit-learn>=1.6.1
+    - scipy>=1.15.3
+    - diamond>=2.1.8
+    - seqkit>=2.5.1
+    - tqdm>=4.67.1
+
+test:
+  imports:
+    - aastk
+  commands:
+    - aastk --help
+    - pip check
+  requires:
+    - pip
