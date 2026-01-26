@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 # ===============================
 # aastk build CLI FUNCTION
 # ===============================
-def build(gene_db_fasta: str,
+def rasr_build(gene_db_fasta: str,
             gene_db_dir: str,
             threads: int,
             force: bool = False):
@@ -101,7 +101,7 @@ def build(gene_db_fasta: str,
 # ===============================
 # aastk search CLI FUNCTION
 # ===============================
-def search(gene_db_out_path: str,
+def rasr_search(gene_db_out_path: str,
             query_fastq: str,
             threads: int,
             output_dir: str,
@@ -111,6 +111,7 @@ def search(gene_db_out_path: str,
             force: bool = False):
     """
     Searches a DIAMOND reference database for homologous sequences.
+    Single database vs. single query
 
     Args:
         gene_db_out_path (str): Path to DIAMOND protein database for the gene of interest
@@ -122,6 +123,38 @@ def search(gene_db_out_path: str,
     
     # Check if diamond is available
     check_dependency_availability("diamond")
+
+    # ===============================
+    # Convert FASTQ to FASTA if needed
+    # ===============================
+    query_file = query_fastq
+    
+    if determine_file_type(query_fastq) == "fastq":
+        check_dependency_availability("seqkit")
+        logger.info(f"Converting FASTQ to FASTA: {query_fastq}")
+        
+        fasta_filename = Path(query_fastq).stem
+        # handling double extensions
+        if fasta_filename.endswith('.fastq') or fasta_filename.endswith('.fq'):
+            fasta_filename = Path(fasta_filename).stem
+        
+        fasta_path = ensure_path(output_dir, f"{fasta_filename}.fasta", force=force)
+        
+        cmd = ["seqkit", "fq2fa", query_fastq, "-o", fasta_path]
+        
+        try:
+            proc = subprocess.run(
+                cmd,
+                check=True,
+                capture_output=True,
+                text=True
+            )
+            logger.info(f"Successfully converted to FASTA: {fasta_path}")
+            query_file = fasta_path
+            
+        except subprocess.CalledProcessError as e:
+            logger.error(f"seqkit conversion failed: {e.stderr}")
+            raise RuntimeError(f"FASTQ to FASTA conversion failed: {e.stderr}") from e
 
     # automatically name files
     gene_db_filename = determine_dataset_name(gene_db_out_path, '.', 0, '_db')
@@ -152,7 +185,7 @@ def search(gene_db_out_path: str,
     # check for sensitivity, if None set to default --fast
     sensitivity_param = f"--{sensitivity}" if sensitivity else "--fast"
 
-    logger.info(f"Searching DIAMOND database {gene_db_out_path} with query {query_fastq}")
+    logger.info(f"Searching DIAMOND database {gene_db_out_path} with query {query_file}")
     logger.info(f"Output path: {output_path}")
     logger.info(f"Using parameters: sensitivity={sensitivity_param}, block={block}, chunk={chunk}")
 
@@ -161,7 +194,7 @@ def search(gene_db_out_path: str,
     # =======================================
     cmd = ["diamond", "blastx",
            "-d", gene_db_out_path,
-           "-q", query_fastq,
+           "-q", query_file,
            "-p", str(threads),
            "-o", output_path,
            "-k", str(1),
@@ -216,15 +249,12 @@ def search(gene_db_out_path: str,
 # ===============================
 # aastk rasr WORKFLOW
 # ===============================
-def rasr(query_fastq: str,
+def rasr(query: str,
             gene_db_fasta: str,
-            outgroup_db: str,
-            matrix_name: str,
             output_dir: str,
             sensitivity: str,
             block: int,
             chunk: int,
-            key_column: int = 0,
             threads: int = 1,
             force: bool = False,
             keep: bool = False):
@@ -241,13 +271,10 @@ def rasr(query_fastq: str,
     Args:
         query_fastq (str): path to sequencing read file, can be gzipped
         gene_db_fasta (str): path to gene of interest diamond database file
-        outgroup_db (str): path to outgroup diamond database file
-        matrix_name (str): name of substitution matrix to use
         output_dir (str): directory to save output files
         sensitivity (str): sensitivity setting for diamond search
         block (int): block size parameter for diamond search
         chunk (int): chunk size parameter for diamond search
-        key_column (int): key column index for processing results
         threads (int): number of threads to use
         force (bool): whether to force overwrite existing files
         keep (bool): if True, keep intermediate files; if False, delete them after workflow completion
@@ -268,7 +295,8 @@ def rasr(query_fastq: str,
         # Gene of interest database building
         # ===============================
         logger.info("Building protein database")
-        db_path = build(gene_db_fasta, threads, output_dir, force=force)
+        db_path = rasr_build(gene_db_fasta, output_dir, threads, force=force)
+
         # intermediate_results['db_path'] = f"{db_path}.dmnd"
         results['db_path'] = f"{db_path}.dmnd"
 
@@ -276,12 +304,9 @@ def rasr(query_fastq: str,
         # Gene of interest database search
         # ===============================
         logger.info("Searching protein database")
-        search_output, column_info_path = search(db_path, query_fastq, threads, output_dir, sensitivity, block, chunk, force=force)
-        # intermediate_results['search_output'] = search_output
-        # intermediate_results['column_info_path'] = column_info_path
 
-        # Store in results for now since subsequent steps are not yet implemented
-        # When get_hit_seqs is added, move these to intermediate_results
+        search_output, column_info_path = rasr_search(db_path, query, threads, output_dir, sensitivity, block, chunk, force=force)
+
         results['search_output'] = search_output
         results['column_info_path'] = column_info_path
 
