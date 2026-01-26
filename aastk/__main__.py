@@ -7,6 +7,7 @@ from aastk.pasr import *
 from aastk.cugo import *
 from aastk.casm import *
 from aastk.database import *
+from aastk.rasr import *
 from aastk.version import __version__, __copyright__, __author__
 import sys
 
@@ -353,6 +354,20 @@ def main():
                 db_path=args.db_path,
                 output=args.output,
                 threads=args.threads,
+                force=args.force
+            )
+
+        ### PARSER FOR RASR FUNCTIONALITIES AND WORKFLOW ###
+        elif args.subparser_name == 'rasr':
+            rasr(
+                query=args.query,
+                gene_db_fasta=args.seed,
+                output_dir=args.output,
+                threads=args.threads,
+                sensitivity=args.sensitivity,
+                block=args.block,
+                chunk=args.chunk,
+                keep=args.keep,
                 force=args.force
             )
 
