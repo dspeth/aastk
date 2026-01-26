@@ -588,5 +588,18 @@ def get_main_parser():
             __output(grp)
             __force(grp)
 
+    ### PARSER FOR RASR FUNCTIONALITIES AND WORKFLOW ###
+    with subparser(sub_parsers, 'rasr', 'RASR: read alignment score ratio') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __query(grp, required=True)
+            __seed(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
+            __threads(grp)
+            __block(grp)
+            __chunk(grp)
+            __sensitivity(grp)
+            __keep(grp)
+            __force(grp)
 
-    return main_parser
+    return main_parser    
