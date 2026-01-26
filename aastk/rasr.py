@@ -129,7 +129,8 @@ def rasr_search(gene_db_out_path: str,
     # ===============================
     query_file = query_fastq
     
-    if determine_file_type(query_fastq) == "fastq":
+    # Check if file is FASTQ based on extension and convert to FASTA
+    if any(ext in query_fastq.lower() for ext in ['.fastq', '.fq', '.fastq.gz', '.fq.gz']):
         check_dependency_availability("seqkit")
         logger.info(f"Converting FASTQ to FASTA: {query_fastq}")
         
