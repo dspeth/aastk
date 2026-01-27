@@ -152,6 +152,9 @@ def setup_database(db_path: str) -> sqlite3.Connection:
     conn.commit()
     return conn
 
+# ============================================================ #
+# GFF parser                                                   #
+# ============================================================ #
 def extract_gene_info(line: list) -> tuple:
     """
     Extracts gene information from a GFF/GTF annotation line.
