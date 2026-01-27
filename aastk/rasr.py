@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import json
 from .util import *
-
+from .pasr import build as pasr_build
 import subprocess
 import logging
 from pathlib import Path
@@ -30,6 +30,9 @@ def rasr_build(gene_db_fasta: str,
     
     Returns:
         gene_db_path (str): Path to the created DIAMOND database
+
+    Raises:
+        RuntimeError: If the DIAMOND database creation fails.
     """
     
     # Check if diamond is available
@@ -124,39 +127,6 @@ def rasr_search(gene_db_out_path: str,
     # Check if diamond is available
     check_dependency_availability("diamond")
 
-    # ===============================
-    # Convert FASTQ to FASTA if needed
-    # ===============================
-    query_file = query_fastq
-    
-    # Check if file is FASTQ based on extension and convert to FASTA
-    if any(ext in query_fastq.lower() for ext in ['.fastq', '.fq', '.fastq.gz', '.fq.gz']):
-        check_dependency_availability("seqkit")
-        logger.info(f"Converting FASTQ to FASTA: {query_fastq}")
-        
-        fasta_filename = Path(query_fastq).stem
-        # handling double extensions
-        if fasta_filename.endswith('.fastq') or fasta_filename.endswith('.fq'):
-            fasta_filename = Path(fasta_filename).stem
-        
-        fasta_path = ensure_path(output_dir, f"{fasta_filename}.fasta", force=force)
-        
-        cmd = ["seqkit", "fq2fa", query_fastq, "-o", fasta_path]
-        
-        try:
-            proc = subprocess.run(
-                cmd,
-                check=True,
-                capture_output=True,
-                text=True
-            )
-            logger.info(f"Successfully converted to FASTA: {fasta_path}")
-            query_file = fasta_path
-            
-        except subprocess.CalledProcessError as e:
-            logger.error(f"seqkit conversion failed: {e.stderr}")
-            raise RuntimeError(f"FASTQ to FASTA conversion failed: {e.stderr}") from e
-
     # automatically name files
     gene_db_filename = determine_dataset_name(gene_db_out_path, '.', 0, '_db')
 
@@ -186,7 +156,7 @@ def rasr_search(gene_db_out_path: str,
     # check for sensitivity, if None set to default --fast
     sensitivity_param = f"--{sensitivity}" if sensitivity else "--fast"
 
-    logger.info(f"Searching DIAMOND database {gene_db_out_path} with query {query_file}")
+    logger.info(f"Searching DIAMOND database {gene_db_out_path} with query {query_fastq}")
     logger.info(f"Output path: {output_path}")
     logger.info(f"Using parameters: sensitivity={sensitivity_param}, block={block}, chunk={chunk}")
 
@@ -195,7 +165,7 @@ def rasr_search(gene_db_out_path: str,
     # =======================================
     cmd = ["diamond", "blastx",
            "-d", gene_db_out_path,
-           "-q", query_file,
+           "-q", query_fastq,
            "-p", str(threads),
            "-o", output_path,
            "-k", str(1),
@@ -248,6 +218,77 @@ def rasr_search(gene_db_out_path: str,
 
 
 # ===============================
+# aastk get_hit_seqs CLI FUNCTION
+# ===============================
+def rasr_get_hit_seqs(blast_tab: str,
+                        query_path: str,
+                        output_dir: str,
+                        key_column: int = 0,
+                        force: bool = False):
+    """
+    Extracts read sequences that have hits in the DIAMOND BLAST tabular output.
+
+    Args:
+        blast_tab (str): Path to DIAMOND BLAST tabular output file
+        query_path (str): Path to sequencing read file, can be gzipped
+        output_dir (str): Directory to save output files
+        force (bool): Whether to overwrite existing files
+
+    Returns:
+        hit_seqs_path (str): Path to the extracted hit sequences in FASTA format
+    """
+    # Check if seqkit is available
+    check_dependency_availability("seqkit")
+
+    # ===================
+    # Output file setup
+    # ===================
+    protein_name = determine_dataset_name(blast_tab, '.', 0, '_hits')
+
+    id_file = ensure_path(output_dir, f"{protein_name}_ids.txt", force=force)
+    out_fastq = ensure_path(output_dir, f"{protein_name}_matched.fastq", force=force)
+    stats_path = ensure_path(output_dir, f"{protein_name}_matched.stats", force=force)
+
+    # =============================================
+    # Extract matching reads IDs from BLAST results
+    # =============================================
+    extract_cmd = f"cut -f{key_column + 1} {blast_tab} | sort -u > {id_file}"
+    subprocess.run(extract_cmd, shell=True, check=True)
+
+    logger.info(f"Extracted unique sequence IDs to {id_file}")
+
+    # =====================================
+    # Extract and write matching sequences
+    # =====================================
+    cmd = ["seqkit", "grep", "-f", id_file, query_path, "-o", out_fastq]
+
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        logger.info(f"Extracted matching sequences to {out_fastq}")
+    
+    except subprocess.CalledProcessError as e:
+        logger.error(f"seqkit grep failed: {e.stderr}")
+        raise RuntimeError(f"Failed to extract matching sequences: {e.stderr}") from e
+    
+    logger.info(f"Successfully extracted hit sequences to {out_fastq}")
+
+    # ===============================
+    # Generate sequence statistics
+    # ===============================
+    cmd = ["seqkit", "stats",
+            out_fastq,
+            "-o", stats_path,
+            "-a"]
+
+    logger.debug(f"Running command: {' '.join(cmd)}")
+    subprocess.run(cmd, check=True)
+
+    return out_fastq, stats_path
+
+
+
+
+# ===============================
 # aastk rasr WORKFLOW
 # ===============================
 def rasr(query: str,
@@ -258,7 +299,8 @@ def rasr(query: str,
             chunk: int,
             threads: int = 1,
             force: bool = False,
-            keep: bool = False):
+            keep: bool = False,
+            key_column: int = 0):
     """
     RASR workflow:
     Runs:
@@ -279,6 +321,8 @@ def rasr(query: str,
         threads (int): number of threads to use
         force (bool): whether to force overwrite existing files
         keep (bool): if True, keep intermediate files; if False, delete them after workflow completion
+        key_column (int): column index in BLAST output to use as key for sequence extraction
+    
     """
 
     protein_name = Path(gene_db_fasta).stem
@@ -296,7 +340,7 @@ def rasr(query: str,
         # Gene of interest database building
         # ===============================
         logger.info("Building protein database")
-        db_path = rasr_build(gene_db_fasta, output_dir, threads, force=force)
+        db_path = pasr_build(gene_db_fasta, threads, output_dir, force=force)
 
         # intermediate_results['db_path'] = f"{db_path}.dmnd"
         results['db_path'] = f"{db_path}.dmnd"
@@ -314,6 +358,11 @@ def rasr(query: str,
         # ===============================
         # Read sequence extraction
         # ===============================
+        logger.info("Extracting hit sequences from search results")
+        matched_fastq, matched_stats = rasr_get_hit_seqs(search_output, query, output_dir, key_column=0, force=force)
+
+        results['hit_seqs_path'] = matched_fastq
+        results['hit_seqs_stats'] = matched_stats
 
         # ===============================
         # Outgroup database search
