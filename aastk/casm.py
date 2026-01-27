@@ -572,7 +572,7 @@ def fetch_protein_metadata(db_path: str,
                            column: str,
                            batch_size: int = 500
                            ):
-    valid_cols = ['COG_ID', 'KEGG_ID', 'Pfam_ID']
+    valid_cols = ANNOTATION_COLUMNS
 
     if column not in valid_cols:
         logger.warning(f"No valid protein metadata columns requested")
@@ -608,7 +608,7 @@ def fetch_genome_metadata(db_path: str,
                           column: str,
                           batch_size: int = 500
                            ):
-    valid_cols = ['domain', 'phylum', 'class', 'order_tax', 'family', 'genus', 'species']
+    valid_cols = TAXONOMY_COLUMNS + CULTURE_COLLECTION_COLUMNS + LOW_LEVEL_ENV_COLUMNS + HIGH_LEVEL_ENV_COLUMNS
 
     if column not in valid_cols:
         logger.warning(f"No valid protein metadata columns requested")
