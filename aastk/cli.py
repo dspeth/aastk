@@ -458,6 +458,7 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __tmhmm_dir(grp)
+            __force(grp)
 
     with subparser(sub_parsers, 'meta', 'Retrieve metadata from AASTK SQLite database') as parser:
         with arg_group(parser, 'Required arguments') as grp:

@@ -181,7 +181,8 @@ def main():
                 high_level_environment_path=args.high_level_environment_path,
                 low_level_environment_path=args.low_level_environment_path,
                 output_dir=args.output,
-                globdb_version=args.globdb_version
+                globdb_version=args.globdb_version,
+                force=args.force
             )
 
         elif args.subparser_name == 'meta':
