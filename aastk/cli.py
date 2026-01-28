@@ -203,13 +203,9 @@ def __max_scores(group, required=False):
     group.add_argument('-m', '--max_scores', type=str, required=required,
                        help='Path to file containing max self scores')
 
-def __metadata_genome(group, required=False):
-    group.add_argument('--metadata_genome', type=str, required=required,
-                       help='Select genome metadata for plotting; run "aastk metadata_categories" to view available categories')
-
 def __metadata_protein(group, required=False):
     group.add_argument('--metadata_protein', type=str, required=required,
-                       help='Select protein metadata for plotting; run "aastk metadata_categories" to view available categories"')
+                       help='Select metadata for plotting; run "aastk metadata_categories" to view available categories"')
 
 def __metadata_matrix(group, required=False):
     group.add_argument('--metadata_matrix', type=str, required=required,
@@ -459,6 +455,13 @@ def get_main_parser():
             __output(grp)
             __tmhmm_dir(grp)
 
+    with subparser(sub_parsers, 'database_check', 'Checks for missing data in AASTK SQLite database') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __db_path(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
+            __force(grp)
+
     with subparser(sub_parsers, 'meta', 'Retrieve metadata from AASTK SQLite database') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __db_path(grp, required=True)
@@ -569,7 +572,6 @@ def get_main_parser():
             __output(grp)
             __db_path(grp)
             __metadata_protein(grp)
-            __metadata_genome(grp)
             __show(grp)
             __svg(grp)
 
@@ -587,7 +589,6 @@ def get_main_parser():
             __iterations(grp)
             __exaggeration(grp)
             __metadata_protein(grp)
-            __metadata_genome(grp)
             __force(grp)
             __early_clust(grp)
             __full_clust(grp)

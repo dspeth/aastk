@@ -21,346 +21,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logger = logging.getLogger(__name__)
 
-# ===========================
-# CUGO GFF PARSER
-# ===========================
-def extract_gene_info(line: list) -> tuple:
-    """
-    Extracts gene information from a GFF/GTF annotation line.
-
-    Args:
-        line (list): parsed annotation line with genomic feature data
-
-    Returns:
-        seqID (str): sequence identifier with underscores normalized
-        annotation_ID (str): annotation identifier or 'NA' if not found
-        parent (str): chromosome/contig name
-        direction (str): strand direction (+/-)
-        gene_start (str): start position
-        gene_end (str): end position
-        nuc_length (int): nucleotide sequence length
-        aa_length (int): amino acid sequence length
-    """
-    # extract basic genomic coordinates and features
-    parent = line[0]  # chromosome/contig name
-    direction = line[6]  # strand direction (+/-)
-    gene_start = line[3]  # start position
-    gene_end = line[4]  # end position
-    attributes = line[8]
-
-    # parse attributes field
-    attr_dict = {}
-    for attr in attributes.split(';'):
-        if '=' in attr:
-            key, value = attr.split('=', 1)
-            attr_dict[key] = value
-
-    seqID = attr_dict.get('ID', '')
-    annotation_ID = attr_dict.get('Name', '')
-
-
-# calculate sequence lengths
-    nuc_length = abs(int(gene_end) - int(gene_start)) + 1  # nucleotide length
-    aa_length = int(nuc_length / 3)  # amino acid length
-    return seqID, annotation_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length
-
-
-def cugo_boundaries(direction: str,
-                    prev_direction: str,
-                    next_direction: str,
-                    parent: str,
-                    prev_parent: str,
-                    next_parent: str,
-                    cugo_count: int,
-                    cugo_size: dict,
-                    cugo_size_count: int,
-                    prev_cugo: int = None):
-    """
-    Determines CUGO (Co-oriented Unidirectional Gene Order) boundaries and classifications.
-
-    Args:
-        direction (str): current gene strand direction (+/-)
-        prev_direction (str): previous gene strand direction (+/-)
-        next_direction (str): next gene strand direction (+/-)
-        parent (str): current gene's chromosome/contig name
-        prev_parent (str): previous gene's chromosome/contig name
-        next_parent (str): next gene's chromosome/contig name
-        cugo_count (int): running count of CUGO regions
-        cugo_size (dict): mapping of CUGO IDs to their sizes
-        cugo_size_count (int): running count of genes in current CUGO
-        prev_cugo (int, optional): previous CUGO identifier
-
-    Returns:
-        cugo (int): current CUGO identifier
-        cugo_start (str): start boundary type ('sequence_edge', 'strand_change', or 'NA')
-        cugo_end (str): end boundary type ('sequence_edge', 'strand_change', or 'NA')
-        cugo_count (int): updated CUGO count
-        cugo_size_count (int): updated gene count for current CUGO
-    """
-    cugo, cugo_start, cugo_end = 'NA', 'NA', 'NA'
-
-    # middle of cugo - same direction and parent for all three genes
-    if (direction == prev_direction == next_direction) and (parent == prev_parent == next_parent):
-        cugo = prev_cugo
-        cugo_size_count += 1
-
-    # start of contig/scaffold - different parent from previous gene
-    elif parent != prev_parent:
-        cugo = cugo_count
-        cugo_size_count = 1
-
-        if direction == '+':
-            cugo_start = 'sequence_edge'
-            if parent != next_parent:
-                # single gene contig
-                cugo_end = 'sequence_edge'
-                cugo_size[cugo] = cugo_size_count
-                cugo_size_count = 0
-                cugo_count += 1
-            elif direction != next_direction:
-                # strand change at start of contig
-                cugo_end = 'strand_change'
-                cugo_size[cugo] = cugo_size_count
-                cugo_size_count = 0
-                cugo_count += 1
-        else:  # direction == '-'
-            cugo_end = 'sequence_edge'
-            if parent != next_parent:
-                # single gene contig
-                cugo_start = 'sequence_edge'
-                cugo_size[cugo] = cugo_size_count
-                cugo_size_count = 0
-                cugo_count += 1
-            elif direction != next_direction:
-                # strand change at start of contig
-                cugo_start = 'strand_change'
-                cugo_size[cugo] = cugo_size_count
-                cugo_size_count = 0
-                cugo_count += 1
-
-    # end of contig/scaffold - different parent from next gene
-    elif parent != next_parent:
-        if direction == prev_direction:
-            # continuing previous cugo
-            cugo = prev_cugo
-            cugo_size_count += 1
-            if direction == '+':
-                cugo_end = 'sequence_edge'
-            else:
-                cugo_start = 'sequence_edge'
-            cugo_size[cugo] = cugo_size_count
-            cugo_size_count = 0
-            cugo_count += 1
-        else:
-            # new cugo at end of contig
-            cugo = cugo_count
-            cugo_size_count = 1
-            if direction == '+':
-                cugo_start = 'strand_change'
-                cugo_end = 'sequence_edge'
-            else:
-                cugo_start = 'sequence_edge'
-                cugo_end = 'strand_change'
-            cugo_size[cugo] = cugo_size_count
-            cugo_size_count = 0
-            cugo_count += 1
-
-    # strand change - different direction from previous or next gene
-    elif direction != prev_direction or direction != next_direction:
-        if direction != prev_direction and direction == next_direction:
-            # start of new cugo due to strand change
-            cugo = cugo_count
-            cugo_size_count = 1
-            if direction == '+':
-                cugo_start = 'strand_change'
-            else:
-                cugo_end = 'strand_change'
-        elif direction == prev_direction and direction != next_direction:
-            # end of current cugo due to strand change
-            cugo = prev_cugo
-            cugo_size_count += 1
-            if direction == '+':
-                cugo_end = 'strand_change'
-            else:
-                cugo_start = 'strand_change'
-            cugo_size[cugo] = cugo_size_count
-            cugo_size_count = 0
-            cugo_count += 1
-        else:  # direction != prev_direction and direction != next_direction
-            # isolated gene with different direction from both neighbors
-            cugo = cugo_count
-            cugo_size_count = 1
-            cugo_start = cugo_end = 'strand_change'
-            cugo_size[cugo] = cugo_size_count
-            cugo_size_count = 0
-            cugo_count += 1
-
-    return cugo, cugo_start, cugo_end, cugo_count, cugo_size_count
-
-def parse_single_gff(gff_content: str) -> list:
-    """
-    Parses GFF content and extracts gene information with CUGO boundary analysis.
-
-    Args:
-        gff_content (str): GFF format file content as string
-
-    Returns:
-        list: List of processed gene records, each containing:
-            - seqID (str): gene/sequence identifier
-            - parent_ID (str): chromosome/contig identifier
-            - aa_length (int): amino acid sequence length
-            - strand (str): gene strand direction (+/-)
-            - annotation ID (str): functional category identifier
-            - cugo_number (int): CUGO region identifier
-    """
-    reformat_data = []
-    cugo_size = {}
-    cugo_count = prev_direction = prev_parent = prev_feat_type = prev_cugo = 0
-    cugo_size_count = 0
-    prev_line = None
-    cds_count = 0
-
-    # split content into individual lines for processing
-    lines = gff_content.strip().split('\n')
-
-    for line_count, line in enumerate(lines, 1):
-        # parse tab-delimited gff line
-        clean_line = line.strip().split('\t')
-
-        # skip malformed lines (gff requires 9 columns)
-        if len(clean_line) != 9:
-            continue
-
-        # extract feature type and count cds features
-        feat_type = clean_line[2]
-        if feat_type == 'CDS':
-            cds_count += 1
-
-        # only process cds features or transitions from cds
-        if feat_type != 'CDS' and prev_feat_type != 'CDS':
-            continue
-        prev_feat_type = feat_type
-
-        # initialize with first cds line
-        if prev_line is None:
-            prev_line = clean_line
-            continue
-
-        # extract gene information from previous line
-        seqID, annotation_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length = extract_gene_info(
-            prev_line)
-
-        # get next gene's parent and direction for cugo boundary analysis
-        next_parent = clean_line[0]
-        next_direction = clean_line[6]
-
-        # determine cugo boundaries and classifications
-        cugo, cugo_start, cugo_end, cugo_count, cugo_size_count = cugo_boundaries(
-            direction, prev_direction, next_direction,
-            parent, prev_parent, next_parent,
-            cugo_count, cugo_size, cugo_size_count, prev_cugo
-        )
-
-        # store processed gene data (all 11 fields for database)
-        reformat_data.append([seqID, parent, aa_length,
-                              direction, annotation_ID, cugo])
-
-        # update tracking variables for next iteration
-        prev_line = clean_line
-        prev_direction = direction
-        prev_parent = parent
-        prev_cugo = cugo
-
-    # process the last gene in the file (no next gene to compare)
-    if len(clean_line) == 9 and clean_line[2] == 'CDS':
-        seqID, annotation_ID, parent, direction, gene_start, gene_end, nuc_length, aa_length = extract_gene_info(
-            clean_line)
-
-        # handle last gene - no next gene, so use none for next_parent
-        cugo, cugo_start, cugo_end, cugo_count, cugo_size_count = cugo_boundaries(
-            direction, prev_direction, None,  # no next direction for last gene
-            parent, prev_parent, None,  # no next parent for last gene
-            cugo_count, cugo_size, cugo_size_count, prev_cugo
-        )
-
-        # store final gene data (all 6 fields for database)
-        reformat_data.append([seqID, parent, aa_length,
-                              direction, annotation_ID, cugo])
-
-        # finalize cugo size tracking
-        cugo_size[cugo] = cugo_size_count
-
-    # Return complete data for database storage
-    return reformat_data
-
-def parse_gff_for_update(gff_content: str) -> list:
-    """
-    Parses GFF content for UPDATE operations (seqID and annotation_ID only).
-
-    Args:
-        gff_content (str): GFF format file content as string
-
-    Returns:
-        list: List of tuples (annotation_ID, seqID)
-    """
-    update_data = []
-    lines = gff_content.strip().split('\n')
-
-    for line in lines:
-        clean_line = line.strip().split('\t')
-
-        if len(clean_line) != 9 or clean_line[2] != 'CDS':
-            continue
-
-        attributes = clean_line[8]
-
-        # parse attributes
-        attr_dict = {}
-        for attr in attributes.split(';'):
-            if '=' in attr:
-                key, value = attr.split('=', 1)
-                attr_dict[key] = value
-
-        seqID = attr_dict.get('ID', '')
-        annotation_ID = attr_dict.get('Name', '')
-
-        if seqID and annotation_ID:
-            update_data.append((annotation_ID, seqID))
-
-    return update_data
-
-
-
-def process_gff_file(filepath: str,
-                     update_mode: bool = False):
-    """
-    Process a single GFF file (gzipped or plain) from disk and parse it.
-
-    Args:
-        filepath (str): Full path to the GFF file.
-
-    Returns:
-        list: Parsed gene records.
-    """
-    try:
-        filepath = Path(filepath)
-
-        # Open gzipped or plain text
-        if filepath.suffix == ".gz":
-            with gzip.open(filepath, "rt") as f:
-                content = f.read()
-        else:
-            with open(filepath, "r", encoding="utf-8") as f:
-                content = f.read()
-
-        if update_mode:
-            return parse_gff_for_update(content)
-        else:
-            return parse_single_gff(content)
-    except Exception as e:
-        logger.warning(f"Failed to process {filepath}: {e}")
-        return []
-
 # ======================================
 # FUNCTION DEFINITIONS FOR CUGO PLOTTING
 # ======================================
@@ -441,7 +101,7 @@ def plot_top_cogs_per_position(
         counts = pos_data['COG_ID'].value_counts(dropna=False)  # include NA
         for i in range(top_n):
             if i < len(counts):
-                cog_id = counts.index[i] if pd.notna(counts.index[i]) else 'NA'
+                cog_id = counts.index[i]
                 top_ids[i].append(cog_id)
                 top_counts[i].append(counts.iloc[i])
             else:
@@ -750,7 +410,8 @@ def cugo_plot(context_path: str,
         plot_top_cogs_per_position(context_path=context_path, flank_lower=flank_lower,
                                    flank_upper=flank_upper, top_n=top_n, save=True,
                                    plot_path=cugo_plot_path)
-        logger.INFO(f"Plot saved to {cugo_plot_path}")
+        (logger.info
+         (f"Plot saved to {cugo_plot_path}"))
 
 
     # generate size-only plot
@@ -762,7 +423,7 @@ def cugo_plot(context_path: str,
         norm_size, cmap_size = plot_size_per_position(context_path=context_path, flank_lower=flank_lower,
                                                       flank_upper=flank_upper, save=True, bin_width=bin_width,
                                                       plot_path=size_plot_path, y_range=y_range)
-        logger.INFO(f"Plot saved to {size_plot_path}")
+        logger.info(f"Plot saved to {size_plot_path}")
 
 
     # generate tmh-only plot
@@ -774,7 +435,7 @@ def cugo_plot(context_path: str,
         norm_tmh, cmap_tmh = plot_tmh_per_position(context_path=context_path, flank_lower=flank_lower,
                                                    flank_upper=flank_upper, save=True, y_range=tmh_y_range,
                                                    plot_path=tmh_plot_path)
-        logger.INFO(f"Plot saved to {tmh_plot_path}")
+        logger.info(f"Plot saved to {tmh_plot_path}")
 
 
     # generate combined plot
@@ -794,7 +455,7 @@ def cugo_plot(context_path: str,
         gs = fig.add_gridspec(3, 2,
                               width_ratios=[20, 1],
                               height_ratios=[1, 1, 1],
-                              hspace=0.6,
+                              hspace=0.4,
                               wspace=0.05)
 
         ax1 = fig.add_subplot(gs[0, 0])  # COG plot
@@ -837,6 +498,9 @@ def cugo_plot(context_path: str,
         )
 
         ax1.tick_params(labelbottom=True)
+
+        for ax in [ax1, ax2, ax3]:
+            ax.set_aspect('auto')
 
         norm_fraction = Normalize(vmin=0, vmax=1)
 

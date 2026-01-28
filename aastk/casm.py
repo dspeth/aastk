@@ -393,7 +393,6 @@ def create_embedding_file(output_file: str,
         clusters (np.ndarray): 1D array of cluster assignments for each protein
         col_names (list): Column names for each embedding dimension (e.g., ["dim_0", "dim_1", ...])
         metadata_protein (str): Protein metadata
-        metadata_genome (str): Genome metadata
     """
     logger.info(f"Creating embedding TSV with {len(queries)} proteins")
 
@@ -425,7 +424,6 @@ def create_embedding_dataframe(embedding: np.ndarray,
         clusters (np.ndarray): Cluster assignments for each protein
         col_names (list): Column names for embedding dimensions
         metadata_protein (str, optional): Path to protein metadata TSV file
-        metadata_genome (str, optional): Path to genome metadata TSV file
 
     Returns:
         df (pd.DataFrame): DataFrame with protein IDs, coordinates, clusters, and metadata
@@ -572,7 +570,7 @@ def fetch_protein_metadata(db_path: str,
                            column: str,
                            batch_size: int = 500
                            ):
-    valid_cols = ['COG_ID', 'KEGG_ID', 'Pfam_ID']
+    valid_cols = ANNOTATION_COLUMNS
 
     if column not in valid_cols:
         logger.warning(f"No valid protein metadata columns requested")
@@ -608,7 +606,7 @@ def fetch_genome_metadata(db_path: str,
                           column: str,
                           batch_size: int = 500
                            ):
-    valid_cols = ['domain', 'phylum', 'class', 'order_tax', 'family', 'genus', 'species']
+    valid_cols = TAXONOMY_COLUMNS + CULTURE_COLLECTION_COLUMNS + LOW_LEVEL_ENV_COLUMNS + HIGH_LEVEL_ENV_COLUMNS
 
     if column not in valid_cols:
         logger.warning(f"No valid protein metadata columns requested")
@@ -664,7 +662,6 @@ def plot_clusters(tsv_file: str,
                   output: str,
                   db_path: str = None,
                   metadata_protein: str = None,
-                  metadata_genome: str = None,
                   svg: bool = False,
                   force: bool = False,
                   show_cluster_numbers: bool = False
@@ -702,15 +699,11 @@ def plot_clusters(tsv_file: str,
     color_column = None
     if db_path:
         if metadata_protein:
-            logger.info(f"Fetching protein metadata column '{metadata_protein}' for coloring")
+            logger.info(f"Fetching metadata column '{metadata_protein}' for coloring")
             df = extend_embedding_with_metadata(df, db_path, protein_col=metadata_protein, genome_col=None)
             color_column = metadata_protein
-        elif metadata_genome:
-            logger.info(f"Fetching genome metadata column '{metadata_genome}' for coloring")
-            df = extend_embedding_with_metadata(df, db_path, protein_col=None, genome_col=metadata_genome)
-            color_column = metadata_genome
 
-    if (metadata_protein or metadata_genome) and not db_path:
+    if metadata_protein  and not db_path:
         logger.info("Metadata selected but path to SQLite DB not provided, coloring by cluster")
         color_column = 'cluster'
     elif color_column is None or color_column not in df.columns:
@@ -806,7 +799,6 @@ def plot_clusters(tsv_file: str,
             scatter = plt.scatter(df['tsne1'], df['tsne2'],
                                   c=df[color_column], cmap='viridis', s=15,
                                   alpha=0.7, edgecolors='white', linewidths=0.3)
-            plt.colorbar(scatter, label=color_column)
 
     # =============================
     # Configure plot appearance
@@ -1036,7 +1028,6 @@ def casm_plot(early_clust_path: str,
         output: str,
         db_path: str = None,
         metadata_protein: str = None,
-        metadata_genome: str = None,
         svg: bool = False,
         force: bool = False,
         show_cluster_numbers: bool = False):
@@ -1067,7 +1058,6 @@ def casm_plot(early_clust_path: str,
                                        output=output,
                                        db_path=db_path,
                                        metadata_protein=metadata_protein,
-                                       metadata_genome=metadata_genome,
                                        force=force,
                                        svg=svg,
                                        show_cluster_numbers=show_cluster_numbers)
@@ -1077,7 +1067,6 @@ def casm_plot(early_clust_path: str,
                                       output=output,
                                       db_path=db_path,
                                       metadata_protein=metadata_protein,
-                                      metadata_genome=metadata_genome,
                                       force=force,
                                       svg=svg,
                                       show_cluster_numbers=show_cluster_numbers)
@@ -1097,7 +1086,6 @@ def casm(fasta: str,
          iterations: int = 500,
          exaggeration: int = 6,
          metadata_protein: str = None,
-         metadata_genome: str = None,
          keep: bool = False,
          svg: bool = False,
          force: bool = False,
@@ -1116,7 +1104,6 @@ def casm(fasta: str,
         iterations (int): Number of optimization iterations
         exaggeration (int): Early exaggeration parameter
         metadata_protein (str, optional): Path to protein metadata file
-        metadata_genome (str, optional): Path to genome metadata file
         svg (bool): Generate plot in SVG format
         force (bool): Force overwrite existing files
         show_cluster_numbers (bool): Display cluster enumeration in cluster centers in output plot
@@ -1124,12 +1111,11 @@ def casm(fasta: str,
     Returns:
         sum_dict: Dictionary containing paths to all generated files
     """
-    if metadata_protein is not None and metadata_protein not in BASE_COLUMNS[1:] + ANNOTATION_COLUMNS:
+    if (metadata_protein is not None and metadata_protein not in BASE_COLUMNS[1:] + ANNOTATION_COLUMNS +
+            TAXONOMY_COLUMNS + CULTURE_COLLECTION_COLUMNS + HIGH_LEVEL_ENV_COLUMNS + LOW_LEVEL_ENV_COLUMNS):
         logger.error('Invalid metadata category. Please run "aastk metadata_categories" to display available options.')
         raise ValueError(f'Invalid metadata category: {metadata_protein}')
-    elif metadata_genome is not None and metadata_genome not in TAXONOMY_COLUMNS + CULTURE_COLLECTION_COLUMNS + HIGH_LEVEL_ENV_COLUMNS + LOW_LEVEL_ENV_COLUMNS:
-        logger.error('Invalid metadata category. Please run "aastk metadata_categories" to display available options.')
-        raise ValueError(f'Invalid metadata category: {metadata_genome}')
+
 
     logger.info("=== Starting Complete CASM Analysis ===")
     logger.info(f"Input FASTA: {fasta}")
@@ -1175,7 +1161,6 @@ def casm(fasta: str,
         output=output,
         db_path=db_path,
         metadata_protein=metadata_protein,
-        metadata_genome=metadata_genome,
         svg=svg,
         force=force,
         show_cluster_numbers=show_cluster_numbers

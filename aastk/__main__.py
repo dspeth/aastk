@@ -184,6 +184,13 @@ def main():
                 globdb_version=args.globdb_version
             )
 
+        elif args.subparser_name == 'database_check':
+            database_check(
+                db_path=args.db_path,
+                output=args.output,
+                force=args.force
+            )
+
         elif args.subparser_name == 'meta':
             meta(
                 db_path=args.db_path,
@@ -285,7 +292,6 @@ def main():
                 output=args.output,
                 db_path=args.db_path,
                 metadata_protein=args.metadata_protein,
-                metadata_genome=args.metadata_genome,
                 force=args.force,
                 svg=args.svg,
                 show_cluster_numbers=args.show
@@ -303,7 +309,6 @@ def main():
                 iterations=args.iterations,
                 exaggeration=args.exaggeration,
                 metadata_protein=args.metadata_protein,
-                metadata_genome=args.metadata_genome,
                 keep=args.keep,
                 force=args.force,
                 svg=args.svg,
