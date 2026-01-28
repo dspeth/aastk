@@ -207,6 +207,10 @@ def __no_cluster(group, required=False):
     group.add_argument('-n', '--no_cluster', type=int, required=required,
                        help='Number of cluster of choice in TSV file')
 
+def __outgrp_db(group, required=False):
+    group.add_argument('-g', '--outgrp_db', type=str, required=required,
+                       help='Path to outgroup DIAMOND database')
+
 def __output(group, required=False):
     group.add_argument('-o', '--output', type=str, required=required,
                        help='Desired output directory (default: current working directory)')
@@ -593,6 +597,7 @@ def get_main_parser():
         with arg_group(parser, 'Required arguments') as grp:
             __query(grp, required=True)
             __seed(grp, required=True)
+            __outgrp_db(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __threads(grp)

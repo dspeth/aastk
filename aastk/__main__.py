@@ -319,6 +319,7 @@ def main():
             rasr(
                 query=args.query,
                 gene_db_fasta=args.seed,
+                outgrp_db=args.outgrp_db,
                 output_dir=args.output,
                 threads=args.threads,
                 sensitivity=args.sensitivity,

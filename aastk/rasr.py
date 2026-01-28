@@ -128,13 +128,13 @@ def rasr_search(gene_db_out_path: str,
     check_dependency_availability("diamond")
 
     # automatically name files
-    gene_db_filename = determine_dataset_name(gene_db_out_path, '.', 0, '_db')
+    db_filename = determine_dataset_name(gene_db_out_path, '.', 0, '_db')
 
     # ===============================
     # Output file path setup
     # ===============================
-    output_path = ensure_path(output_dir, f"{gene_db_filename}_hits.txt", force=force)
-    column_info_path = ensure_path(output_dir, f"{gene_db_filename}_columns.json", force=force)
+    output_path = ensure_path(output_dir, f"{db_filename}_hits.txt", force=force)
+    column_info_path = ensure_path(output_dir, f"{db_filename}_columns.json", force=force)
 
     # =======================================================
     # DIAMOND blastp output file column configuration
@@ -293,6 +293,7 @@ def rasr_get_hit_seqs(blast_tab: str,
 # ===============================
 def rasr(query: str,
             gene_db_fasta: str,
+            outgrp_db: str,
             output_dir: str,
             sensitivity: str,
             block: int,
@@ -314,6 +315,7 @@ def rasr(query: str,
     Args:
         query_fastq (str): path to sequencing read file, can be gzipped
         gene_db_fasta (str): path to gene of interest diamond database file
+        outgrp_db (str): path to outgroup diamond database file
         output_dir (str): directory to save output files
         sensitivity (str): sensitivity setting for diamond search
         block (int): block size parameter for diamond search
@@ -367,6 +369,11 @@ def rasr(query: str,
         # ===============================
         # Outgroup database search
         # ===============================
+        logger.info("Searching outgroup database")
+        outgrp_search_output, outgrp_column_info_path = rasr_search(outgrp_db, matched_fastq, threads, output_dir, sensitivity, block, chunk, force=force)
+
+        results['outgrp_search_output'] = outgrp_search_output
+        results['outgrp_column_info_path'] = outgrp_column_info_path
 
         # ===============================
         # Score calculations
