@@ -168,14 +168,16 @@ def rasr_search(gene_db_out_path: str,
            "-q", query_fastq,
            "-p", str(threads),
            "-o", output_path,
-           "-k", str(1),
+           "--max-target-seqs", str(1),
            "--matrix", "blosum45",
            "--masking", str(0),
            "--outfmt", str(6), *columns,
            "-b", str(block),
            "-c", str(chunk),
-           "--min-score", str(50),
+           "--min-score", str(10),
            "--comp-based-stats", str(0),
+           "--gapopen", str(14), 
+           "--gapextend", str(2),
            sensitivity_param]
 
     logger.debug(f"Running command: {' '.join(cmd)}")
