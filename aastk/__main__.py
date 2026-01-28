@@ -181,7 +181,13 @@ def main():
                 high_level_environment_path=args.high_level_environment_path,
                 low_level_environment_path=args.low_level_environment_path,
                 output_dir=args.output,
-                globdb_version=args.globdb_version,
+                globdb_version=args.globdb_version
+            )
+
+        elif args.subparser_name == 'database_check':
+            database_check(
+                db_path=args.db_path,
+                output=args.output,
                 force=args.force
             )
 

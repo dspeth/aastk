@@ -725,111 +725,100 @@ def populate_protein_sequences(conn: sqlite3.Connection,
 
     logger.info(f"Processed {total_sequences} protein sequences")
 
+def database_check(db_path: str,
+                   output: str,
+                   force: bool = False):
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
 
-def check_missing_data(conn: sqlite3.Connection,
-                       output: str,
-                       force: bool = False):
-    cursor = conn.cursor()
+        stages = [
+            (
+                "COG",
+                """
+                SELECT seqID FROM protein_data
+                WHERE COG_ID IS NULL
+                """
+            ),
+            (
+                "TMHMM",
+                """
+                SELECT seqID FROM protein_data
+                WHERE no_tmh IS NULL
+                """
+            ),
+            (
+                "KEGG",
+                """
+                SELECT seqID FROM protein_data
+                WHERE KEGG_ID IS NULL
+                """
+            ),
+            (
+                "Pfam",
+                """
+                SELECT seqID FROM protein_data
+                WHERE Pfam_ID IS NULL
+                """
+            ),
+            (
+                "Protein_sequences",
+                """
+                SELECT seqID FROM protein_data
+                WHERE protein_seq IS NULL
+                """
+            ),
+        ]
 
-    stages = [
-        (
-            "COG",
-            """
-            SELECT seqID FROM protein_data
-            WHERE COG_ID IS NULL
-            """
-        ),
-        (
-            "TMHMM",
-            """
-            SELECT seqID FROM protein_data
-            WHERE COG_ID IS NOT NULL
-              AND no_tmh IS NULL
-            """
-        ),
-        (
-            "KEGG",
-            """
-            SELECT seqID FROM protein_data
-            WHERE COG_ID IS NOT NULL
-              AND no_tmh IS NOT NULL
-              AND KEGG_ID IS NULL
-            """
-        ),
-        (
-            "Pfam",
-            """
-            SELECT seqID FROM protein_data
-            WHERE COG_ID IS NOT NULL
-              AND no_tmh IS NOT NULL
-              AND KEGG_ID IS NOT NULL
-              AND Pfam_ID IS NULL
-            """
-        ),
-        (
-            "Protein_sequences",
-            """
-            SELECT seqID FROM protein_data
-            WHERE COG_ID IS NOT NULL
-              AND no_tmh IS NOT NULL
-              AND KEGG_ID IS NOT NULL
-              AND Pfam_ID IS NOT NULL
-              AND protein_seq IS NULL
-            """
-        ),
-    ]
+        for stage, query in stages:
+            print(f"Checking for missing data: {stage}")
+            cursor.execute(query)
+            missing = [row[0] for row in cursor.fetchall()]
 
-    for stage, query in stages:
-        cursor.execute(query)
-        missing = [row[0] for row in cursor.fetchall()]
+            out_file = ensure_path(output, f"missing_{stage}.txt", force=force)
+            with open(out_file, 'w') as f:
+                for seqid in missing:
+                    f.write(f"{seqid}\n")
 
-        out_file = ensure_path(output, f"missing_{stage}.txt", force=force)
-        with open(out_file, 'w') as f:
-            for seqid in missing:
-                f.write(f"{seqid}\n")
-
-    genome_stages = [
-        (
-            "Taxonomy",
-            """
-            SELECT DISTINCT parent_ID
-            FROM protein_data
-            WHERE parent_ID NOT IN (
+        genome_stages = [
+            (
+                "Taxonomy",
+                f"""
                 SELECT genome_ID FROM genome_data
-            )
-            """
-        ),
-        (
-            "Culture_collection",
-            """
-            SELECT genome_ID FROM genome_data
-            WHERE culture_collection IS NULL
-            """
-        ),
-        (
-            "High_level_environment",
-            f"""
-            SELECT genome_ID FROM genome_data
-            WHERE {" OR ".join(f"{col} IS NULL" for col in HIGH_LEVEL_ENV_COLUMNS)}
-            """
-        ),
-        (
-            "Low_level_environment",
-            f"""
-            SELECT genome_ID FROM genome_data
-            WHERE {" OR ".join(f"{col} IS NULL" for col in LOW_LEVEL_ENV_COLUMNS)}
-            """
-        ),
-    ]
+                WHERE {" OR ".join(f"{col} IS NULL" for col in TAXONOMY_COLUMNS)}
+                """
+            ),
+            (
+                "Culture_collection",
+                """
+                SELECT genome_ID FROM genome_data
+                WHERE culture_collection IS NULL
+                """
+            ),
+            (
+                "High_level_environment",
+                f"""
+                SELECT genome_ID FROM genome_data
+                WHERE {" OR ".join(f"{col} IS NULL" for col in HIGH_LEVEL_ENV_COLUMNS)}
+                """
+            ),
+            (
+                "Low_level_environment",
+                f"""
+                SELECT genome_ID FROM genome_data
+                WHERE {" OR ".join(f"{col} IS NULL" for col in LOW_LEVEL_ENV_COLUMNS)}
+                """
+            ),
+        ]
 
-    for stage, query in genome_stages:
-        cursor.execute(query)
-        missing = [row[0] for row in cursor.fetchall()]
+        for stage, query in genome_stages:
+            cursor.execute(query)
+            missing = [row[0] for row in cursor.fetchall()]
 
-        out_file = ensure_path(output, f"missing_{stage}.txt", force=force)
-        with open(out_file, 'w') as f:
-            for genome_id in missing:
-                f.write(f"{genome_id}\n")
+            out_file = ensure_path(output, f"missing_{stage}.txt", force=force)
+            with open(out_file, 'w') as f:
+                for genome_id in missing:
+                    f.write(f"{genome_id}\n")
+
 
 
 
@@ -844,7 +833,6 @@ def database(cog_gff_tar_path: str,
           low_level_environment_path: str = None,
           output_dir: str = None,
           globdb_version: str = None,
-          force: bool = False
           ):
     """
     Main parsing function - processes COG first with full data, then updates with KEGG and Pfam.
@@ -856,7 +844,6 @@ def database(cog_gff_tar_path: str,
     logger.info("Processing files: COG → TMHMM → KEGG → Pfam → Protein sequences → Taxonomy → Culture collection "
                 "→ High level environment data → Low level environment data → Checking missing data")
 
-    # db_path = ensure_path(target=f"globdb_{globdb_version}_cugo.db")
     db_path = f"globdb_{globdb_version}_cugo.db"
 
     if output_dir is None:
@@ -992,10 +979,6 @@ def database(cog_gff_tar_path: str,
     if low_level_environment_path:
         logger.info("STEP 9: Processing low level environment data...")
         populate_low_level_environment(conn, low_level_environment_path)
-
-    # ==== STEP 10: Check for missing data ====
-    logger.info("STEP 10: Checking for missing data...")
-    check_missing_data(conn, output=output_dir, force=force)
 
     logger.info("Optimizing database with VACUUM...")
     conn.execute("VACUUM")
