@@ -101,7 +101,7 @@ def plot_top_cogs_per_position(
         counts = pos_data['COG_ID'].value_counts(dropna=False)  # include NA
         for i in range(top_n):
             if i < len(counts):
-                cog_id = counts.index[i] if pd.notna(counts.index[i]) else 'NA'
+                cog_id = counts.index[i]
                 top_ids[i].append(cog_id)
                 top_counts[i].append(counts.iloc[i])
             else:
@@ -410,7 +410,8 @@ def cugo_plot(context_path: str,
         plot_top_cogs_per_position(context_path=context_path, flank_lower=flank_lower,
                                    flank_upper=flank_upper, top_n=top_n, save=True,
                                    plot_path=cugo_plot_path)
-        logger.INFO(f"Plot saved to {cugo_plot_path}")
+        (logger.info
+         (f"Plot saved to {cugo_plot_path}"))
 
 
     # generate size-only plot
@@ -422,7 +423,7 @@ def cugo_plot(context_path: str,
         norm_size, cmap_size = plot_size_per_position(context_path=context_path, flank_lower=flank_lower,
                                                       flank_upper=flank_upper, save=True, bin_width=bin_width,
                                                       plot_path=size_plot_path, y_range=y_range)
-        logger.INFO(f"Plot saved to {size_plot_path}")
+        logger.info(f"Plot saved to {size_plot_path}")
 
 
     # generate tmh-only plot
@@ -434,7 +435,7 @@ def cugo_plot(context_path: str,
         norm_tmh, cmap_tmh = plot_tmh_per_position(context_path=context_path, flank_lower=flank_lower,
                                                    flank_upper=flank_upper, save=True, y_range=tmh_y_range,
                                                    plot_path=tmh_plot_path)
-        logger.INFO(f"Plot saved to {tmh_plot_path}")
+        logger.info(f"Plot saved to {tmh_plot_path}")
 
 
     # generate combined plot
@@ -454,7 +455,7 @@ def cugo_plot(context_path: str,
         gs = fig.add_gridspec(3, 2,
                               width_ratios=[20, 1],
                               height_ratios=[1, 1, 1],
-                              hspace=0.6,
+                              hspace=0.4,
                               wspace=0.05)
 
         ax1 = fig.add_subplot(gs[0, 0])  # COG plot
@@ -497,6 +498,9 @@ def cugo_plot(context_path: str,
         )
 
         ax1.tick_params(labelbottom=True)
+
+        for ax in [ax1, ax2, ax3]:
+            ax.set_aspect('auto')
 
         norm_fraction = Normalize(vmin=0, vmax=1)
 
