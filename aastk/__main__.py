@@ -292,7 +292,6 @@ def main():
                 output=args.output,
                 db_path=args.db_path,
                 metadata_protein=args.metadata_protein,
-                metadata_genome=args.metadata_genome,
                 force=args.force,
                 svg=args.svg,
                 show_cluster_numbers=args.show
@@ -310,7 +309,6 @@ def main():
                 iterations=args.iterations,
                 exaggeration=args.exaggeration,
                 metadata_protein=args.metadata_protein,
-                metadata_genome=args.metadata_genome,
                 keep=args.keep,
                 force=args.force,
                 svg=args.svg,

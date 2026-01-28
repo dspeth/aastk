@@ -203,13 +203,9 @@ def __max_scores(group, required=False):
     group.add_argument('-m', '--max_scores', type=str, required=required,
                        help='Path to file containing max self scores')
 
-def __metadata_genome(group, required=False):
-    group.add_argument('--metadata_genome', type=str, required=required,
-                       help='Select genome metadata for plotting; run "aastk metadata_categories" to view available categories')
-
 def __metadata_protein(group, required=False):
     group.add_argument('--metadata_protein', type=str, required=required,
-                       help='Select protein metadata for plotting; run "aastk metadata_categories" to view available categories"')
+                       help='Select metadata for plotting; run "aastk metadata_categories" to view available categories"')
 
 def __metadata_matrix(group, required=False):
     group.add_argument('--metadata_matrix', type=str, required=required,
@@ -576,7 +572,6 @@ def get_main_parser():
             __output(grp)
             __db_path(grp)
             __metadata_protein(grp)
-            __metadata_genome(grp)
             __show(grp)
             __svg(grp)
 
@@ -594,7 +589,6 @@ def get_main_parser():
             __iterations(grp)
             __exaggeration(grp)
             __metadata_protein(grp)
-            __metadata_genome(grp)
             __force(grp)
             __early_clust(grp)
             __full_clust(grp)
