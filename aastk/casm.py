@@ -806,7 +806,6 @@ def plot_clusters(tsv_file: str,
             scatter = plt.scatter(df['tsne1'], df['tsne2'],
                                   c=df[color_column], cmap='viridis', s=15,
                                   alpha=0.7, edgecolors='white', linewidths=0.3)
-            plt.colorbar(scatter, label=color_column)
 
     # =============================
     # Configure plot appearance
