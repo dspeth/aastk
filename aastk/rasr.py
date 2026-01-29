@@ -5,6 +5,8 @@ from .pasr import build as pasr_build
 import subprocess
 import logging
 from pathlib import Path
+import numpy as np
+import pandas as pd
 
 
 logger = logging.getLogger(__name__)
@@ -163,6 +165,7 @@ def rasr_search(gene_db_out_path: str,
     # =======================================
     # DIAMOND blastx command construction
     # =======================================
+    min_score = 10
     cmd = ["diamond", "blastx",
            "-d", gene_db_out_path,
            "-q", query_fastq,
@@ -174,7 +177,7 @@ def rasr_search(gene_db_out_path: str,
            "--outfmt", str(6), *columns,
            "-b", str(block),
            "-c", str(chunk),
-           "--min-score", str(10),
+           "--min-score", str(min_score),
            "--comp-based-stats", str(0),
            "--gapopen", str(14), 
            "--gapextend", str(2),
@@ -291,6 +294,100 @@ def rasr_get_hit_seqs(blast_tab: str,
 
 
 # ===============================
+# aastk bsr CLI FUNCTION
+# ===============================
+def bsr(gene_blast_tab: str,
+            outgrp_blast_tab: str,
+            output_dir: str,
+            column_info_path: str = None,
+            force: bool = False):
+    """
+    Computes BSR (Blast Score Ratio) using protein BLAST tab file and outgroup BLAST tab file.
+    Args:
+        gene_blast_tab (str): Path to protein BLAST tab file against gene database
+        outgrp_blast_tab (str): Path to protein BLAST tab file against outgroup database
+        output_dir (str): Directory to save output files
+        column_info_path (str): Path to JSON file with column information
+        force (bool): Whether to overwrite existing files
+    Returns:
+        bsr_file (str): Path to the output file with BSR values.
+    """
+    # Validate input files
+    if not Path(gene_blast_tab).exists():
+        logger.error(f"Gene BLAST file not found: {gene_blast_tab}")
+        raise FileNotFoundError(f"Gene BLAST file does not exist: {gene_blast_tab}")
+    if not Path(outgrp_blast_tab).exists():
+        logger.error(f"Outgroup BLAST file not found: {outgrp_blast_tab}")
+        raise FileNotFoundError(f"Outgroup BLAST file does not exist: {outgrp_blast_tab}")
+
+    # ===============================
+    # Output file setup
+    # ===============================
+    protein_name = determine_dataset_name(gene_blast_tab, '.', 0, '_hits')
+
+    bsr_file = ensure_path(output_dir, f"{protein_name}_bsr.tsv", force=force)
+
+    logger.info(f"Computing blast score ratio (BSR) for {protein_name}")
+    logger.info(f"Using gene blast tab file: {gene_blast_tab}")
+    logger.info(f"Using outgroup blast tab file: {outgrp_blast_tab}")
+
+    # Load column info if provided and retrieve columns indices
+    if column_info_path and Path(column_info_path).exists():
+        try:
+            with open(column_info_path, 'r') as f:
+                column_info = json.load(f)
+                
+                # Get all required column indices from JSON
+                qseqid_col = column_info.get('qseqid', 0)
+                sseqid_col = column_info.get('sseqid', 1)
+                pident_col = column_info.get('pident', 2)
+                score_column = column_info.get('score', 14)
+                
+                logger.info(f"Loaded column indices from {column_info_path}")
+                logger.debug(f"Column indices: qseqid={qseqid_col}, sseqid={sseqid_col}, "
+                           f"pident={pident_col}, score={score_column}")
+
+        except Exception as e:
+            logger.warning(f"Failed to load column info from {column_info_path}: {e}")
+            # Fall back to default indices
+            qseqid_col = 0
+            sseqid_col = 1
+            pident_col = 2
+            score_column = 14
+    else:
+        # Use default column indices if no JSON file provided
+        qseqid_col = 0
+        sseqid_col = 1
+        pident_col = 2
+        score_column = 14
+        logger.info(f"Using default column indices (no column_info file provided)")
+        
+    
+    # Load blast results into DataFrames
+    dtype={0: "string", 1: "string", 2: "float32", 3: "float32",}
+    usecols = [qseqid_col, sseqid_col, pident_col, score_column]
+
+    gene_df = pd.read_csv(gene_blast_tab, sep='\t', usecols=usecols, dtype=dtype,
+                            names=['qseqid', 'sseqid_db', 'pident_db', 'score_db'])
+    outgrp_df = pd.read_csv(outgrp_blast_tab, sep='\t', usecols=usecols, dtype=dtype,
+                           names=['qseqid', 'sseqid_og', 'pident_og', 'score_og'])
+
+    # Merge DataFrames on 'qseqid'
+    bsr_df = gene_df.merge(outgrp_df, on='qseqid', how='inner') # inner join to keep only matching qseqid (default behavior)
+
+    # Calculate BSR
+    bsr_df["BSR"] = np.where(bsr_df["score_og"] > 0, bsr_df["score_db"] / bsr_df["score_og"], 0.0)
+
+    # Save BSR results to file
+    bsr_df.to_csv(bsr_file, sep='\t', index=False)
+    logger.info(f"BSR results written to {bsr_file}")
+
+    return bsr_file
+
+
+
+
+# ===============================
 # aastk rasr WORKFLOW
 # ===============================
 def rasr(query: str,
@@ -380,6 +477,10 @@ def rasr(query: str,
         # ===============================
         # Score calculations
         # ===============================
+        logger.info("Calculating BSR values")
+        bsr_output = bsr(search_output, outgrp_search_output, output_dir, column_info_path=column_info_path, force=force)
+        
+        results['bsr_output'] = bsr_output
 
         # ===============================
         # Visualization
