@@ -425,11 +425,17 @@ def rasr(query: str,
         key_column (int): column index in BLAST output to use as key for sequence extraction
     
     """
-
+    # ==============================
+    # Output directory setup
+    # ==============================
     protein_name = Path(gene_db_fasta).stem
+    dataset_name = determine_dataset_name(query, '.', 0, '')
 
-    # check for output_dir
+    protein_dir = ensure_path(output_dir, f"rasr_out_{protein_name}", force=force)
+    dataset_output_dir = ensure_path(protein_dir, dataset_name, force=force)
+
     logger.info(f"Running RASR workflow for {protein_name}")
+    logger.info(f"Query dataset: {dataset_name}")
     logger.info(f"Output directory: {output_dir}")
 
     # store all the output paths in dictionaries
@@ -441,7 +447,7 @@ def rasr(query: str,
         # Gene of interest database building
         # ===============================
         logger.info("Building protein database")
-        db_path = pasr_build(gene_db_fasta, threads, output_dir, force=force)
+        db_path = pasr_build(gene_db_fasta, threads, protein_dir, force=force)
 
         # intermediate_results['db_path'] = f"{db_path}.dmnd"
         results['db_path'] = f"{db_path}.dmnd"
@@ -451,7 +457,7 @@ def rasr(query: str,
         # ===============================
         logger.info("Searching protein database")
 
-        search_output, column_info_path = rasr_search(db_path, query, threads, output_dir, sensitivity, block, chunk, force=force)
+        search_output, column_info_path = rasr_search(db_path, query, threads, dataset_output_dir, sensitivity, block, chunk, force=force)
 
         results['search_output'] = search_output
         results['column_info_path'] = column_info_path
@@ -460,8 +466,7 @@ def rasr(query: str,
         # Read sequence extraction
         # ===============================
         logger.info("Extracting hit sequences from search results")
-        matched_fastq, matched_stats = rasr_get_hit_seqs(search_output, query, output_dir, key_column=0, force=force)
-
+        matched_fastq, matched_stats = rasr_get_hit_seqs(search_output, query, dataset_output_dir, key_column=0, force=force)
         results['hit_seqs_path'] = matched_fastq
         results['hit_seqs_stats'] = matched_stats
 
@@ -469,7 +474,7 @@ def rasr(query: str,
         # Outgroup database search
         # ===============================
         logger.info("Searching outgroup database")
-        outgrp_search_output, outgrp_column_info_path = rasr_search(outgrp_db, matched_fastq, threads, output_dir, sensitivity, block, chunk, force=force)
+        outgrp_search_output, outgrp_column_info_path = rasr_search(outgrp_db, matched_fastq, threads, dataset_output_dir, sensitivity, block, chunk, force=force)
 
         results['outgrp_search_output'] = outgrp_search_output
         results['outgrp_column_info_path'] = outgrp_column_info_path
@@ -478,7 +483,7 @@ def rasr(query: str,
         # Score calculations
         # ===============================
         logger.info("Calculating BSR values")
-        bsr_output = bsr(search_output, outgrp_search_output, output_dir, column_info_path=column_info_path, force=force)
+        bsr_output = bsr(search_output, outgrp_search_output, dataset_output_dir, column_info_path=column_info_path, force=force)
         
         results['bsr_output'] = bsr_output
 
