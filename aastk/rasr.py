@@ -7,6 +7,8 @@ import logging
 from pathlib import Path
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 
 logger = logging.getLogger(__name__)
@@ -388,6 +390,80 @@ def bsr(gene_blast_tab: str,
 
 
 # ===============================
+# aastk rasr_plot CLI FUNCTION
+# ===============================
+def rasr_plot(bsr_file: str,
+             output_dir: str,
+             force: bool = False):
+    """
+    Creates a scatter plot of the BSR data.
+    """
+    logger = logging.getLogger(__name__)
+
+    protein_name = determine_dataset_name(bsr_file, '.', 0, '_bsr')
+
+    # ===============================
+    # Output file path setup
+    # ===============================
+    out_graph = ensure_path(output_dir, f'{protein_name}_bsr.png', force=force)
+
+    logger.info(f"Creating BSR scatter plot for {protein_name}")
+
+    try:
+        # ===============================
+        # Load data
+        # ===============================
+        bsr_df = pd.read_csv(bsr_file, sep='\t', header=0)
+
+        required_cols = ['score_db', 'score_og', 'pident_db']
+        for col in required_cols:
+            if col not in bsr_df.columns:
+                raise ValueError(f"Required column '{col}' not found in BSR data")
+        
+        fig, ax = plt.subplots(figsize=(8, 8))
+
+        # ===============================
+        # Scatter plot
+        # ===============================
+        scatter = ax.scatter(
+            bsr_df['score_og'],
+            bsr_df['score_db'],
+            c=bsr_df['pident_db'],
+            cmap='viridis',
+            edgecolor='k',
+            alpha=0.5,
+            vmin=0,
+            vmax=100
+        )
+        ax.set_xlabel('Alignment score to outgroup')
+        ax.set_ylabel('Alignment score to database')
+        ax.set_title(f'BSR Plot for {protein_name}')
+        
+        # Add colorbar
+        cbar = fig.colorbar(scatter, ax=ax)
+        cbar.set_label('% seq id to database')
+        
+        # Adjust layout
+        plt.tight_layout()
+
+        # ===============================
+        # Save
+        # ===============================
+        fig.savefig(out_graph, dpi=300)
+        plt.close(fig)
+
+        logger.info(f"Successfully created BSR plot at {out_graph}")
+        return out_graph
+
+    except Exception as e:
+        logger.error(f"Error creating BSR plot: {e}")
+        raise RuntimeError(f"Failed to create BSR plot: {e}") from e
+
+
+
+
+
+# ===============================
 # aastk rasr WORKFLOW
 # ===============================
 def rasr(query: str,
@@ -423,7 +499,6 @@ def rasr(query: str,
         force (bool): whether to force overwrite existing files
         keep (bool): if True, keep intermediate files; if False, delete them after workflow completion
         key_column (int): column index in BLAST output to use as key for sequence extraction
-    
     """
     # ==============================
     # Output directory setup
@@ -490,6 +565,10 @@ def rasr(query: str,
         # ===============================
         # Visualization
         # ===============================
+        logger.info("Creating BSR plot")
+        plot_output = rasr_plot(bsr_output, dataset_output_dir, force=force)
+
+        results['plot_output'] = plot_output
 
         logger.info("RASR workflow completed successfully")
         return results
