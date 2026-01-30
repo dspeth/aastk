@@ -373,6 +373,74 @@ def rasr_plot(bsr_file: str,
 
 
 
+# ===============================
+# aastk pasr_select CLI FUNCTION
+# ===============================
+def rasr_select(score_cutoff: float,
+                bsr_cutoff: float,
+                matched_fastq: str,
+                bsr_file: str,
+                output_dir: str,
+                force: bool = False):
+    """
+    Subsets RASR results based on BSR and database score thresholds.
+    """
+    # Check if seqkit is available
+    check_dependency_availability("seqkit")
+
+    logger.info(f"Selecting RASR hits with score >= {score_cutoff} and BSR >= {bsr_cutoff}")
+
+    # ===============================
+    # Output file path setup
+    # ===============================
+    protein_name = determine_dataset_name(bsr_file, '.', 0, '_bsr')
+    out_fastq = ensure_path(output_dir, f"{protein_name}_selected.fastq", force=force)
+    id_file = ensure_path(output_dir, f"{protein_name}_selected_ids.txt", force=force)
+    stats_file = ensure_path(output_dir, f"{protein_name}_selected.stats", force=force)
+
+    
+    # ===============================
+    # Load BSR data
+    # ===============================
+    # Filter based on cutoffs and write selected IDs to file
+    bsr_df = pd.read_csv(bsr_file, sep='\t', header=0)
+
+    selected_ids = bsr_df[(bsr_df['score_db'] >= score_cutoff) 
+                            & (bsr_df['BSR'] >= bsr_cutoff)]['qseqid'].unique()
+
+    with open(id_file, 'w') as f:
+        for seq_id in selected_ids:
+            f.write(f"{seq_id}\n")
+
+    logger.info(f"Selected {len(selected_ids)} sequences. IDs written to {id_file}")
+
+    # ===============================
+    # Extract selected sequences
+    # ===============================
+    try:
+        cmd = ["seqkit", "grep", "-f", id_file, matched_fastq, "-o", out_fastq]
+
+        subprocess.run(cmd, check=True)
+        logger.info(f"Extracted selected sequences to {out_fastq}")
+
+        # ===============================
+        # Generate statistics
+        # ===============================
+        cmd = ["seqkit", "stats",
+                out_fastq,
+                "-o", stats_file,
+                "-a"]
+
+        subprocess.run(cmd, check=True)
+        logger.info(f"Generated statistics for selected sequences at {stats_file}")
+        return out_fastq, stats_file
+    
+    except Exception as e:
+        logger.error(f"seqkit grep failed: {e.stderr}")
+        raise RuntimeError(f"Failed to extract selected sequences: {e.stderr}") from e
+
+        
+
 
 # ===============================
 # aastk rasr WORKFLOW
@@ -483,6 +551,12 @@ def rasr(query: str,
         plot_output = rasr_plot(bsr_output, dataset_output_dir, force=force)
 
         results['plot_output'] = plot_output
+
+        # ===============================
+        # Final selection of RASR hits
+        # ===============================
+        logger.info("Selecting final RASR hits")
+        selected_fastq, selected_stats = rasr_select(score_cutoff=100.0, bsr_cutoff=0.9, matched_fastq=matched_fastq, bsr_file=bsr_output, output_dir=dataset_output_dir, force=force)
 
         logger.info("RASR workflow completed successfully")
         return results
