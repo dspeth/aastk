@@ -17,98 +17,9 @@ logger = logging.getLogger(__name__)
 
 
 # ===============================
-# aastk build CLI FUNCTION
-# ===============================
-def rasr_build(gene_db_fasta: str,
-            gene_db_dir: str,
-            threads: int,
-            force: bool = False):
-    """
-    Builds a DIAMOND protein database from a fasta file.
-    
-    Args:
-        gene_db_fasta (str): Path to gene of interest fasta file
-        gene_db_dir (str): Directory where the database will be created
-        threads (int): Number of threads to use
-        force (bool): If True, overwrite existing database
-    
-    Returns:
-        gene_db_path (str): Path to the created DIAMOND database
-
-    Raises:
-        RuntimeError: If the DIAMOND database creation fails.
-    """
-    
-    # Check if diamond is available
-    check_dependency_availability("diamond")
-
-    # Check if gene_db_fasta exists 
-    if Path(gene_db_fasta).is_file():
-        pass
-    else:
-        logger.error("Input seed FASTA not found")
-        raise FileNotFoundError(f"Seed FASTA file does not exist: {gene_db_fasta}")
-    
-    gene_db_fasta_filename = Path(gene_db_fasta).stem
-    
-    # Create output directory if it doesn't exist
-    gene_db_out_path = ensure_path(gene_db_dir, f"{gene_db_fasta_filename}_db", force=force)
-
-    # Log the path
-    logger.info(f"Building DIAMOND database for {gene_db_fasta_filename} at {gene_db_out_path}")
- 
-    # =======================================
-    # DIAMOND makedb command construction
-    # =======================================
-    cmd = ["diamond", "makedb",
-           "--in", gene_db_fasta,
-           "-d", gene_db_out_path,
-           "-p", str(threads)]
-    logger.info(f"Running command: {' '.join(cmd)}")
-
-    # ===============================
-    # Execute DIAMOND makedb
-    # ===============================
-    try:
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=True
-        )
-        _, stderr = proc.communicate()
-
-        if proc.returncode != 0:
-            logger.error(f"DIAMOND makedb failed with return code {proc.returncode}")
-            if stderr:
-                logger.error(f"STDERR: {stderr}")
-            raise RuntimeError(f"DIAMOND database creation failed with return code {proc.returncode}")
-
-        if stderr:
-            logger.log(99, stderr)
-
-    except Exception as e:
-        if not isinstance(e, RuntimeError):
-            logger.error(f"Unexpected error in building the DIAMOND database: {e}")
-            raise RuntimeError(f"DIAMOND database creation failed: {e}") from e
-        raise
-
-    db_file = Path(f"{gene_db_out_path}.dmnd")
-    if not db_file.exists():
-        logger.error(f"DIAMOND database file not found at {db_file}")
-        raise RuntimeError(f"DIAMOND database was not created at {db_file}")
-
-
-    logger.info(f"Successfully built DIAMOND database at {gene_db_out_path}")
-    return gene_db_out_path
-
-
-
-
-# ===============================
 # aastk search CLI FUNCTION
 # ===============================
-def rasr_search(gene_db_out_path: str,
+def search(gene_db_out_path: str,
             query_fastq: str,
             threads: int,
             output_dir: str,
@@ -227,7 +138,7 @@ def rasr_search(gene_db_out_path: str,
 # ===============================
 # aastk get_hit_seqs CLI FUNCTION
 # ===============================
-def rasr_get_hit_seqs(blast_tab: str,
+def get_hit_seqs(blast_tab: str,
                         query_path: str,
                         output_dir: str,
                         key_column: int = 0,
@@ -488,7 +399,7 @@ def rasr(query: str,
         aastk rasr_plot
 
     Args:
-        query_fastq (str): path to sequencing read file, can be gzipped
+        query (str): path to sequencing read file, can be gzipped
         gene_db_fasta (str): path to gene of interest diamond database file
         outgrp_db (str): path to outgroup diamond database file
         output_dir (str): directory to save output files
@@ -499,6 +410,9 @@ def rasr(query: str,
         force (bool): whether to force overwrite existing files
         keep (bool): if True, keep intermediate files; if False, delete them after workflow completion
         key_column (int): column index in BLAST output to use as key for sequence extraction
+    
+    Returns:
+        results (dict): dictionary containing paths to all output files
     """
     # ==============================
     # Output directory setup
@@ -532,7 +446,7 @@ def rasr(query: str,
         # ===============================
         logger.info("Searching protein database")
 
-        search_output, column_info_path = rasr_search(db_path, query, threads, dataset_output_dir, sensitivity, block, chunk, force=force)
+        search_output, column_info_path = search(db_path, query, threads, dataset_output_dir, sensitivity, block, chunk, force=force)
 
         results['search_output'] = search_output
         results['column_info_path'] = column_info_path
@@ -541,7 +455,7 @@ def rasr(query: str,
         # Read sequence extraction
         # ===============================
         logger.info("Extracting hit sequences from search results")
-        matched_fastq, matched_stats = rasr_get_hit_seqs(search_output, query, dataset_output_dir, key_column=0, force=force)
+        matched_fastq, matched_stats = get_hit_seqs(search_output, query, dataset_output_dir, key_column=key_column, force=force)
         results['hit_seqs_path'] = matched_fastq
         results['hit_seqs_stats'] = matched_stats
 
@@ -549,7 +463,7 @@ def rasr(query: str,
         # Outgroup database search
         # ===============================
         logger.info("Searching outgroup database")
-        outgrp_search_output, outgrp_column_info_path = rasr_search(outgrp_db, matched_fastq, threads, dataset_output_dir, sensitivity, block, chunk, force=force)
+        outgrp_search_output, outgrp_column_info_path = search(outgrp_db, matched_fastq, threads, dataset_output_dir, sensitivity, block, chunk, force=force)
 
         results['outgrp_search_output'] = outgrp_search_output
         results['outgrp_column_info_path'] = outgrp_column_info_path
