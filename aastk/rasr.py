@@ -48,7 +48,7 @@ def search(gene_db_out_path: str,
     # ===============================
     # Output file path setup
     # ===============================
-    output_path = ensure_path(output_dir, f"{db_filename}_hits.txt", force=force)
+    output_path = ensure_path(output_dir, f"{db_filename}_hits.tsv", force=force)
     column_info_path = ensure_path(output_dir, f"{db_filename}_columns.json", force=force)
 
     # =======================================================
@@ -127,6 +127,13 @@ def search(gene_db_out_path: str,
         logger.error(f"DIAMOND output file not found at {output_path}")
         raise RuntimeError(f"DIAMOND search did not produce output at {output_path}")
 
+    # Dereplicate hits, keeping highest scoring one for each qseqid
+    logger.info(f"Dereplicating hits, keeping highest scoring hit per query")
+    
+    blast_df = pd.read_csv(output_path, sep='\t', names=columns)
+    derep_df = blast_df.sort_values('score', ascending=False).drop_duplicates(['qseqid'])
+    derep_df.to_csv(output_path, sep='\t', index=False, header=False)
+        
     logger.info(f"Successfully completed DIAMOND search. Results at {output_path}")
     return output_path, column_info_path
 
@@ -164,11 +171,19 @@ def get_hit_seqs(blast_tab: str,
     id_file = ensure_path(output_dir, f"{protein_name}_ids.txt", force=force)
     out_fastq = ensure_path(output_dir, f"{protein_name}_matched.fastq", force=force)
 
-    # =============================================
-    # Extract matching reads IDs from BLAST results
-    # =============================================
-    extract_cmd = f"cut -f{key_column + 1} {blast_tab} | sort -u > {id_file}"
-    subprocess.run(extract_cmd, shell=True, check=True)
+    # =======================================================
+    # Extract reads IDs matched with the database sequences
+    # =======================================================
+    # Extract unique IDs from dereplicated BLAST results
+    columns = ["qseqid", "sseqid", "pident", "qlen", "slen", "length", "mismatch", "gapopen", "qstart", "qend",
+               "sstart", "send", "evalue", "bitscore", "score"]
+
+    blast_df = pd.read_csv(blast_tab, sep='\t', names=columns, usecols=['qseqid'])
+    unique_ids = blast_df['qseqid'].unique()
+
+    with open(id_file, 'w') as f:
+        for seq_id in unique_ids:
+            f.write(f"{seq_id}\n")
 
     logger.info(f"Extracted unique sequence IDs to {id_file}")
 
@@ -187,7 +202,7 @@ def get_hit_seqs(blast_tab: str,
     
     logger.info(f"Successfully extracted hit sequences to {out_fastq}")
 
-    return out_fastq
+    return out_fastq, id_file
 
 
 
@@ -262,7 +277,7 @@ def bsr(gene_blast_tab: str,
         logger.info(f"Using default column indices (no column_info file provided)")
         
     
-    # Load blast results into DataFrames
+    # Load blast results
     dtype={0: "string", 1: "string", 2: "float32", 3: "float32",}
     usecols = [qseqid_col, sseqid_col, pident_col, score_column]
 
@@ -383,9 +398,9 @@ def rasr_select(score_cutoff: float,
     out_fastq = ensure_path(output_dir, f"{protein_name}_selected.fastq", force=force)
     id_file = ensure_path(output_dir, f"{protein_name}_selected_ids.txt", force=force)
     
-    # ===============================
-    # Load BSR data
-    # ===============================
+    # ===================================
+    # Extract reads IDs based on cutoffs
+    # ===================================
     # Filter based on cutoffs and write selected IDs to file
     bsr_df = pd.read_csv(bsr_file, sep='\t', header=0)
 
@@ -407,7 +422,7 @@ def rasr_select(score_cutoff: float,
         subprocess.run(cmd, check=True)
         logger.info(f"Extracted selected sequences to {out_fastq}")
 
-        return out_fastq
+        return out_fastq, id_file
     
     except Exception as e:
         logger.error(f"seqkit grep failed: {e.stderr}")
