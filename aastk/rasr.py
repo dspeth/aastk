@@ -78,7 +78,7 @@ def search(gene_db_out_path: str,
     # =======================================
     # DIAMOND blastx command construction
     # =======================================
-    min_score = 10
+    min_score = 30
     cmd = ["diamond", "blastx",
            "-d", gene_db_out_path,
            "-q", query_fastq,
@@ -92,8 +92,6 @@ def search(gene_db_out_path: str,
            "-c", str(chunk),
            "--min-score", str(min_score),
            "--comp-based-stats", str(0),
-           "--gapopen", str(14), 
-           "--gapextend", str(2),
            sensitivity_param]
 
     logger.debug(f"Running command: {' '.join(cmd)}")
@@ -165,7 +163,6 @@ def get_hit_seqs(blast_tab: str,
 
     id_file = ensure_path(output_dir, f"{protein_name}_ids.txt", force=force)
     out_fastq = ensure_path(output_dir, f"{protein_name}_matched.fastq", force=force)
-    stats_path = ensure_path(output_dir, f"{protein_name}_matched.stats", force=force)
 
     # =============================================
     # Extract matching reads IDs from BLAST results
@@ -190,18 +187,7 @@ def get_hit_seqs(blast_tab: str,
     
     logger.info(f"Successfully extracted hit sequences to {out_fastq}")
 
-    # ===============================
-    # Generate sequence statistics
-    # ===============================
-    cmd = ["seqkit", "stats",
-            out_fastq,
-            "-o", stats_path,
-            "-a"]
-
-    logger.debug(f"Running command: {' '.join(cmd)}")
-    subprocess.run(cmd, check=True)
-
-    return out_fastq, stats_path
+    return out_fastq
 
 
 
@@ -396,8 +382,6 @@ def rasr_select(score_cutoff: float,
     protein_name = determine_dataset_name(bsr_file, '.', 0, '_bsr')
     out_fastq = ensure_path(output_dir, f"{protein_name}_selected.fastq", force=force)
     id_file = ensure_path(output_dir, f"{protein_name}_selected_ids.txt", force=force)
-    stats_file = ensure_path(output_dir, f"{protein_name}_selected.stats", force=force)
-
     
     # ===============================
     # Load BSR data
@@ -423,17 +407,7 @@ def rasr_select(score_cutoff: float,
         subprocess.run(cmd, check=True)
         logger.info(f"Extracted selected sequences to {out_fastq}")
 
-        # ===============================
-        # Generate statistics
-        # ===============================
-        cmd = ["seqkit", "stats",
-                out_fastq,
-                "-o", stats_file,
-                "-a"]
-
-        subprocess.run(cmd, check=True)
-        logger.info(f"Generated statistics for selected sequences at {stats_file}")
-        return out_fastq, stats_file
+        return out_fastq
     
     except Exception as e:
         logger.error(f"seqkit grep failed: {e.stderr}")
@@ -523,9 +497,8 @@ def rasr(query: str,
         # Read sequence extraction
         # ===============================
         logger.info("Extracting hit sequences from search results")
-        matched_fastq, matched_stats = get_hit_seqs(search_output, query, dataset_output_dir, key_column=key_column, force=force)
+        matched_fastq = get_hit_seqs(search_output, query, dataset_output_dir, key_column=key_column, force=force)
         results['hit_seqs_path'] = matched_fastq
-        results['hit_seqs_stats'] = matched_stats
 
         # ===============================
         # Outgroup database search
@@ -556,7 +529,9 @@ def rasr(query: str,
         # Final selection of RASR hits
         # ===============================
         logger.info("Selecting final RASR hits")
-        selected_fastq, selected_stats = rasr_select(score_cutoff=100.0, bsr_cutoff=0.9, matched_fastq=matched_fastq, bsr_file=bsr_output, output_dir=dataset_output_dir, force=force)
+        selected_fastq = rasr_select(score_cutoff=100.0, bsr_cutoff=0.9, matched_fastq=matched_fastq, bsr_file=bsr_output, output_dir=dataset_output_dir, force=force)
+
+        results['selected_fastq'] = selected_fastq
 
         logger.info("RASR workflow completed successfully")
         return results
