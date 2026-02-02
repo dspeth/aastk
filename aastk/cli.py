@@ -647,6 +647,8 @@ def get_main_parser():
             __block(grp)
             __chunk(grp)
             __sensitivity(grp)
+            __dbmin(grp)
+            __bsr_cutoff(grp)
             __keep(grp)
             __force(grp)
 
