@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from .util import *
+from .database import ANNOTATION_COLUMNS
 
 import pandas as pd
 import logging
@@ -65,13 +66,13 @@ def process_target_context(target_id, parent_id, target_cugo, strand, cugo_range
     return results
 
 
-def write_context_output(all_results, output_file):
+def write_context_output(all_results, annotation, output_file):
     """Write all results to one TSV."""
     if not all_results:
         return
 
     headers = ['target_id', 'position', 'seqID', 'parent_ID', 'aa_length',
-               'strand', 'COG_ID', 'CUGO_number', 'no_TMH']
+               'strand', f'{annotation}', 'CUGO_number', 'no_TMH']
 
     with open(output_file, 'w') as f:
         f.write('\t'.join(headers) + '\n')
@@ -80,12 +81,12 @@ def write_context_output(all_results, output_file):
             f.write('\t'.join(line) + '\n')
 
 
-def fetch_seqid_batch(batch, db_path):
+def fetch_seqid_batch(batch, annotation, db_path):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     placeholders = ",".join("?" * len(batch))
     query = f"""
-        SELECT seqID, parent_ID, aa_length, strand, COG_ID, CUGO_number, no_TMH
+        SELECT seqID, parent_ID, aa_length, strand, {annotation}, CUGO_number, no_TMH
         FROM protein_data
         WHERE seqID IN ({placeholders})
     """
@@ -94,7 +95,7 @@ def fetch_seqid_batch(batch, db_path):
     conn.close()
     return rows
 
-def fetch_parent_context(parent_ID, needed_numbers, db_path, batch_size=500):
+def fetch_parent_context(parent_ID, needed_numbers, annotation, db_path, batch_size=500):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     rows_out = []
@@ -103,7 +104,7 @@ def fetch_parent_context(parent_ID, needed_numbers, db_path, batch_size=500):
         batch = needed_list[j:j + batch_size]
         placeholders = ",".join("?" * len(batch))
         query = f"""
-            SELECT seqID, parent_ID, aa_length, strand, COG_ID, CUGO_number, no_TMH
+            SELECT seqID, parent_ID, aa_length, strand, {annotation}, CUGO_number, no_TMH
             FROM protein_data
             WHERE parent_ID = ? AND CUGO_number IN ({placeholders})
             ORDER BY CUGO_number
@@ -118,17 +119,21 @@ def context(fasta: str,
             db_path: str,
             cugo_range: int,
             output_dir: str,
+            annotation: str = 'COG_ID',
             threads: int = 1,
             force: bool = False,
             ):
+    if annotation not in ANNOTATION_COLUMNS:
+        raise ValueError(f'Invalid annotation. Please select one of the following annotations: {",".join(annotation_columns)}')
+
     if fasta:
         protein_name = determine_dataset_name(fasta, '.', 0)
-        output_file = ensure_path(output_dir, f'{protein_name}_context.tsv', force=force)
+        output_file = ensure_path(output_dir, f'{protein_name}_{annotation}_context.tsv', force=force)
         sequences = read_fasta_to_dict(fasta)
         protein_identifiers = set(sequences.keys())
     elif id_list:
         protein_name = determine_dataset_name(id_list, '.', 0)
-        output_file = ensure_path(output_dir, f'{protein_name}_context.tsv', force=force)
+        output_file = ensure_path(output_dir, f'{protein_name}_{annotation}_context.tsv', force=force)
         with open(id_list, 'r') as f:
             protein_identifiers = [line.strip() for line in f]
     else:
@@ -140,7 +145,7 @@ def context(fasta: str,
     batches = [protein_list[i:i + BATCH_SIZE] for i in range(0, len(protein_list), BATCH_SIZE)]
 
     with ThreadPoolExecutor(max_workers=threads) as executor:
-        futures = {executor.submit(fetch_seqid_batch, batch, db_path): batch for batch in batches}
+        futures = {executor.submit(fetch_seqid_batch, batch, annotation, db_path): batch for batch in batches}
         for future in tqdm(as_completed(futures), total=len(futures), desc="Fetching seqIDs"):
             target_rows.extend(future.result())
 
@@ -151,17 +156,17 @@ def context(fasta: str,
     target_contexts = {}
     context_ranges = defaultdict(set)
 
-    for seqID, parent_ID, aa_length, strand, COG_ID, CUGO_number, no_TMH in target_rows:
+    for seqID, parent_ID, aa_length, strand, annotation_id, CUGO_number, no_TMH in target_rows:
         target_contexts[seqID] = (parent_ID, CUGO_number, strand)
         for i in range(CUGO_number - cugo_range, CUGO_number + cugo_range + 1):
             context_ranges[parent_ID].add(i)
 
-    headers = ["seqID", "parent_ID", "aa_length", "strand", "COG_ID", "CUGO_number", "no_TMH"]
+    headers = ["seqID", "parent_ID", "aa_length", "strand", f"{annotation}", "CUGO_number", "no_TMH"]
     context_data = defaultdict(list)
 
     with ThreadPoolExecutor(max_workers=threads) as executor:
         futures = {
-            executor.submit(fetch_parent_context, pid, numbers, db_path, BATCH_SIZE): pid
+            executor.submit(fetch_parent_context, pid, numbers, annotation, db_path, BATCH_SIZE): pid
             for pid, numbers in context_ranges.items()
         }
         for future in tqdm(as_completed(futures), total=len(futures), desc="Fetching parent contexts"):
@@ -184,7 +189,7 @@ def context(fasta: str,
         all_results.extend(results)
 
     if all_results:
-        write_context_output(all_results, output_file)
+        write_context_output(all_results, annotation, output_file)
         logging.info(f"Context written to {output_file}")
         return output_file
     else:

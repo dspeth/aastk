@@ -30,6 +30,10 @@ def __all_metadata(group, required=False):
     group.add_argument('--all_metadata', action='store_true', required=required,
                        help='Include all metadata in output file')
 
+def __annotation(group, required=False):
+    group.add_argument('--annotation', type=str, default='COG_ID', required=required,
+                       help='Select annotation from: COG_ID, KEGG_ID, Pfam_ID (default: COG_ID)')
+
 def __bin_width(group, required=False):
     group.add_argument('-b', '--bin_width', type=int, default=50, required=required,
                        help='Bin width for amino acid sequence size plotting (default: 50)')
@@ -484,6 +488,7 @@ def get_main_parser():
             __db_path(grp, required=True)
             __cugo_range(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
+            __annotation(grp)
             __output(grp)
             __threads(grp)
             __force(grp)

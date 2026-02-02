@@ -211,6 +211,7 @@ def main():
                 fasta=args.fasta,
                 id_list=args.id_list,
                 db_path=args.db_path,
+                annotation=args.annotation,
                 cugo_range=args.cugo_range,
                 output_dir=args.output,
                 threads=args.threads,
