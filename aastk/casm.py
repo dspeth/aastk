@@ -570,77 +570,51 @@ def fetch_protein_metadata(db_path: str,
                            column: str,
                            batch_size: int = 500
                            ):
-    valid_cols = ANNOTATION_COLUMNS
+    valid_protein_cols = BASE_COLUMNS[1:] + ANNOTATION_COLUMNS
+    valid_genome_cols = TAXONOMY_COLUMNS + CULTURE_COLLECTION_COLUMNS + LOW_LEVEL_ENV_COLUMNS + HIGH_LEVEL_ENV_COLUMNS
 
-    if column not in valid_cols:
+    if column not in valid_protein_cols and column not in valid_genome_cols:
         logger.warning(f"No valid protein metadata columns requested")
         return pd.DataFrame({'seqID': protein_ids})
 
     conn = sqlite3.connect(db_path)
-
-    col_str = ', '.join(['seqID', column])
-
     all_results = []
     n_batches = (len(protein_ids) + batch_size - 1) // batch_size
-    logger.info(f"Fetching protein metadata in {n_batches} batches")
+    logger.info(f"Fetching metadata in {n_batches} batches")
 
     for i in range(0, len(protein_ids), batch_size):
         batch = protein_ids[i:i + batch_size]
         placeholders = ','.join(['?'] * len(batch))
-        query = f"""SELECT {col_str} from protein_data where seqID in ({placeholders})"""
 
-        batch_df = pd.read_sql_query(query, conn, params=batch)
+        if column in valid_protein_cols:
+            query = f"""SELECT seqID, {column} FROM protein_data WHERE seqID IN ({placeholders})"""
+            batch_df = pd.read_sql_query(query, conn, params=batch)
+
+        elif column in valid_genome_cols:
+            query = f"""
+                SELECT p.seqID, g.{column}
+                FROM protein_data p
+                LEFT JOIN genome_data g ON 
+                    CASE 
+                        WHEN instr(p.seqID, '___') > 0 
+                        THEN substr(p.seqID, 1, instr(p.seqID, '___') - 1)
+                        ELSE p.seqID
+                    END = g.genome_ID
+                WHERE p.seqID IN ({placeholders})
+            """
+            batch_df = pd.read_sql_query(query, conn, params=batch)
+
         all_results.append(batch_df)
 
     conn.close()
-
     df = pd.concat(all_results, ignore_index=True)
-
-    logger.info(f"Retrieved {len(df)} genome metadata records total")
-
+    logger.info(f"Retrieved {len(df)} metadata records total")
     return df
-
-
-def fetch_genome_metadata(db_path: str,
-                          genome_ids: list,
-                          column: str,
-                          batch_size: int = 500
-                           ):
-    valid_cols = TAXONOMY_COLUMNS + CULTURE_COLLECTION_COLUMNS + LOW_LEVEL_ENV_COLUMNS + HIGH_LEVEL_ENV_COLUMNS
-
-    if column not in valid_cols:
-        logger.warning(f"No valid protein metadata columns requested")
-        return pd.DataFrame({'genome_ID': genome_ids})
-
-    conn = sqlite3.connect(db_path)
-    col_str = ', '.join(['genome_ID',  column])
-
-    # Process in batches
-    all_results = []
-    n_batches = (len(genome_ids) + batch_size - 1) // batch_size
-    logger.info(f"Fetching genome metadata in {n_batches} batches")
-
-    for i in range(0, len(genome_ids), batch_size):
-        batch = genome_ids[i:i + batch_size]
-        placeholders = ','.join(['?'] * len(batch))
-        query = f"SELECT {col_str} FROM genome_data WHERE genome_ID IN ({placeholders})"
-
-        batch_df = pd.read_sql_query(query, conn, params=batch)
-        all_results.append(batch_df)
-        logger.debug(f"Batch {len(all_results)}/{n_batches}: retrieved {len(batch_df)} records")
-
-    conn.close()
-
-    df = pd.concat(all_results, ignore_index=True) if all_results else pd.DataFrame()
-
-    logger.info(f"Retrieved {len(df)} genome metadata records total")
-    return df
-
 
 def extend_embedding_with_metadata(df: pd.DataFrame,
                                    db_path: str,
                                    protein_col: str = None,
-                                   genome_col: str = None):
+                                   ):
     if not db_path:
         logger.warning("No database path provided, skipping metadata enrichment")
         return df
@@ -650,10 +624,6 @@ def extend_embedding_with_metadata(df: pd.DataFrame,
         protein_metadata = fetch_protein_metadata(db_path, df['seqID'].tolist(), protein_col)
         df = pd.merge(df, protein_metadata, on='seqID', how='left')
 
-    if genome_col is not None:
-        logger.info(f"Fetching genome metadata: {genome_col}")
-        genome_metadata = fetch_genome_metadata(db_path, df['genome_ID'].unique().tolist(), genome_col)
-        df = pd.merge(df, genome_metadata, on='genome_ID', how='left')
 
     return df
 
@@ -700,7 +670,7 @@ def plot_clusters(tsv_file: str,
     if db_path:
         if metadata_protein:
             logger.info(f"Fetching metadata column '{metadata_protein}' for coloring")
-            df = extend_embedding_with_metadata(df, db_path, protein_col=metadata_protein, genome_col=None)
+            df = extend_embedding_with_metadata(df, db_path, protein_col=metadata_protein)
             color_column = metadata_protein
 
     if metadata_protein  and not db_path:
@@ -765,18 +735,6 @@ def plot_clusters(tsv_file: str,
                             linewidths=0.3,
                             label=f'Cluster {cluster}')
 
-                # optionally annotate cluster centers with cluster numbers
-                if show_cluster_numbers:
-                    centroid_x = df.loc[cluster_mask, 'tsne1'].mean()
-                    centroid_y = df.loc[cluster_mask, 'tsne2'].mean()
-                    plt.annotate(str(cluster),
-                                xy=(centroid_x, centroid_y),
-                                fontsize=16,
-                                fontweight='bold',
-                                ha='center',
-                                va='center',
-                                color='black',
-                                alpha=1)
     else:
         unique_vals = df[color_column].dropna().unique()
         n_vals = len(unique_vals)
@@ -799,6 +757,41 @@ def plot_clusters(tsv_file: str,
             scatter = plt.scatter(df['tsne1'], df['tsne2'],
                                   c=df[color_column], cmap='viridis', s=15,
                                   alpha=0.7, edgecolors='white', linewidths=0.3)
+
+    if metadata_protein == 'culture_collection' and 'culture_collection' in df.columns:
+        overlay_mask = df['culture_collection'] == 1
+        if overlay_mask.any():
+            n_overlay = overlay_mask.sum()
+            logger.info(f"Overlaying {n_overlay} points with culture_collection == 1")
+            plt.scatter(df.loc[overlay_mask, 'tsne1'],
+                        df.loc[overlay_mask, 'tsne2'],
+                        c='red',
+                        s=25,
+                        alpha=0.6,
+                        edgecolors='black',
+                        linewidths=0.5,
+                        marker='o',
+                        label='Culture Collection',
+                        zorder=10)
+
+
+    if show_cluster_numbers and 'cluster' in df.columns:
+        clustered_mask = df['cluster'] != -1
+        if clustered_mask.any():
+            unique_clusters = df.loc[clustered_mask, 'cluster'].unique()
+            for cluster in unique_clusters:
+                cluster_mask = df['cluster'] == cluster
+                centroid_x = df.loc[cluster_mask, 'tsne1'].mean()
+                centroid_y = df.loc[cluster_mask, 'tsne2'].mean()
+                plt.annotate(str(cluster),
+                             xy=(centroid_x, centroid_y),
+                             fontsize=16,
+                             fontweight='bold',
+                             ha='center',
+                             va='center',
+                             color='black',
+                             alpha=1,
+                             zorder=100)
 
     # =============================
     # Configure plot appearance

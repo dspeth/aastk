@@ -574,6 +574,7 @@ def get_main_parser():
             __metadata_protein(grp)
             __show(grp)
             __svg(grp)
+            __force(grp)
 
     with subparser(sub_parsers, 'casm', 'CASM: protein clustering using alignment score matrices') as parser:
         with mutex_group(parser, required=True) as grp:
