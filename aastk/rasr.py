@@ -34,6 +34,12 @@ def search(gene_db_out_path: str,
     Args:
         gene_db_out_path (str): Path to DIAMOND protein database for the gene of interest
         query_fastq (str): Path to sequencing read file, can be gzipped
+        threads (int): Number of threads to use
+        output_dir (str): Directory to save output files
+        sensitivity (str): Sensitivity setting for DIAMOND search
+        block (int): Block size parameter for DIAMOND search
+        chunk (int): Chunk size parameter for DIAMOND search
+        force (bool): Whether to overwrite existing files
 
     Returns:
         blast_out_path: Path to tabular BLAST output file.
@@ -200,7 +206,7 @@ def get_hit_seqs(blast_tab: str,
         logger.error(f"seqkit grep failed: {e.stderr}")
         raise RuntimeError(f"Failed to extract matching sequences: {e.stderr}") from e
     
-    logger.info(f"Successfully extracted hit sequences to {out_fastq}")
+    logger.info(f"Successfully extracted {len(unique_ids)} hit sequences to {out_fastq}")
 
     return out_fastq, id_file
 
@@ -306,9 +312,18 @@ def bsr(gene_blast_tab: str,
 # ===============================
 def rasr_plot(bsr_file: str,
              output_dir: str,
-             force: bool = False):
+             force: bool = False,
+             bsr_cutoff: float = 0.9,
+             dbmin: int = 100):
     """
-    Creates a scatter plot of the BSR data.
+    Creates a scatter plot of the BSR data flanked by histograms showing the distribution of datapoints alongside the axes.
+    
+    Args:
+        bsr_file (str): Path to BSR results file
+        output_dir (str): Directory to save output plot
+        force (bool): Whether to overwrite existing files
+        bsr_cutoff (float): Minimum BSR threshold to draw as reference line (default: 0.9)
+        dbmin (int): Minimum database score threshold to draw as reference line (default: 100)
     """
     logger = logging.getLogger(__name__)
 
@@ -327,17 +342,39 @@ def rasr_plot(bsr_file: str,
         # ===============================
         bsr_df = pd.read_csv(bsr_file, sep='\t', header=0)
 
-        required_cols = ['score_db', 'score_og', 'pident_db']
+        required_cols = ['score_db', 'score_og', 'pident_db', 'BSR']
         for col in required_cols:
             if col not in bsr_df.columns:
                 raise ValueError(f"Required column '{col}' not found in BSR data")
         
-        fig, ax = plt.subplots(figsize=(8, 8))
+        # ===============================
+        # Define axis ranges and bins
+        # ===============================
+        bin_width = 10
+        score_max = max(bsr_df['score_og'].max(), bsr_df['score_db'].max())
+
+        # define common axis limits for scatter + histograms
+        xlim = (0, score_max)
+        ylim = (0, score_max)
+        x_bins = np.arange(xlim[0], xlim[1] + bin_width, bin_width)
+        y_bins = np.arange(ylim[0], ylim[1] + bin_width, bin_width)
+
+        # ===============================
+        # Layout
+        # ===============================
+        fig, axs = plt.subplot_mosaic(
+            [['histx', '.'],
+             ['scatter', 'histy']],
+            figsize=(8, 8),
+            width_ratios=(4, 1),
+            height_ratios=(1, 4),
+            layout='constrained'
+        )
 
         # ===============================
         # Scatter plot
         # ===============================
-        scatter = ax.scatter(
+        scatter = axs['scatter'].scatter(
             bsr_df['score_og'],
             bsr_df['score_db'],
             c=bsr_df['pident_db'],
@@ -347,16 +384,58 @@ def rasr_plot(bsr_file: str,
             vmin=0,
             vmax=100
         )
-        ax.set_xlabel('Alignment score to outgroup')
-        ax.set_ylabel('Alignment score to database')
-        ax.set_title(f'BSR Plot for {protein_name}')
+        # Set labels and title
+        axs['scatter'].set_xlabel('Alignment score to outgroup')
+        axs['scatter'].set_ylabel('Alignment score to database')
+        axs['scatter'].set_title(f'BSR Plot for {protein_name}')
+        axs['scatter'].set_xlim(xlim)
+        axs['scatter'].set_ylim(ylim)
+
+        # Add cutoff lines
+        if dbmin is not None and dbmin > 0:
+            axs['scatter'].axhline(dbmin, color='black', linestyle='--', linewidth=1.0, label=f'DB score ≥ {dbmin}')
+        if bsr_cutoff is not None and bsr_cutoff > 0:
+            x_vals = np.linspace(xlim[0], xlim[1], 500)
+            y_vals = bsr_cutoff * x_vals
+            axs['scatter'].plot(x_vals, y_vals, color='black', linestyle='--', linewidth=1.0, label=f'BSR ≥ {bsr_cutoff}')
         
         # Add colorbar
-        cbar = fig.colorbar(scatter, ax=ax)
+        cb_ax = inset_axes(axs['scatter'], width="5%", height="30%", loc='upper left', borderpad=1)
+        cbar = fig.colorbar(scatter, cax=cb_ax)
         cbar.set_label('% seq id to database')
         
-        # Adjust layout
-        plt.tight_layout()
+        # ===============================
+        # Histograms aligned with scatter
+        # ===============================
+        # Top histogram
+        x_hist, x_edges = np.histogram(bsr_df['score_og'], bins=x_bins)
+        axs['histx'].bar(
+            x_edges[:-1],
+            x_hist,
+            width=bin_width,
+            align='edge',
+            color='black'
+        )
+        axs['histx'].set_xlim(xlim)
+        axs['histx'].set_ylabel('Counts')
+        axs['histx'].set_yticks([0, max(x_hist)/2, max(x_hist)])
+        axs['histx'].tick_params(labelbottom=False)
+        axs['histx'].set_title(f'Read Alignment Score Ratio for {protein_name}')
+
+        # Right histogram
+        y_hist, y_edges = np.histogram(bsr_df['score_db'], bins=y_bins)
+        axs['histy'].barh(
+            y_edges[:-1],
+            y_hist,
+            height=bin_width,
+            align='edge',
+            color='black'
+        )
+        axs['histy'].set_ylim(ylim)
+        axs['histy'].set_xlabel('Counts')
+        axs['histy'].set_xticks([0, max(y_hist)/2, max(y_hist)])
+        axs['histy'].tick_params(labelleft=False)
+
 
         # ===============================
         # Save
@@ -444,7 +523,9 @@ def rasr(query: str,
             threads: int = 1,
             force: bool = False,
             keep: bool = False,
-            key_column: int = 0):
+            key_column: int = 0,
+            bsr_cutoff: float = 0.9,
+            dbmin: int = 100):
     """
     RASR workflow:
     Runs:
@@ -467,6 +548,8 @@ def rasr(query: str,
         force (bool): whether to force overwrite existing files
         keep (bool): if True, keep intermediate files; if False, delete them after workflow completion
         key_column (int): column index in BLAST output to use as key for sequence extraction
+        bsr_cutoff (float): minimum BSR threshold for selection and plotting (default: 0.9)
+        dbmin (int): minimum database score threshold for selection and plotting (default: 100)
     
     Returns:
         results (dict): dictionary containing paths to all output files
@@ -503,7 +586,7 @@ def rasr(query: str,
         # ===============================
         logger.info("Searching protein database")
 
-        search_output, column_info_path = search(db_path, query, threads, dataset_output_dir, sensitivity, block, chunk, force=force)
+        search_output, column_info_path = search(db_path, query, threads, dataset_output_dir, sensitivity, block=block, chunk=chunk, force=force)
 
         results['search_output'] = search_output
         results['column_info_path'] = column_info_path
@@ -512,14 +595,15 @@ def rasr(query: str,
         # Read sequence extraction
         # ===============================
         logger.info("Extracting hit sequences from search results")
-        matched_fastq = get_hit_seqs(search_output, query, dataset_output_dir, key_column=key_column, force=force)
+        matched_fastq, id_file = get_hit_seqs(search_output, query, dataset_output_dir, key_column=key_column, force=force)
         results['hit_seqs_path'] = matched_fastq
+        results['hit_ids_path'] = id_file
 
         # ===============================
         # Outgroup database search
         # ===============================
         logger.info("Searching outgroup database")
-        outgrp_search_output, outgrp_column_info_path = search(outgrp_db, matched_fastq, threads, dataset_output_dir, sensitivity, block, chunk, force=force)
+        outgrp_search_output, outgrp_column_info_path = search(outgrp_db, matched_fastq, threads, dataset_output_dir, sensitivity, block=block, chunk=chunk, force=force)
 
         results['outgrp_search_output'] = outgrp_search_output
         results['outgrp_column_info_path'] = outgrp_column_info_path
@@ -536,7 +620,7 @@ def rasr(query: str,
         # Visualization
         # ===============================
         logger.info("Creating BSR plot")
-        plot_output = rasr_plot(bsr_output, dataset_output_dir, force=force)
+        plot_output = rasr_plot(bsr_output, dataset_output_dir, force=force, bsr_cutoff=bsr_cutoff, dbmin=dbmin)
 
         results['plot_output'] = plot_output
 
@@ -544,7 +628,7 @@ def rasr(query: str,
         # Final selection of RASR hits
         # ===============================
         logger.info("Selecting final RASR hits")
-        selected_fastq = rasr_select(score_cutoff=100.0, bsr_cutoff=0.9, matched_fastq=matched_fastq, bsr_file=bsr_output, output_dir=dataset_output_dir, force=force)
+        selected_fastq = rasr_select(score_cutoff=dbmin, bsr_cutoff=bsr_cutoff, matched_fastq=matched_fastq, bsr_file=bsr_output, output_dir=dataset_output_dir, force=force)
 
         results['selected_fastq'] = selected_fastq
 
