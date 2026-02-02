@@ -71,10 +71,6 @@ def __cugo(group, required=False):
     group.add_argument('--cugo', action='store_true', required=required,
                        help='Generate CUGO plot')
 
-def __cugo_path(group, required=False):
-    group.add_argument('-c', '--cugo_path', type=str, required=required,
-                       help='Path to CUGO file')
-
 def __cugo_range(group, required=False):
     group.add_argument('-r', '--cugo_range', type=int, required=required,
                        help='CUGO range of interest for genomic context analysis')
@@ -485,7 +481,7 @@ def get_main_parser():
             __fasta(grp)
             __id_list(grp)
         with arg_group(parser, 'Required arguments') as grp:
-            __cugo_path(grp, required=True)
+            __db_path(grp, required=True)
             __cugo_range(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
@@ -516,7 +512,7 @@ def get_main_parser():
             __fasta(grp)
             __id_list(grp)
         with arg_group(parser, 'Required arguments') as grp:
-            __cugo_path(grp, required=True)
+            __db_path(grp, required=True)
             __cugo_range(grp, required=True)
             __flank_lower(grp, required=True)
             __flank_upper(grp, required=True)

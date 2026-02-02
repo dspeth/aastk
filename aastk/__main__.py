@@ -210,7 +210,7 @@ def main():
             context(
                 fasta=args.fasta,
                 id_list=args.id_list,
-                cugo_path=args.cugo_path,
+                db_path=args.db_path,
                 cugo_range=args.cugo_range,
                 output_dir=args.output,
                 threads=args.threads,
@@ -236,7 +236,7 @@ def main():
 
         elif args.subparser_name == 'cugo':
             cugo(
-                cugo_path=args.cugo_path,
+                db_path=args.db_path,
                 cugo_range=args.cugo_range,
                 fasta=args.fasta,
                 id_list=args.id_list,

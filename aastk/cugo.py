@@ -580,8 +580,8 @@ def write_context_output(all_results, output_file):
             f.write('\t'.join(line) + '\n')
 
 
-def fetch_seqid_batch(batch, cugo_path):
-    conn = sqlite3.connect(cugo_path)
+def fetch_seqid_batch(batch, db_path):
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     placeholders = ",".join("?" * len(batch))
     query = f"""
@@ -594,8 +594,8 @@ def fetch_seqid_batch(batch, cugo_path):
     conn.close()
     return rows
 
-def fetch_parent_context(parent_ID, needed_numbers, cugo_path, batch_size=500):
-    conn = sqlite3.connect(cugo_path)
+def fetch_parent_context(parent_ID, needed_numbers, db_path, batch_size=500):
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     rows_out = []
     needed_list = list(needed_numbers)
@@ -615,7 +615,7 @@ def fetch_parent_context(parent_ID, needed_numbers, cugo_path, batch_size=500):
 
 def context(fasta: str,
             id_list: str,
-            cugo_path: str,
+            db_path: str,
             cugo_range: int,
             output_dir: str,
             threads: int = 1,
@@ -640,7 +640,7 @@ def context(fasta: str,
     batches = [protein_list[i:i + BATCH_SIZE] for i in range(0, len(protein_list), BATCH_SIZE)]
 
     with ThreadPoolExecutor(max_workers=threads) as executor:
-        futures = {executor.submit(fetch_seqid_batch, batch, cugo_path): batch for batch in batches}
+        futures = {executor.submit(fetch_seqid_batch, batch, db_path): batch for batch in batches}
         for future in tqdm(as_completed(futures), total=len(futures), desc="Fetching seqIDs"):
             target_rows.extend(future.result())
 
@@ -661,7 +661,7 @@ def context(fasta: str,
 
     with ThreadPoolExecutor(max_workers=threads) as executor:
         futures = {
-            executor.submit(fetch_parent_context, pid, numbers, cugo_path, BATCH_SIZE): pid
+            executor.submit(fetch_parent_context, pid, numbers, db_path, BATCH_SIZE): pid
             for pid, numbers in context_ranges.items()
         }
         for future in tqdm(as_completed(futures), total=len(futures), desc="Fetching parent contexts"):
@@ -695,7 +695,7 @@ def context(fasta: str,
 # CUGO COMMAND LINE WORKFLOW
 # ======================================
 
-def cugo(cugo_path: str,
+def cugo(db_path: str,
          cugo_range: int,
          fasta: str,
          id_list: str,
@@ -713,7 +713,7 @@ def cugo(cugo_path: str,
     Complete CUGO workflow: generate context data and create comprehensive plots.
 
     Args:
-        cugo_path: Path to CUGO file
+        db_path: Path to CUGO file
         cugo_range: Range around target protein for context
         output_dir: Directory for output files
         flank_lower: Lower flank boundary for plotting
@@ -733,7 +733,7 @@ def cugo(cugo_path: str,
     context_file = context(
         fasta=fasta,
         id_list=id_list,
-        cugo_path=cugo_path,
+        db_path=db_path,
         cugo_range=cugo_range,
         output_dir=output_dir,
         threads=threads,
