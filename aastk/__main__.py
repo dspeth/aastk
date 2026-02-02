@@ -294,7 +294,7 @@ def main():
                 metadata_protein=args.metadata_protein,
                 force=args.force,
                 svg=args.svg,
-                show_cluster_numbers=args.show
+                show_cluster_numbers=args.show,
             )
 
         elif args.subparser_name == 'casm':
