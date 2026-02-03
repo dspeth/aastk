@@ -499,6 +499,7 @@ def get_main_parser():
             __flank_lower(grp, required=True)
             __flank_upper(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
+            __annotation(grp)
             __top_n(grp)
             __cugo(grp)
             __size(grp)
@@ -522,6 +523,7 @@ def get_main_parser():
             __flank_lower(grp, required=True)
             __flank_upper(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
+            __annotation(grp)
             __output(grp)
             __force(grp)
             __top_n(grp)

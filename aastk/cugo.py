@@ -15,6 +15,7 @@ from pathlib import Path
 import yaml
 import gzip
 import sqlite3
+import hashlib
 from tqdm import tqdm
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -242,19 +243,21 @@ def top_context(df: pd.DataFrame, top_n: int):
     return id_df, count_df
 
 
-def plot_top_cogs_per_position(
+def plot_top_annotations_per_position(
         context_path: str,
         flank_lower: int,
         flank_upper: int,
         top_n: int,
-        title: str = 'Top COGs per Position',
+        annotation: str,
         save: bool = False,
         ax: plt.Axes = None,
         plot_path: str = None
 ):
     """
-    Creates scatter plot showing top COG categories at each genomic position.
+    Creates scatter plot showing top annotation categories at each genomic position.
     """
+    title = f'Top {annotation}s per position'
+
     # Load context data
     cont = pd.read_csv(context_path, sep='\t', dtype=str)
     cont['position'] = pd.to_numeric(cont['position'], errors='coerce')
@@ -262,24 +265,30 @@ def plot_top_cogs_per_position(
 
     positions = sorted(cont['position'].unique())
 
-    # Load COG color mapping
+    # Load annotation color mapping
     script_dir = Path(__file__).resolve().parent
     yaml_dir = script_dir / "yaml"
-    color_yaml_path = yaml_dir / 'cog_colors.yaml'
-    with open(color_yaml_path, 'r') as f:
-        cog_color_map = yaml.safe_load(f)
+    annotation_lower = annotation.lower().replace('_id', '')
+    color_yaml_path = yaml_dir / f'{annotation_lower}_colors.yaml'
 
-    # Extract top N COGs per position
+    # dynamically color by first 6 digits of md5 hash
+    unique_annotations = cont[f'{annotation}'].dropna().unique()
+    annotation_color_map = {
+        ann_id: '#' + hashlib.md5(str(ann_id).encode()).hexdigest()[:6]
+        for i, ann_id in enumerate(unique_annotations)
+    }
+
+    # Extract top N annotations per position
     top_ids = [[] for _ in range(top_n)]
     top_counts = [[] for _ in range(top_n)]
 
     for pos in positions:
         pos_data = cont[cont['position'] == pos]
-        counts = pos_data['COG_ID'].value_counts(dropna=False)  # include NA
+        counts = pos_data[f'{annotation}'].value_counts(dropna=False)  # include NA
         for i in range(top_n):
             if i < len(counts):
-                cog_id = counts.index[i]
-                top_ids[i].append(cog_id)
+                annotation_id = counts.index[i]
+                top_ids[i].append(annotation_id)
                 top_counts[i].append(counts.iloc[i])
             else:
                 # Only append nothing if no real data in this rank
@@ -290,7 +299,7 @@ def plot_top_cogs_per_position(
     subtick_width = 0.8 / top_n
     subtick_offset = (top_n - 1) * subtick_width / 2
 
-    x_pos, y_values, cog_labels, point_colors = [], [], [], []
+    x_pos, y_values, annotation_labels, point_colors = [], [], [], []
     all_xticks, all_xlabels = [], []
 
     if ax is None:
@@ -299,10 +308,10 @@ def plot_top_cogs_per_position(
 
     for pos_idx, pos in enumerate(positions):
         for rank in range(top_n):
-            cog_id = top_ids[rank][pos_idx]
+            annotation_id = top_ids[rank][pos_idx]
             count = top_counts[rank][pos_idx]
 
-            if cog_id is None or count is None:
+            if annotation_id is None or count is None:
                 continue  # skip completely empty ranks
 
             x = pos + (rank * subtick_width) - subtick_offset
@@ -310,14 +319,14 @@ def plot_top_cogs_per_position(
             y_values.append(count)
             all_xticks.append(x)
 
-            if cog_id == 'NA':
-                cog_labels.append('NA')
+            if annotation_id == 'NA':
+                annotation_labels.append('NA')
                 point_colors.append('#cccccc')  # gray for NA
                 all_xlabels.append('NA')
             else:
-                cog_labels.append(cog_id)
-                point_colors.append(cog_color_map.get(cog_id, '#aaaaaa'))
-                all_xlabels.append(cog_id)
+                annotation_labels.append(annotation_id)
+                point_colors.append(annotation_color_map.get(annotation_id, '#aaaaaa'))
+                all_xlabels.append(annotation_id)
 
     # Scatter plot
     ax.scatter(
@@ -355,7 +364,7 @@ def plot_top_cogs_per_position(
 
     # Save if requested
     if save and plot_path is not None:
-        plt.tight_layout()
+        #plt.tight_layout()
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
 
     return positions, [pos + 0.5 for pos in positions[:-1]]
@@ -545,6 +554,7 @@ def cugo_plot(context_path: str,
               flank_lower: int,
               flank_upper: int,
               output: str,
+              annotation: str = 'COG_ID',
               top_n: int = 3,
               cugo: bool = False,
               size: bool = False,
@@ -557,15 +567,16 @@ def cugo_plot(context_path: str,
               force: bool = False
               ):
     """
-    Generate plots for genomic context analysis: COG distribution, protein size, and TMH counts.
+    Generate plots for genomic context analysis: annotation distribution, protein size, and TMH counts.
 
     Args:
         context_path: Path to context TSV file
         flank_lower: Lower flank boundary for plotting
         flank_upper: Upper flank boundary for plotting
         output: Output directory for plots
-        top_n: Number of top COGs to display (default: 3)
-        cugo: Whether to generate COG-only plot
+        annotation: Selects annotation type for analysis (default: COG_ID)
+        top_n: Number of top annotation to display (default: 3)
+        cugo: Whether to generate annotation-only plot
         size: Whether to generate size-only plot
         tmh: Whether to generate TMH-only plot
         all_plots: Whether to generate combined plot
@@ -575,17 +586,21 @@ def cugo_plot(context_path: str,
         svg: Generate plot in SVG format
         force: Whether to overwrite existing files
     """
+    if annotation not in ANNOTATION_COLUMNS:
+        raise ValueError(f'Invalid annotation. Please select one of the following annotations: {",".join(annotation_columns)}')
+
     dataset_name = determine_dataset_name(context_path, '.', 0, '_context')
 
-    # generate cog-only plot
+    # generate annotation-only plot
     if cugo:
         logger.info(f'Plotting top {top_n} annotations per position.')
         if svg:
             cugo_plot_path = ensure_path(output, f'{dataset_name}_cugo_only.svg', force=force)
         else:
             cugo_plot_path = ensure_path(output, f'{dataset_name}_cugo_only.png', force=force)
-        plot_top_cogs_per_position(context_path=context_path, flank_lower=flank_lower,
-                                   flank_upper=flank_upper, top_n=top_n, save=True,
+
+        plot_top_annotations_per_position(context_path=context_path, flank_lower=flank_lower,
+                                   flank_upper=flank_upper, annotation=annotation, top_n=top_n, save=True,
                                    plot_path=cugo_plot_path)
         (logger.info
          (f"Plot saved to {cugo_plot_path}"))
@@ -597,6 +612,7 @@ def cugo_plot(context_path: str,
             size_plot_path = ensure_path(output, f'{dataset_name}_size_only.svg', force=force)
         else:
             size_plot_path = ensure_path(output, f'{dataset_name}_size_only.png', force=force)
+
         norm_size, cmap_size = plot_size_per_position(context_path=context_path, flank_lower=flank_lower,
                                                       flank_upper=flank_upper, save=True, bin_width=bin_width,
                                                       plot_path=size_plot_path, y_range=y_range)
@@ -609,6 +625,7 @@ def cugo_plot(context_path: str,
             tmh_plot_path = ensure_path(output, f'{dataset_name}_tmh_only.svg', force=force)
         else:
             tmh_plot_path = ensure_path(output, f'{dataset_name}_tmh_only.png', force=force)
+
         norm_tmh, cmap_tmh = plot_tmh_per_position(context_path=context_path, flank_lower=flank_lower,
                                                    flank_upper=flank_upper, save=True, y_range=tmh_y_range,
                                                    plot_path=tmh_plot_path)
@@ -632,22 +649,22 @@ def cugo_plot(context_path: str,
         gs = fig.add_gridspec(3, 2,
                               width_ratios=[20, 1],
                               height_ratios=[1, 1, 1],
-                              hspace=0.4,
+                              hspace=0.7,
                               wspace=0.05)
 
-        ax1 = fig.add_subplot(gs[0, 0])  # COG plot
+        ax1 = fig.add_subplot(gs[0, 0])  # annotation plot
         ax2 = fig.add_subplot(gs[1, 0])  # Size plot
         cbar_ax1 = fig.add_subplot(gs[1, 1])  # Colorbar for size
         ax3 = fig.add_subplot(gs[2, 0])  # TMH plot
         cbar_ax2 = fig.add_subplot(gs[2, 1])  # Colorbar for TMH
 
-        # plot top cogs per position
-        pos_centers, pos_boundaries = plot_top_cogs_per_position(
+        # plot top annotation per position
+        pos_centers, pos_boundaries = plot_top_annotations_per_position(
             context_path=context_path,
             flank_lower=flank_lower,
             flank_upper=flank_upper,
+            annotation=annotation,
             top_n=top_n,
-            title='Top COGs per position',
             ax=ax1,
         )
 
@@ -708,6 +725,7 @@ def cugo(db_path: str,
          output_dir: str,
          flank_lower: int,
          flank_upper: int,
+         annotation: str = 'COG_ID',
          top_n: int = 3,
          threads: int = 1,
          svg: bool = False,
@@ -735,11 +753,15 @@ def cugo(db_path: str,
     Returns:
         tuple: (context_file_path, plot_file_path)
     """
+    if annotation not in ANNOTATION_COLUMNS:
+        raise ValueError(f'Invalid annotation. Please select one of the following annotations: {",".join(annotation_columns)}')
+
     # generate context data
     context_file = context(
         fasta=fasta,
         id_list=id_list,
         db_path=db_path,
+        annotation=annotation,
         cugo_range=cugo_range,
         output_dir=output_dir,
         threads=threads,
@@ -757,6 +779,7 @@ def cugo(db_path: str,
         flank_upper=flank_upper,
         top_n=top_n,
         output=output_dir,
+        annotation=annotation,
         all_plots=True,
         bin_width=bin_width,
         y_range=y_range,

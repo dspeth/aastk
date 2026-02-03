@@ -242,6 +242,7 @@ def main():
                 fasta=args.fasta,
                 id_list=args.id_list,
                 output_dir=args.output,
+                annotation=args.annotation,
                 flank_lower=args.flank_lower,
                 flank_upper=args.flank_upper,
                 top_n=args.top_n,
