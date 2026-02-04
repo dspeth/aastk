@@ -15,146 +15,7 @@ import json
 
 logger = logging.getLogger(__name__)
 
-def run_diamond_alignment(fasta: str,
-                          align_subset: str,
-                          subset_size: int,
-                          threads: int,
-                          output: str = None,
-                          force: bool = False):
-    """
-    Run DIAMOND makedb and blastp to align a full FASTA file to a subset.
-
-    Args:
-        fasta (str): Path to the full input FASTA file (query)
-        align_subset (str): Path to the subset FASTA file to use as the DIAMOND database (reference)
-        subset_size (int): Number of target sequences
-        threads (int): Number of threads to use
-        output (str): Output directory
-        force (bool): If set, existing files will be overwritten
-
-    Returns:
-        align_output (str): Path to Blast Tabular Output file for the alignment
-    """
-    check_dependency_availability('diamond')
-
-    if Path(fasta).is_file():
-        pass
-    else:
-        logger.error("Input seed FASTA not found")
-        raise FileNotFoundError(f"FASTA file does not exist: {fasta}")
-
-    logger.info(f"Starting DIAMOND alignment process")
-    logger.info(f"Query FASTA: {fasta}")
-    logger.info(f"Reference subset: {align_subset}")
-    logger.info(f"Using {threads} threads")
-
-    # ===============================
-    # Output file path setup
-    # ===============================
-    dataset = determine_dataset_name(fasta, '.', 0)
-    dbname = ensure_path(output, f"{dataset}_subset_dmnd", force=force)
-    align_output = ensure_path(output, f"{dataset}_align", force=force)
-
-    # ===============================
-    # Subprocess command creation
-    # ===============================
-    # ==================================
-    # Create DIAMOND DB from subset
-    # ==================================
-    logger.info(f"Creating DIAMOND database: {dbname}")
-    run_dmnd_makedb = [
-        "diamond", "makedb",
-        "--in", align_subset,
-        "-d", dbname,
-        "-p", str(threads)
-    ]
-
-    # ===========================================================
-    # DIAMOND blastp with seed FASTA as query and subset as DB
-    # ===========================================================
-    logger.info(f"Running DIAMOND blastp alignment")
-    run_dmnd_blastp = [
-        "diamond", "blastp",
-        "-q", fasta,
-        "-d", dbname,
-        "-o", align_output,
-        "-p", str(threads),
-        "-k", str(subset_size),
-        "--sensitive",
-        "--masking", "0",
-        "--outfmt", "6", "qseqid", "sseqid", "score",
-        "--comp-based-stats", "0"
-    ]
-
-    # ===============================
-    # Run commands created above
-    # ===============================
-    logger.debug(f"DIAMOND makedb command: {' '.join(run_dmnd_makedb)}")
-    try:
-        proc = subprocess.Popen(
-            run_dmnd_makedb,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=True
-        )
-        _, stderr = proc.communicate()
-
-        if proc.returncode != 0:
-            logger.error(f"DIAMOND makedb failed with return code {proc.returncode}")
-            if stderr:
-                logger.error(f"STDERR: {stderr}")
-            raise RuntimeError(f"DIAMOND database creation failed with return code {proc.returncode}")
-
-        if stderr:
-            logger.log(99, stderr)
-
-    except Exception as e:
-        if not isinstance(e, RuntimeError):
-            logger.error(f"Unexpected error in building the DIAMOND database: {e}")
-            raise RuntimeError(f"DIAMOND database creation failed: {e}") from e
-        raise
-
-    db_file = Path(f"{dbname}.dmnd")
-    if not db_file.exists():
-        logger.error(f"DIAMOND database file not found at {db_file}")
-        raise RuntimeError(f"DIAMOND database was not created at {db_file}")
-
-    logger.info(f"Successfully built DIAMOND database at {dbname}")
-
-    logger.debug(f"DIAMOND blastp command: {' '.join(run_dmnd_blastp)}")
-    try:
-        proc = subprocess.Popen(
-            run_dmnd_blastp,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=True
-        )
-        _, stderr = proc.communicate()
-
-        if proc.returncode != 0:
-            logger.error(f"DIAMOND blastp failed with return code {proc.returncode}")
-            if stderr:
-                logger.error(f"STDERR: {stderr}")
-            raise RuntimeError(f"DIAMOND blastp search failed with return code {proc.returncode}")
-
-        if stderr:
-            logger.log(99, stderr)
-    except FileNotFoundError as e:
-        logger.error("DIAMOND executable not found")
-        raise RuntimeError("DIAMOND executable not found. Is it installed and in PATH?") from e
-    except Exception as e:
-        if not isinstance(e, RuntimeError):
-            logger.error(f"Unexpected error in DIAMOND blastp search: {e}")
-            raise RuntimeError(f"DIAMOND blastp search failed: {e}") from e
-        raise
-
-    if not Path(align_output).exists():
-        logger.error(f"DIAMOND output file not found at {align_output}")
-        raise RuntimeError(f"DIAMOND search did not produce output at {align_output}")
-
-    logger.info(f"Successfully completed DIAMOND search. Results at {align_output}")
-
-    return align_output
+BLAST_OUTPUT_COLUMNS = ["qseqid", "sseqid", "score"]
 
 def build_alignment_matrix_split(align_file: str,
                                  output: str = None,
@@ -901,7 +762,7 @@ def matrix(fasta: str,
        subset_fasta = fasta_subsample(fasta, output, subset_size, force=force)
 
     logger.info("=== Phase 1: DIAMOND Alignment ===")
-    align_output = run_diamond_alignment(fasta, subset_fasta, subset_size, threads, force=force)
+    align_output = run_diamond_alignment(fasta, subset_fasta, subset_size, threads, BLAST_OUTPUT_COLUMNS, force=force)
 
     logger.info("=== Phase 2: Matrix Construction ===")
     _, _, _, matrix_file, metadata_file = build_alignment_matrix_split(align_output, output, force)
