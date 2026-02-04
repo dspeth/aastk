@@ -1296,8 +1296,6 @@ def protein_fasta(db_path: str,
                   threads: int = 1,
                   force: bool =False):
     protein_fasta_file = ensure_path(output, 'globdb_all_prot.faa', force=force)
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
 
     batch_size = 900
 
