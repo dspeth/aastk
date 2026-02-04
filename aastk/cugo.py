@@ -841,3 +841,9 @@ def cugo_select(context_path: str,
     logger.info(f"Retrieved {count} sequences to {output_path}")
 
     return output_path
+
+
+
+def filter(fasta: str,
+           output: str):
+    pass

@@ -543,6 +543,12 @@ def get_main_parser():
             __output(grp)
             __force(grp)
 
+    with subparser(sub_parsers, 'filter', 'Filter datasets in FASTA format for improved homogeneity') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __fasta(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
+
     with subparser(sub_parsers, 'matrix', 'Create alignment matrix for tSNE embedding and DBSCAN clustering') as parser:
         with mutex_group(parser, required=True) as grp:
             __subset(grp)

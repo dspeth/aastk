@@ -263,6 +263,12 @@ def main():
                 force=args.force
             )
 
+        elif args.subparser_name == 'filter':
+            filter(
+                fasta=args.fasta,
+                output=args.output
+            )
+
         ### PARSER FOR CASM FUNCTIONALITIES AND WORKFLOW ###
         elif args.subparser_name == 'matrix':
             matrix(
