@@ -15,60 +15,6 @@ import json
 
 logger = logging.getLogger(__name__)
 
-def fasta_subsample(fasta: str,
-                    output_dir: str,
-                    subset_size: int,
-                    force: bool = False):
-    """
-    Randomly selects subset of pre-defined size from input fasta.
-
-    Args:
-        fasta (str): Input fasta file (in most cases homologous dataset as output by PASR)
-        output_dir (str): Output directory
-        subset_size (int): Number of sequences randomly selected from input fasta
-        force (bool): If set, existing files will be overwritten
-
-    Returns:
-        output_path: Path to output subset fasta file
-    """
-    # ===============================
-    # Output file path setup
-    # ===============================
-    dataset = determine_dataset_name(fasta, '.', 0)
-    output_file = f"{dataset}_subsample.faa"
-    output_path = ensure_path(output_dir, output_file, force=force)
-
-    # ===============================
-    # Parse FASTA to dict
-    # ===============================
-    sequences = read_fasta_to_dict(fasta)
-    total_sequences = len(sequences)
-    logger.info(f"Total sequences in FASTA: {total_sequences}")
-
-    # ===========================================================================
-    # Check if subset size is larger than number of sequences in source FASTA
-    # ===========================================================================
-    if subset_size > total_sequences:
-        logger.warning(
-            f"Requested subset size ({subset_size}) is larger than total sequences ({total_sequences}). Using all sequences.")
-        subset_size = total_sequences
-
-    # ======================================================
-    # Random sampling of seed FASTA for subset creation
-    # ======================================================
-    subset_keys = random.sample(list(sequences.keys()), subset_size)
-    subset_dict = {k: sequences[k] for k in subset_keys}
-
-    # =====================================
-    # Write FASTA subset to output file
-    # =====================================
-    with open(output_path, 'w') as f:
-        for header, seq in subset_dict.items():
-            f.write(f">{header}\n")
-            f.write(f'{seq}\n')
-
-    return output_path
-
 def run_diamond_alignment(fasta: str,
                           align_subset: str,
                           subset_size: int,
