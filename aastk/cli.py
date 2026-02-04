@@ -548,6 +548,8 @@ def get_main_parser():
             __fasta(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __threads(grp)
+            __force(grp)
 
     with subparser(sub_parsers, 'matrix', 'Create alignment matrix for tSNE embedding and DBSCAN clustering') as parser:
         with mutex_group(parser, required=True) as grp:

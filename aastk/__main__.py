@@ -266,7 +266,9 @@ def main():
         elif args.subparser_name == 'filter':
             filter(
                 fasta=args.fasta,
-                output=args.output
+                output=args.output,
+                threads=args.threads,
+                force=args.force
             )
 
         ### PARSER FOR CASM FUNCTIONALITIES AND WORKFLOW ###

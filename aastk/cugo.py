@@ -20,8 +20,9 @@ from tqdm import tqdm
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-
 logger = logging.getLogger(__name__)
+
+CUGO_BLAST_OUTPUT_COLUMNS = ['qseqid', 'sseqid', 'nident', 'length', 'qlen']
 
 # ======================================
 # CUGO context functions and CLI tool
@@ -845,5 +846,11 @@ def cugo_select(context_path: str,
 
 
 def filter(fasta: str,
-           output: str):
-    pass
+           output: str,
+           threads: int,
+           force: bool = False):
+    subset = fasta_subsample(fasta, output, 100, force=force)
+
+    align_output = run_diamond_alignment(fasta, subset, None, 4, CUGO_BLAST_OUTPUT_COLUMNS, output, force)
+
+    return align_output
