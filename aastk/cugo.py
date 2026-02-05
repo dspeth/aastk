@@ -936,7 +936,7 @@ def cugo_select(context_path: str,
     conn.close()
     logger.info(f"Retrieved {count} sequences to {output_path}")
 
-    if filter:
+    if filter_seqs:
         logger.info(f"Filtering {output_path}")
         filtered_output = filter(output_path, db_path, output, threads, force=force)
         return filtered_output
