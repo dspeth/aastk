@@ -6,6 +6,8 @@ import logging
 import zlib
 import random
 import subprocess
+import sqlite3
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -187,6 +189,38 @@ def read_fasta_to_dict(fasta: str):
 					sequences[current_header] += line
 
 	return sequences
+
+
+def retrieve_sequences_from_db(seq_ids: list,
+							   output_path: str,
+							   db_path: str):
+	if not seq_ids:
+		logger.warning(f"No sequences found for position {position}")
+		return output_path
+
+	# connect to database
+	conn = sqlite3.connect(db_path)
+
+	# query database for sequences
+	placeholders = ','.join('?' * len(seq_ids))
+	cursor = conn.execute(f"""
+			SELECT seqID, protein_seq 
+			FROM protein_data 
+			WHERE seqID IN ({placeholders}) AND protein_seq IS NOT NULL
+		""", seq_ids)
+
+	# write to file
+	with open(output_path, 'w') as file:
+		count = 0
+		for seqid, compressed_seq in tqdm(cursor, total=len(seq_ids), desc="Retrieving sequences"):
+			sequence = decompress_sequence(compressed_seq)
+			file.write(f">{seqid}\n{sequence}\n")
+			count += 1
+
+	conn.close()
+	logger.info(f"Retrieved {count} sequences to {output_path}")
+
+	return output_path
 
 def run_diamond_alignment(fasta: str,
 						  align_subset: str,

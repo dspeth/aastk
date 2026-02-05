@@ -863,33 +863,9 @@ def filter(fasta: str,
 
     seq_ids = means.index.dropna().unique().tolist()
 
-    if not seq_ids:
-        logger.warning(f"No sequences found for position {position}")
-        return output_path
+    final_fasta = retrieve_sequences_from_db(seq_ids, output_path, db_path)
 
-    # connect to database
-    conn = sqlite3.connect(db_path)
-
-    # query database for sequences
-    placeholders = ','.join('?' * len(seq_ids))
-    cursor = conn.execute(f"""
-        SELECT seqID, protein_seq 
-        FROM protein_data 
-        WHERE seqID IN ({placeholders}) AND protein_seq IS NOT NULL
-    """, seq_ids)
-
-    # write to file
-    with open(output_path, 'w') as file:
-        count = 0
-        for seqid, compressed_seq in tqdm(cursor, total=len(seq_ids), desc="Retrieving sequences"):
-            sequence = decompress_sequence(compressed_seq)
-            file.write(f">{seqid}\n{sequence}\n")
-            count += 1
-
-    conn.close()
-    logger.info(f"Retrieved {count} sequences to {output_path}")
-
-    return output_path
+    return final_fasta
 
 def cugo_select(context_path: str,
              position: int,
@@ -910,38 +886,14 @@ def cugo_select(context_path: str,
     # get unique seqIDs
     seq_ids = pos_data['seqID'].dropna().unique().tolist()
 
-    if not seq_ids:
-        logger.warning(f"No sequences found for position {position}")
-        return output_path
-
-    # connect to database
-    conn = sqlite3.connect(db_path)
-
-    # query database for sequences
-    placeholders = ','.join('?' * len(seq_ids))
-    cursor = conn.execute(f"""
-        SELECT seqID, protein_seq 
-        FROM protein_data 
-        WHERE seqID IN ({placeholders}) AND protein_seq IS NOT NULL
-    """, seq_ids)
-
-    # write to file
-    with open(output_path, 'w') as file:
-        count = 0
-        for seqid, compressed_seq in tqdm(cursor, total=len(seq_ids), desc="Retrieving sequences"):
-            sequence = decompress_sequence(compressed_seq)
-            file.write(f">{seqid}\n{sequence}\n")
-            count += 1
-
-    conn.close()
-    logger.info(f"Retrieved {count} sequences to {output_path}")
+    select_fasta = retrieve_sequences_from_db(seq_ids, output_path, db_path)
 
     if filter_seqs:
-        logger.info(f"Filtering {output_path}")
-        filtered_output = filter(output_path, db_path, output, threads, force=force)
+        logger.info(f"Filtering {select_fasta}")
+        filtered_output = filter(select_fasta, db_path, output, threads, force=force)
         return filtered_output
     else:
-        return output_path
+        return select_fasta
 
 
 
