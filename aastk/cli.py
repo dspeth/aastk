@@ -115,6 +115,10 @@ def __fasta(group, required=False):
     group.add_argument('-f', '--fasta', type=str, required=required,
                        help='Path to FASTA file')
 
+def __filter_seqs(group, required=False):
+    group.add_argument('--filter_seqs', action='store_true', required=required,
+                       help='Filter datasets in FASTA format for improved homogeneity')
+
 def __force(group, required=False):
     group.add_argument('--force', action='store_true', required=required,
                        help='Set flag to overwrite existing files in specified path')
@@ -541,6 +545,8 @@ def get_main_parser():
             __db_path(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __threads(grp)
+            __filter_seqs(grp)
             __force(grp)
 
     with subparser(sub_parsers, 'filter', 'Filter datasets in FASTA format for improved homogeneity') as parser:

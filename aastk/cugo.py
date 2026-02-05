@@ -798,52 +798,6 @@ def cugo(db_path: str,
 
     return context_file, plot_file
 
-def cugo_select(context_path: str,
-             position: int,
-             db_path: str,
-             output: str,
-             force: bool = False):
-    dataset_name = determine_dataset_name(context_path, '.', 0, '_context')
-    output_path = ensure_path(output, f'{dataset_name}_{position}.faa', force=force)
-
-    # load context data
-    df = pd.read_csv(context_path, sep='\t')
-
-    # filter to specified position
-    pos_data = df[df['position'] == position]
-
-    # get unique seqIDs
-    seq_ids = pos_data['seqID'].dropna().unique().tolist()
-
-    if not seq_ids:
-        logger.warning(f"No sequences found for position {position}")
-        return output_path
-
-    # connect to database
-    conn = sqlite3.connect(db_path)
-
-    # query database for sequences
-    placeholders = ','.join('?' * len(seq_ids))
-    cursor = conn.execute(f"""
-        SELECT seqID, protein_seq 
-        FROM protein_data 
-        WHERE seqID IN ({placeholders}) AND protein_seq IS NOT NULL
-    """, seq_ids)
-
-    # write to file
-    with open(output_path, 'w') as file:
-        count = 0
-        for seqid, compressed_seq in tqdm(cursor, total=len(seq_ids), desc="Retrieving sequences"):
-            sequence = decompress_sequence(compressed_seq)
-            file.write(f">{seqid}\n{sequence}\n")
-            count += 1
-
-    conn.close()
-    logger.info(f"Retrieved {count} sequences to {output_path}")
-
-    return output_path
-
-
 
 def filter(fasta: str,
            db_path: str,
@@ -936,3 +890,58 @@ def filter(fasta: str,
     logger.info(f"Retrieved {count} sequences to {output_path}")
 
     return output_path
+
+def cugo_select(context_path: str,
+             position: int,
+             db_path: str,
+             output: str,
+             threads: int,
+             filter_seqs: bool = False,
+             force: bool = False):
+    dataset_name = determine_dataset_name(context_path, '.', 0, '_context')
+    output_path = ensure_path(output, f'{dataset_name}_{position}.faa', force=force)
+
+    # load context data
+    df = pd.read_csv(context_path, sep='\t')
+
+    # filter to specified position
+    pos_data = df[df['position'] == position]
+
+    # get unique seqIDs
+    seq_ids = pos_data['seqID'].dropna().unique().tolist()
+
+    if not seq_ids:
+        logger.warning(f"No sequences found for position {position}")
+        return output_path
+
+    # connect to database
+    conn = sqlite3.connect(db_path)
+
+    # query database for sequences
+    placeholders = ','.join('?' * len(seq_ids))
+    cursor = conn.execute(f"""
+        SELECT seqID, protein_seq 
+        FROM protein_data 
+        WHERE seqID IN ({placeholders}) AND protein_seq IS NOT NULL
+    """, seq_ids)
+
+    # write to file
+    with open(output_path, 'w') as file:
+        count = 0
+        for seqid, compressed_seq in tqdm(cursor, total=len(seq_ids), desc="Retrieving sequences"):
+            sequence = decompress_sequence(compressed_seq)
+            file.write(f">{seqid}\n{sequence}\n")
+            count += 1
+
+    conn.close()
+    logger.info(f"Retrieved {count} sequences to {output_path}")
+
+    if filter:
+        logger.info(f"Filtering {output_path}")
+        filtered_output = filter(output_path, db_path, output, threads, force=force)
+        return filtered_output
+    else:
+        return output_path
+
+
+

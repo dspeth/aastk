@@ -260,6 +260,8 @@ def main():
                 position=args.position,
                 db_path=args.db_path,
                 output=args.output,
+                threads=args.threads,
+                filter_seqs=args.filter_seqs,
                 force=args.force
             )
 
