@@ -22,7 +22,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logger = logging.getLogger(__name__)
 
-CUGO_BLAST_OUTPUT_COLUMNS = ['qseqid', 'sseqid', 'nident', 'length', 'qlen']
+FILTER_BLAST_OUTPUT_COLUMNS = ['qseqid', 'sseqid', 'nident', 'length', 'qlen']
 
 # ======================================
 # CUGO context functions and CLI tool
@@ -804,7 +804,7 @@ def cugo_select(context_path: str,
              output: str,
              force: bool = False):
     dataset_name = determine_dataset_name(context_path, '.', 0, '_context')
-    output_path = ensure_path(output, f'{dataset_name}_{position}_ids.txt', force=force)
+    output_path = ensure_path(output, f'{dataset_name}_{position}.faa', force=force)
 
     # load context data
     df = pd.read_csv(context_path, sep='\t')
@@ -846,11 +846,93 @@ def cugo_select(context_path: str,
 
 
 def filter(fasta: str,
+           db_path: str,
            output: str,
            threads: int,
            force: bool = False):
+    prefix = determine_dataset_name(fasta, '.', 0)
+    output_path = ensure_path(output, f'{prefix}_filtered.faa', force=force)
+
     subset = fasta_subsample(fasta, output, 100, force=force)
 
-    align_output = run_diamond_alignment(fasta, subset, None, 4, CUGO_BLAST_OUTPUT_COLUMNS, output, force)
+    align_output = run_diamond_alignment(fasta, subset, None, threads, FILTER_BLAST_OUTPUT_COLUMNS, output, force)
 
-    return align_output
+    alignment_df = pd.read_csv(align_output, sep='\t', names=FILTER_BLAST_OUTPUT_COLUMNS)
+
+    alignment_df['unaligned_length'] = alignment_df['qlen'] - alignment_df['length']
+
+    means = alignment_df.groupby('qseqid').mean(numeric_only=True)
+    means.rename(columns={'nident': 'mean100_nident', 'length': 'mean100_length', 'qlen': 'mean100_qlen', 'unaligned_length': 'mean100_unaligned_length'}, inplace=True)
+
+    mean_avg_length = means.loc[:, 'mean100_length'].mean()
+
+    count = 0
+    for qseqid in means.index:
+        avg_length = means.loc[qseqid, 'mean100_length']
+        avg_length_deviation = avg_length - mean_avg_length
+        if abs(avg_length_deviation) >= 150:
+            means.drop(qseqid, inplace=True)
+            count += 1
+
+    remaining = len(means.index)
+    logger.info(f"First pass: dropped {count} sequences. Remaining sequences: {remaining}")
+
+    updated_mean_avg_length = means.loc[:, 'mean100_length'].mean()
+    updated_std_avg_length = means.loc[:, 'mean100_length'].std()
+
+    count = 0
+    for qseqid in means.index:
+        avg_length = means.loc[qseqid, 'mean100_length']
+        lower_bound = updated_mean_avg_length - 3 * updated_std_avg_length
+        upper_bound = updated_mean_avg_length + 3 * updated_std_avg_length
+
+        if avg_length < lower_bound or avg_length > upper_bound:
+            means.drop(qseqid, inplace=True)
+            count += 1
+
+    remaining = len(means.index)
+    logger.info(f"Second pass: dropped {count} sequences. Remaining sequences: {remaining}")
+
+    penultimate_mean_avg_length = means.loc[:, 'mean100_length'].mean()
+
+    count = 0
+    for qseqid in means.index:
+        mean_unaligned_length = means.loc[qseqid, 'mean100_unaligned_length']
+        boundary = 0.5 * penultimate_mean_avg_length
+
+        if abs(mean_unaligned_length) > boundary:
+            means.drop(qseqid, inplace=True)
+            count += 1
+
+    remaining = len(means.index)
+    logger.info(f"Third pass: dropped {count} sequences. Remaining sequences: {remaining}")
+
+    seq_ids = means.index.dropna().unique().tolist()
+
+    if not seq_ids:
+        logger.warning(f"No sequences found for position {position}")
+        return output_path
+
+    # connect to database
+    conn = sqlite3.connect(db_path)
+
+    # query database for sequences
+    placeholders = ','.join('?' * len(seq_ids))
+    cursor = conn.execute(f"""
+        SELECT seqID, protein_seq 
+        FROM protein_data 
+        WHERE seqID IN ({placeholders}) AND protein_seq IS NOT NULL
+    """, seq_ids)
+
+    # write to file
+    with open(output_path, 'w') as file:
+        count = 0
+        for seqid, compressed_seq in tqdm(cursor, total=len(seq_ids), desc="Retrieving sequences"):
+            sequence = decompress_sequence(compressed_seq)
+            file.write(f">{seqid}\n{sequence}\n")
+            count += 1
+
+    conn.close()
+    logger.info(f"Retrieved {count} sequences to {output_path}")
+
+    return output_path

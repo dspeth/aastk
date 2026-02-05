@@ -267,6 +267,7 @@ def main():
             filter(
                 fasta=args.fasta,
                 output=args.output,
+                db_path=args.db_path,
                 threads=args.threads,
                 force=args.force
             )

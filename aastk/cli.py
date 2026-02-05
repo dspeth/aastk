@@ -546,6 +546,7 @@ def get_main_parser():
     with subparser(sub_parsers, 'filter', 'Filter datasets in FASTA format for improved homogeneity') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __fasta(grp, required=True)
+            __db_path(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __threads(grp)
