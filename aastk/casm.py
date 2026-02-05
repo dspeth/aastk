@@ -2,9 +2,7 @@ from .util import *
 from .database import BASE_COLUMNS, ANNOTATION_COLUMNS, TAXONOMY_COLUMNS, CULTURE_COLLECTION_COLUMNS, HIGH_LEVEL_ENV_COLUMNS, LOW_LEVEL_ENV_COLUMNS
 
 import logging
-import random
 import numpy as np
-import subprocess
 import pandas as pd
 import openTSNE
 from sklearn.cluster import DBSCAN

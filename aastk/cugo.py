@@ -9,11 +9,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable, get_cmap
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 from typing import Optional
 from pathlib import Path
-import yaml
-import gzip
 import sqlite3
 import hashlib
 from tqdm import tqdm
