@@ -110,7 +110,8 @@ def main():
             max_score(
                 extracted=args.extracted,
                 matrix=args.matrix,
-                output_dir=args.output
+                output_dir=args.output,
+                force=args.force
             )
 
         elif args.subparser_name == 'bsr':
@@ -153,7 +154,7 @@ def main():
             pasr(
                 seed_fasta=args.seed,
                 query_fasta=args.query,
-                matrix_name=args.matrix,
+                matrix=args.matrix,
                 threads=args.threads,
                 output_dir=args.output,
                 db_path=args.db_path,
