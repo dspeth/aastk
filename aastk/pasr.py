@@ -390,9 +390,9 @@ def get_hit_seqs(blast_tab: str,
 # aastk max_score CLI FUNCTION
 # ===============================
 def max_score(extracted: str,
-                         matrix: str,
-                         output_dir: str,
-                         force: bool = False):
+              output_dir: str,
+              matrix: str = 'BLOSUM45',
+              force: bool = False):
     """
     Calculates max scores for sequences using a BLOSUM matrix.
 

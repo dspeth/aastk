@@ -196,7 +196,7 @@ def __matched(group, required=False):
                        help='FASTA file containing matched sequences from previous PASR run')
 
 def __matrix(group, required=False):
-    group.add_argument('-m', '--matrix', choices=['BLOSUM45', 'BLOSUM62'], required=required,
+    group.add_argument('-m', '--matrix', type=str, default='BLOSUM45', required=required,
                        help='Choose BLOSUM substitution matrix (BLOSUM 45 or BLOSUM 62)')
 
 def __matrix_path(group, required=False):
@@ -378,9 +378,9 @@ def get_main_parser():
     with subparser(sub_parsers, 'max_score', 'Calculate max scores for extracted sequences using BLOSUM matrix') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __extracted(grp, required=True)
-            __matrix(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __matrix(grp)
             __force(grp)
 
     with subparser(sub_parsers, 'bsr', 'Compute BSR (Blast Score Ratio) using a BLAST tab file and max scores from a TSV.') as parser:
@@ -425,11 +425,11 @@ def get_main_parser():
 
     with subparser(sub_parsers, 'pasr', 'PASR: protein alignment score ratio') as parser:
         with arg_group(parser, 'Required arguments') as grp:
-            __matrix(grp, required=True)
             __query(grp, required=True)
             __seed(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __matrix(grp)
             __threads(grp)
             __db_path(grp)
             __key_column(grp)
