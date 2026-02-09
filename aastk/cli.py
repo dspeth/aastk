@@ -197,7 +197,7 @@ def __matched(group, required=False):
 
 def __matrix(group, required=False):
     group.add_argument('-m', '--matrix', type=str, default='BLOSUM45', required=required,
-                       help='Choose BLOSUM substitution matrix (BLOSUM 45 or BLOSUM 62)')
+                       help='BLOSUM substitution matrix: BLOSUM45, BLOSUM62 (default: BLOSUM45)')
 
 def __matrix_path(group, required=False):
     group.add_argument('-m', '--matrix_path', type=str, required=required,
@@ -221,7 +221,7 @@ def __no_cluster(group, required=False):
 
 def __output(group, required=False):
     group.add_argument('-o', '--output', type=str, required=required,
-                       help='Desired output directory (default: current working directory)')
+                       help='Output directory (default: current working directory)')
 
 def __params(group, required=False):
     group.add_argument('--params', action='store_true', required=required,

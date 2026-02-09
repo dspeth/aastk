@@ -326,14 +326,14 @@ def get_hit_seqs(blast_tab: str,
                     for i, batch in enumerate(batches)
                 }
 
-                # Process completed batches as they finish
+                # process completed batches as they finish
                 for future in tqdm(as_completed(future_to_batch),
                                    total=len(batches),
                                    desc="Fetching sequences"):
                     try:
                         results = future.result()
 
-                        # Write results to file
+                        # write results to file
                         for seqid, sequence in results:
                             out.write(f">{seqid}\n{sequence}\n")
                             sequences_written += 1
@@ -396,7 +396,7 @@ def max_score(extracted: str,
 
     Args:
         extracted (str): Path to the extracted FASTA file.
-        matrix (str): BLOSUM matrix name ('BLOSUM45' or 'BLOSUM62').
+        matrix (str): BLOSUM matrix name (default: 'BLOSUM45').
         output_dir (str): Directory where the output file should be stored.
         force (bool): If true, existing files/directories in output path are overwritten
 
