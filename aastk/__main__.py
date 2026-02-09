@@ -96,7 +96,7 @@ def main():
 
         elif args.subparser_name == 'get_hit_seqs':
             get_hit_seqs(
-                blast_tab=args.tabular,
+                blast_tab=args.blast_output,
                 query_path=args.query,
                 output_dir=args.output,
                 db_path=args.db_path,
@@ -116,7 +116,7 @@ def main():
 
         elif args.subparser_name == 'bsr':
             bsr(
-                blast_tab=args.tabular,
+                blast_tab=args.blast_output,
                 max_scores_path=args.max_scores,
                 output_dir=args.output,
                 key_column=args.key_column,

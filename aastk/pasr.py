@@ -472,12 +472,12 @@ def max_score(extracted: str,
 # aastk bsr CLI FUNCTION
 # ===============================
 def bsr(blast_tab: str,
-                      max_scores_path: str,
-                      output_dir: str,
-                      key_column: int = 0,
-                      column_info_path: str = None,
-                      score_column: int = None,
-                      force: bool = False):
+        max_scores_path: str,
+        output_dir: str,
+        key_column: int = 0,
+        column_info_path: str = None,
+        score_column: int = None,
+        force: bool = False):
     """
     Computes BSR (Blast Score Ratio) using a BLAST tab file and max scores from a TSV.
 
@@ -514,19 +514,16 @@ def bsr(blast_tab: str,
                 column_info = json.load(f)
                 if 'score' in column_info:
                     raw_score_column = column_info['score']
-                    logger.info(f"Using score column index {raw_score_column} from column info file")
                 else:
-                    logger.warning(f"'Score column not found in column info")
+                    raise ValueError("Column 'score' not found in column info file")
                 if 'qlen' in column_info:
                     qlen_column = column_info['qlen']
-                    logger.info(f"Using qlen column index {qlen_column} from column info file")
                 else:
-                    logger.warning(f"'qlen column not found in column info")
+                    raise ValueError("Column 'qlen' not found in column info file")
                 if 'pident' in column_info:
                     pident_column = column_info['pident']
-                    logger.info(f"Using pident column index {pident_column} from column info file")
                 else:
-                    logger.warning(f"'pident column not found in column info")
+                    raise ValueError("Column 'pident' not found in column info file")
         except (json.JSONDecodeError, IOError) as e:
             logger.warning(f"Error reading column info file: {e}")
     # if no column info file is provided we use the input score column index

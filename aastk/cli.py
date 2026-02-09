@@ -38,6 +38,10 @@ def __bin_width(group, required=False):
     group.add_argument('-b', '--bin_width', type=int, default=50, required=required,
                        help='Bin width for amino acid sequence size plotting (default: 50)')
 
+def __blast_output(group, required=False):
+    group.add_argument('-b', '--blast_output', type=str, default=None, required=required,
+                       help='Path to BLAST/DIAMOND output file')
+
 def __block(group, required=False):
     group.add_argument('-b', '--block', type=int, default=6, required=required,
                        help='blastp sequence block size in billions of letters (default: 6)')
@@ -185,7 +189,7 @@ def __kegg_gff(group, required=False):
 
 def __key_column(group, required=False):
     group.add_argument('-k', '--key_column', type=int, default=0, required=required,
-                       help='Column index in the BLAST tab file to pull unique IDs from (default is 0)')
+                       help='Column index in the BLAST tab file to pull unique IDs from (default: 0)')
 
 def __low_level_environment_path(group, required=False):
     group.add_argument('-l', '--low_level_environment_path', type=str, required=required,
@@ -249,7 +253,7 @@ def __query(group, required=False):
 
 def __score_column(group, required=False):
     group.add_argument('-s', '--score_column', type=int, default=None, required=required,
-                       help='Index of the raw score column of BLAST tabular output file. Counting starts at 1')
+                       help='Index of the raw score column of BLAST output file')
 
 def __seed(group, required=False):
     group.add_argument('-s', '--seed', type=str, default=None, required=required,
@@ -291,10 +295,6 @@ def __subset_size(group, required=False):
 def __svg(group, required=False):
     group.add_argument('--svg', action='store_true', required=required,
                        help='Generate plot in SVG format')
-
-def __tabular(group, required=False):
-    group.add_argument('-t', '--tabular', type=str, default=None, required=required,
-                       help='Path to tabular BLAST/DIAMOND output file')
 
 def __taxonomy_path(group, required=False):
     group.add_argument('-t', '--taxonomy_path', type=str, default=None, required=required,
@@ -367,7 +367,7 @@ def get_main_parser():
             __sql(grp)
             __query(grp)
         with arg_group(parser, 'Required arguments') as grp:
-            __tabular(grp, required=True)
+            __blast_output(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __db_path(grp)
@@ -388,7 +388,7 @@ def get_main_parser():
             __column_info_path(grp)
             __score_column(grp)
         with arg_group(parser, 'Required arguments') as grp:
-            __tabular(grp, required=True)
+            __blast_output(grp, required=True)
             __max_scores(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
