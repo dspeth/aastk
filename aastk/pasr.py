@@ -442,8 +442,8 @@ def max_score(extracted: str,
         score = 0
         for amino_acid in sequence:
             aa = amino_acid.upper()  # just to make sure that we have consistency
-            if aa in blosum_diagonals[matrix]:
-                score += blosum_diagonals[matrix][amino_acid]
+            if aa in BLOSUM_DIAGONALS[matrix]:
+                score += BLOSUM_DIAGONALS[matrix][amino_acid]
             else:
                 logger.warning(f"Unknown amino acid '{amino_acid}' in sequence {header}")
         max_scores[header] = score
