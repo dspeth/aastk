@@ -16,6 +16,18 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logger = logging.getLogger(__name__)
 
+BLOSUM_DIAGONALS = {
+    "BLOSUM45": {
+        'A': 5, 'R': 7, 'N': 6, 'D': 7, 'C': 12, 'Q': 6, 'E': 6, 'G': 7,
+        'H': 10, 'I': 5, 'L': 5, 'K': 5, 'M': 6, 'F': 8, 'P': 9, 'S': 4,
+        'T': 5, 'W': 15, 'Y': 8, 'V': 5, 'B': 5, 'J': 4, 'Z': 5, 'X': 0
+    },
+    "BLOSUM62": {
+        'A': 4, 'R': 5, 'N': 6, 'D': 6, 'C': 9, 'Q': 5, 'E': 5, 'G': 6,
+        'H': 8, 'I': 4, 'L': 4, 'K': 5, 'M': 5, 'F': 6, 'P': 7, 'S': 4,
+        'T': 5, 'W': 11, 'Y': 7, 'V': 4, 'B': 4, 'J': 3, 'Z': 4, 'X': 0
+    }
+}
 
 # ===============================
 # aastk build CLI FUNCTION
@@ -410,25 +422,9 @@ def max_score(extracted: str,
     # ===============================
     out_file = ensure_path(output_dir, f"{protein_name}_max_scores.tsv", force=force)
 
-    # ============================================================
-    # BLOSUM matrix choice validation and BLOSUM diagonals setup
-    # ============================================================
-    # define the diagonals of the usable BLOSUM matrices
-    blosum_diagonals = {
-        "BLOSUM45": {
-            'A': 5, 'R': 7, 'N': 6, 'D': 7, 'C': 12, 'Q': 6, 'E': 6, 'G': 7,
-            'H': 10, 'I': 5, 'L': 5, 'K': 5, 'M': 6, 'F': 8, 'P': 9, 'S': 4,
-            'T': 5, 'W': 15, 'Y': 8, 'V': 5, 'B': 5, 'J': 4, 'Z': 5, 'X': 0
-        },
-        "BLOSUM62": {
-            'A': 4, 'R': 5, 'N': 6, 'D': 6, 'C': 9, 'Q': 5, 'E': 5, 'G': 6,
-            'H': 8, 'I': 4, 'L': 4, 'K': 5, 'M': 5, 'F': 6, 'P': 7, 'S': 4,
-            'T': 5, 'W': 11, 'Y': 7, 'V': 4, 'B': 4, 'J': 3, 'Z': 4, 'X': 0
-        }
-    }
-
-    if matrix not in blosum_diagonals.keys():
-        logger.error(f"Invalid matrix: {matrix}. Must be one of {blosum_diagonals.keys()}")
+    # validate requested matrix
+    if matrix not in BLOSUM_DIAGONALS.keys():
+        raise ValueError(f"Invalid matrix: {matrix}. Must be one of {BLOSUM_DIAGONALS.keys()}")
 
     logger.info(f"Calculating max scores using {matrix} matrix")
 
@@ -1143,6 +1139,9 @@ def pasr(seed_fasta: str,
     if update and not yaml_path:
         logger.error("YAML path is required if update is True")
         exit()
+
+    if matrix not in BLOSUM_DIAGONALS.keys():
+        raise ValueError(f"Invalid matrix: {matrix}. Must be one of {BLOSUM_DIAGONALS.keys()}")
 
     seed_name = Path(seed_fasta).name
     protein_name = determine_dataset_name(seed_name, '.', 0)

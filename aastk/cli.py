@@ -282,7 +282,7 @@ def __size(group, required=False):
 
 def __sql(group, required=False):
     group.add_argument('--sql', action='store_true', required=required,
-                       help='Use AASTK SQLite database for sequence retrieval')
+                       help='Retrieve sequences from AASTK SQLite database')
 
 def __subset(group, required=False):
     group.add_argument('-s', '--subset', type=str, required=required,
