@@ -32,7 +32,7 @@ def print_help():
   Helper tools:
     pasr_select  Select target sequences from pasr run based on bsr and score cutoffs
     casm_select  Select cluster(s) from casm analysis, and retrieve sequences
-    cugo_select  Select genomic posiiton from cugo analysis and retrieve sequences
+    cugo_select  Select genomic position from cugo analysis and retrieve sequences
     filter       Filter sequence dataset to remove non-homologous seqeunces
 
   Subcommands:
@@ -100,6 +100,7 @@ def main():
                 query_path=args.query,
                 output_dir=args.output,
                 db_path=args.db_path,
+                threads=args.threads,
                 key_column=args.key_column,
                 sql=args.sql,
                 force=args.force
@@ -109,7 +110,8 @@ def main():
             max_score(
                 extracted=args.extracted,
                 matrix=args.matrix,
-                output_dir=args.output
+                output_dir=args.output,
+                force=args.force
             )
 
         elif args.subparser_name == 'bsr':
@@ -152,14 +154,16 @@ def main():
             pasr(
                 seed_fasta=args.seed,
                 query_fasta=args.query,
-                matrix_name=args.matrix,
+                matrix=args.matrix,
                 threads=args.threads,
                 output_dir=args.output,
+                db_path=args.db_path,
                 block=args.block,
                 chunk=args.chunk,
                 sensitivity=args.sensitivity,
                 update=args.update,
                 yaml_path=args.yaml,
+                sql=args.sql,
                 keep=args.keep,
                 svg=args.svg,
                 force=args.force
@@ -181,6 +185,13 @@ def main():
                 globdb_version=args.globdb_version
             )
 
+        elif args.subparser_name == 'database_check':
+            database_check(
+                db_path=args.db_path,
+                output=args.output,
+                force=args.force
+            )
+
         elif args.subparser_name == 'meta':
             meta(
                 db_path=args.db_path,
@@ -189,6 +200,9 @@ def main():
                 threads=args.threads,
                 include_annotation=args.include_annotation,
                 include_taxonomy=args.include_taxonomy,
+                include_culture_collection=args.include_culture_collection,
+                include_high_level_environment=args.include_high_level_environment,
+                include_low_level_environment=args.include_low_level_environment,
                 all_metadata=args.all_metadata,
                 force=args.force
             )
@@ -197,7 +211,8 @@ def main():
             context(
                 fasta=args.fasta,
                 id_list=args.id_list,
-                cugo_path=args.cugo_path,
+                db_path=args.db_path,
+                annotation=args.annotation,
                 cugo_range=args.cugo_range,
                 output_dir=args.output,
                 threads=args.threads,
@@ -223,11 +238,12 @@ def main():
 
         elif args.subparser_name == 'cugo':
             cugo(
-                cugo_path=args.cugo_path,
+                db_path=args.db_path,
                 cugo_range=args.cugo_range,
                 fasta=args.fasta,
                 id_list=args.id_list,
                 output_dir=args.output,
+                annotation=args.annotation,
                 flank_lower=args.flank_lower,
                 flank_upper=args.flank_upper,
                 top_n=args.top_n,
@@ -245,6 +261,17 @@ def main():
                 position=args.position,
                 db_path=args.db_path,
                 output=args.output,
+                threads=args.threads,
+                filter_seqs=args.filter_seqs,
+                force=args.force
+            )
+
+        elif args.subparser_name == 'filter':
+            filter(
+                fasta=args.fasta,
+                output=args.output,
+                db_path=args.db_path,
+                threads=args.threads,
                 force=args.force
             )
 
@@ -279,10 +306,9 @@ def main():
                 output=args.output,
                 db_path=args.db_path,
                 metadata_protein=args.metadata_protein,
-                metadata_genome=args.metadata_genome,
                 force=args.force,
                 svg=args.svg,
-                show_cluster_numbers=args.show
+                show_cluster_numbers=args.show,
             )
 
         elif args.subparser_name == 'casm':
@@ -297,7 +323,6 @@ def main():
                 iterations=args.iterations,
                 exaggeration=args.exaggeration,
                 metadata_protein=args.metadata_protein,
-                metadata_genome=args.metadata_genome,
                 keep=args.keep,
                 force=args.force,
                 svg=args.svg,
@@ -310,6 +335,17 @@ def main():
                 fasta=args.fasta,
                 no_cluster=args.no_cluster,
                 output=args.output,
+                force=args.force
+            )
+
+        elif args.subparser_name == 'metadata_categories':
+            metadata_categories()
+
+        elif args.subparser_name == 'protein_fasta':
+            protein_fasta(
+                db_path=args.db_path,
+                output=args.output,
+                threads=args.threads,
                 force=args.force
             )
 

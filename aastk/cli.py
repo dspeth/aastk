@@ -30,6 +30,10 @@ def __all_metadata(group, required=False):
     group.add_argument('--all_metadata', action='store_true', required=required,
                        help='Include all metadata in output file')
 
+def __annotation(group, required=False):
+    group.add_argument('--annotation', type=str, default='COG_ID', required=required,
+                       help='Select annotation from: COG_ID, KEGG_ID, Pfam_ID (default: COG_ID)')
+
 def __bin_width(group, required=False):
     group.add_argument('-b', '--bin_width', type=int, default=50, required=required,
                        help='Bin width for amino acid sequence size plotting (default: 50)')
@@ -71,10 +75,6 @@ def __cugo(group, required=False):
     group.add_argument('--cugo', action='store_true', required=required,
                        help='Generate CUGO plot')
 
-def __cugo_path(group, required=False):
-    group.add_argument('-c', '--cugo_path', type=str, required=required,
-                       help='Path to CUGO file')
-
 def __cugo_range(group, required=False):
     group.add_argument('-r', '--cugo_range', type=int, required=required,
                        help='CUGO range of interest for genomic context analysis')
@@ -115,6 +115,10 @@ def __fasta(group, required=False):
     group.add_argument('-f', '--fasta', type=str, required=required,
                        help='Path to FASTA file')
 
+def __filter_seqs(group, required=False):
+    group.add_argument('--filter_seqs', action='store_true', required=required,
+                       help='Filter datasets in FASTA format for improved homogeneity')
+
 def __force(group, required=False):
     group.add_argument('--force', action='store_true', required=required,
                        help='Set flag to overwrite existing files in specified path')
@@ -132,7 +136,7 @@ def __full_clust(group, required=False):
                        help='Path to full clustering TSV file')
 
 def __globdb_version(group, required=False):
-    group.add_argument('-g', '--globdb_version', type=int, required=required,
+    group.add_argument('-g', '--globdb_version', type=str, required=required,
                        help='GlobDB version (example: r226)')
 
 def __help(group, required=False):
@@ -150,6 +154,18 @@ def __id_list(group, required=False):
 def __include_annotation(group, required=False):
     group.add_argument('--include_annotation', action='store_true', required=required,
                        help='Include annotation metadata in output')
+
+def __include_culture_collection(group, required=False):
+    group.add_argument('--include_culture_collection', action='store_true', required=required,
+                       help='Include culture collection metadata in output')
+
+def __include_high_level_environment(group, required=False):
+    group.add_argument('--include_high_level_environment', action='store_true', required=required,
+                       help='Include high level environment metadata in output')
+
+def __include_low_level_environment(group, required=False):
+    group.add_argument('--include_low_level_environment', action='store_true', required=required,
+                       help='Include low level environment metadata in output')
 
 def __include_taxonomy(group, required=False):
     group.add_argument('--include_taxonomy', action='store_true', required=required,
@@ -180,7 +196,7 @@ def __matched(group, required=False):
                        help='FASTA file containing matched sequences from previous PASR run')
 
 def __matrix(group, required=False):
-    group.add_argument('-m', '--matrix', choices=['BLOSUM45', 'BLOSUM62'], required=required,
+    group.add_argument('-m', '--matrix', type=str, default='BLOSUM45', required=required,
                        help='Choose BLOSUM substitution matrix (BLOSUM 45 or BLOSUM 62)')
 
 def __matrix_path(group, required=False):
@@ -191,13 +207,9 @@ def __max_scores(group, required=False):
     group.add_argument('-m', '--max_scores', type=str, required=required,
                        help='Path to file containing max self scores')
 
-def __metadata_genome(group, required=False):
-    group.add_argument('--metadata_genome', type=str, required=required,
-                       help='Select genome metadata for plotting (Options: domain, phylum, class, order_tax, family, genus, species)')
-
 def __metadata_protein(group, required=False):
     group.add_argument('--metadata_protein', type=str, required=required,
-                       help='Select protein metadata for plotting (Options: COG_ID, KEGG_ID, Pfam_ID)')
+                       help='Select metadata for plotting; run "aastk metadata_categories" to view available categories"')
 
 def __metadata_matrix(group, required=False):
     group.add_argument('--metadata_matrix', type=str, required=required,
@@ -359,15 +371,16 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __db_path(grp)
+            __threads(grp)
             __key_column(grp)
             __force(grp)
 
     with subparser(sub_parsers, 'max_score', 'Calculate max scores for extracted sequences using BLOSUM matrix') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __extracted(grp, required=True)
-            __matrix(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __matrix(grp)
             __force(grp)
 
     with subparser(sub_parsers, 'bsr', 'Compute BSR (Blast Score Ratio) using a BLAST tab file and max scores from a TSV.') as parser:
@@ -412,18 +425,20 @@ def get_main_parser():
 
     with subparser(sub_parsers, 'pasr', 'PASR: protein alignment score ratio') as parser:
         with arg_group(parser, 'Required arguments') as grp:
-            __matrix(grp, required=True)
             __query(grp, required=True)
             __seed(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __matrix(grp)
             __threads(grp)
+            __db_path(grp)
             __key_column(grp)
             __block(grp)
             __chunk(grp)
             __sensitivity(grp)
             __update(grp)
             __yaml(grp)
+            __sql(grp)
             __keep(grp)
             __svg(grp)
             __force(grp)
@@ -444,6 +459,13 @@ def get_main_parser():
             __output(grp)
             __tmhmm_dir(grp)
 
+    with subparser(sub_parsers, 'database_check', 'Checks for missing data in AASTK SQLite database') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __db_path(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
+            __force(grp)
+
     with subparser(sub_parsers, 'meta', 'Retrieve metadata from AASTK SQLite database') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __db_path(grp, required=True)
@@ -452,6 +474,9 @@ def get_main_parser():
             __output(grp)
             __threads(grp)
             __include_annotation(grp)
+            __include_culture_collection(grp)
+            __include_high_level_environment(grp)
+            __include_low_level_environment(grp)
             __include_taxonomy(grp)
             __all_metadata(grp)
             __force(grp)
@@ -464,9 +489,10 @@ def get_main_parser():
             __fasta(grp)
             __id_list(grp)
         with arg_group(parser, 'Required arguments') as grp:
-            __cugo_path(grp, required=True)
+            __db_path(grp, required=True)
             __cugo_range(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
+            __annotation(grp)
             __output(grp)
             __threads(grp)
             __force(grp)
@@ -477,6 +503,7 @@ def get_main_parser():
             __flank_lower(grp, required=True)
             __flank_upper(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
+            __annotation(grp)
             __top_n(grp)
             __cugo(grp)
             __size(grp)
@@ -495,11 +522,12 @@ def get_main_parser():
             __fasta(grp)
             __id_list(grp)
         with arg_group(parser, 'Required arguments') as grp:
-            __cugo_path(grp, required=True)
+            __db_path(grp, required=True)
             __cugo_range(grp, required=True)
             __flank_lower(grp, required=True)
             __flank_upper(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
+            __annotation(grp)
             __output(grp)
             __force(grp)
             __top_n(grp)
@@ -517,6 +545,17 @@ def get_main_parser():
             __db_path(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __threads(grp)
+            __filter_seqs(grp)
+            __force(grp)
+
+    with subparser(sub_parsers, 'filter', 'Filter datasets in FASTA format for improved homogeneity') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __fasta(grp, required=True)
+            __db_path(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
+            __threads(grp)
             __force(grp)
 
     with subparser(sub_parsers, 'matrix', 'Create alignment matrix for tSNE embedding and DBSCAN clustering') as parser:
@@ -551,9 +590,9 @@ def get_main_parser():
             __output(grp)
             __db_path(grp)
             __metadata_protein(grp)
-            __metadata_genome(grp)
             __show(grp)
             __svg(grp)
+            __force(grp)
 
     with subparser(sub_parsers, 'casm', 'CASM: protein clustering using alignment score matrices') as parser:
         with mutex_group(parser, required=True) as grp:
@@ -569,7 +608,6 @@ def get_main_parser():
             __iterations(grp)
             __exaggeration(grp)
             __metadata_protein(grp)
-            __metadata_genome(grp)
             __force(grp)
             __early_clust(grp)
             __full_clust(grp)
@@ -586,6 +624,17 @@ def get_main_parser():
             __no_cluster(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __force(grp)
+
+    with subparser(sub_parsers, 'metadata_categories', 'Display avaiilable metadata categories') as parser:
+        pass
+
+    with subparser(sub_parsers, 'protein_fasta', 'Create FASTA file containing all GlobDB protein sequences') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __db_path(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
+            __threads(grp)
             __force(grp)
 
 
