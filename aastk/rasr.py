@@ -464,6 +464,18 @@ def rasr_select(score_cutoff: float,
                 force: bool = False):
     """
     Subsets RASR results based on BSR and database score thresholds.
+
+    Args:
+        score_cutoff (float): Minimum database score threshold for selection
+        bsr_cutoff (float): Minimum BSR threshold for selection
+        matched_fastq (str): Path to FASTQ file containing sequences that hit the gene database
+        bsr_file (str): Path to BSR results file
+        output_dir (str): Directory to save output files
+        force (bool): Whether to overwrite existing files
+
+    Returns:
+        selected_fastq (str): Path to FASTQ file containing selected sequences that meet the cutoffs.
+        id_file (str): Path to file containing IDs of selected sequences.
     """
     # Check if seqkit is available
     check_dependency_availability("seqkit")
@@ -535,6 +547,7 @@ def rasr(query: str,
         aastk search        # against_outgroup
         aastk bsr
         aastk rasr_plot
+        aastk rasr_select
 
     Args:
         query (str): path to sequencing read file, can be gzipped
@@ -560,7 +573,7 @@ def rasr(query: str,
     protein_name = Path(gene_db_fasta).stem
     dataset_name = determine_dataset_name(query, '.', 0, '')
 
-    protein_dir = ensure_path(output_dir, f"rasr_out_{protein_name}", force=force)
+    protein_dir = ensure_path(output_dir, f"{protein_name}", force=force)
     dataset_output_dir = ensure_path(protein_dir, dataset_name, force=force)
 
     logger.info(f"Running RASR workflow for {protein_name}")
