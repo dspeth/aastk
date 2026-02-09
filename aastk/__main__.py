@@ -84,7 +84,7 @@ def main():
 
         elif args.subparser_name == 'search':
             search(
-                db_path=args.db,
+                db_path=args.diamond_db,
                 query_path=args.query,
                 output_dir=args.output,
                 threads=args.threads,

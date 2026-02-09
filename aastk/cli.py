@@ -40,7 +40,7 @@ def __bin_width(group, required=False):
 
 def __block(group, required=False):
     group.add_argument('-b', '--block', type=int, default=6, required=required,
-                       help='Choose diamond blastp sequence block size in billions of letters (default: 6)')
+                       help='blastp sequence block size in billions of letters (default: 6)')
 
 def __bsr(group, required=False):
     group.add_argument('-b', '--bsr', type=str, required=required,
@@ -52,7 +52,7 @@ def __bsr_cutoff(group, required=False):
 
 def __chunk(group, required=False):
     group.add_argument('-c', '--chunk', type=int, default=2, required=required,
-                       help='Choose number of chunks for diamond blastp index processing (default: 2)')
+                       help='Number of chunks for diamond blastp index processing (default: 2)')
 
 
 def __create_yaml(group, required=False):
@@ -121,7 +121,7 @@ def __filter_seqs(group, required=False):
 
 def __force(group, required=False):
     group.add_argument('--force', action='store_true', required=required,
-                       help='Set flag to overwrite existing files in specified path')
+                       help='Overwrite existing files in specified path')
 
 def __flank_lower(group, required=False):
     group.add_argument('-l', '--flank_lower', type=int, required=required,
@@ -245,7 +245,7 @@ def __protein_ids(group, required=False):
 
 def __query(group, required=False):
     group.add_argument('-q', '--query', type=str, default=None, required=required,
-                       help='Path to query FASTA')
+                       help='Path to DIAMOND query FASTA file')
 
 def __score_column(group, required=False):
     group.add_argument('-s', '--score_column', type=int, default=None, required=required,
@@ -264,8 +264,8 @@ def __selfmin(group, required=False):
                        help='Lower cutoff for self score range to be included in updated dataset')
 
 def __sensitivity(group, required=False):
-    group.add_argument('--sensitivity', choices=['fast', 'sensitive', 'mid-sensitive', 'very-sensitive', 'ultra-sensitive', 'faster'], required=required,
-                       help='Set the sensitivity level for the DIAMOND search: fast, sensitive, mid-sensitive, very-sensitive, '
+    group.add_argument('--sensitivity', required=required,
+                       help='DIAMOND search sensitivity level: fast, sensitive, mid-sensitive, very-sensitive, '
                             'ultra-sensitive, or faster (default: fast)')
 
 def __show(group, required=False):
