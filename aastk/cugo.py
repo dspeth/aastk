@@ -796,11 +796,43 @@ def cugo(db_path: str,
     return context_file, plot_file
 
 
+def cugo_select(context_path: str,
+             position: int,
+             db_path: str,
+             output: str,
+             threads: int,
+             filter_seqs: bool = False,
+             force: bool = False):
+    dataset_name = determine_dataset_name(context_path, '.', 0, '_context')
+    output_path = ensure_path(output, f'{dataset_name}_{position}.faa', force=force)
+
+    # load context data
+    df = pd.read_csv(context_path, sep='\t')
+
+    # filter to specified position
+    pos_data = df[df['position'] == position]
+
+    # get unique seqIDs
+    seq_ids = pos_data['seqID'].dropna().unique().tolist()
+
+    select_fasta = retrieve_sequences_from_db(seq_ids, output_path, db_path)
+
+    if filter_seqs:
+        logger.info(f"Filtering {select_fasta}")
+        filtered_output = filter(select_fasta, db_path, output, threads, force=force)
+        return filtered_output
+    else:
+        return select_fasta
+
 def filter(fasta: str,
            db_path: str,
            output: str,
            threads: int,
+           sql: bool = False,
            force: bool = False):
+    if sql and not db_path:
+        raise ValueError('SQL mode requires db_path')
+
     prefix = determine_dataset_name(fasta, '.', 0)
     output_path = ensure_path(output, f'{prefix}_filtered.faa', force=force)
 
@@ -860,37 +892,16 @@ def filter(fasta: str,
 
     seq_ids = means.index.dropna().unique().tolist()
 
-    final_fasta = retrieve_sequences_from_db(seq_ids, output_path, db_path)
-
-    return final_fasta
-
-def cugo_select(context_path: str,
-             position: int,
-             db_path: str,
-             output: str,
-             threads: int,
-             filter_seqs: bool = False,
-             force: bool = False):
-    dataset_name = determine_dataset_name(context_path, '.', 0, '_context')
-    output_path = ensure_path(output, f'{dataset_name}_{position}.faa', force=force)
-
-    # load context data
-    df = pd.read_csv(context_path, sep='\t')
-
-    # filter to specified position
-    pos_data = df[df['position'] == position]
-
-    # get unique seqIDs
-    seq_ids = pos_data['seqID'].dropna().unique().tolist()
-
-    select_fasta = retrieve_sequences_from_db(seq_ids, output_path, db_path)
-
-    if filter_seqs:
-        logger.info(f"Filtering {select_fasta}")
-        filtered_output = filter(select_fasta, db_path, output, threads, force=force)
-        return filtered_output
+    if sql:
+        _ = retrieve_sequences_from_db(seq_ids, output_path, db_path)
     else:
-        return select_fasta
+        sequences_written = 0
+        with open(output_path, 'w') as f:
+            for header, sequence in write_fa_matches(fasta, seq_ids):
+                f.write(f"{header}\n{sequence}\n")
+                sequences_written += 1
+        logger.info(f"Retrieved {sequences_written} sequences to {output_path}")
 
+    return output_path
 
 
