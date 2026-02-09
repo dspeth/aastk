@@ -390,9 +390,9 @@ def get_hit_seqs(blast_tab: str,
 # aastk max_score CLI FUNCTION
 # ===============================
 def max_score(extracted: str,
-                         matrix: str,
-                         output_dir: str,
-                         force: bool = False):
+              output_dir: str,
+              matrix: str = 'BLOSUM45',
+              force: bool = False):
     """
     Calculates max scores for sequences using a BLOSUM matrix.
 
@@ -415,12 +415,6 @@ def max_score(extracted: str,
     # ============================================================
     # BLOSUM matrix choice validation and BLOSUM diagonals setup
     # ============================================================
-    valid_matrices = ["BLOSUM45", "BLOSUM62"]
-
-    # check if valid matrix was chosen
-    if matrix not in valid_matrices:
-        logger.error(f"Invalid matrix: {matrix}. Must be one of {valid_matrices}")
-
     # define the diagonals of the usable BLOSUM matrices
     blosum_diagonals = {
         "BLOSUM45": {
@@ -434,6 +428,9 @@ def max_score(extracted: str,
             'T': 5, 'W': 11, 'Y': 7, 'V': 4, 'B': 4, 'J': 3, 'Z': 4, 'X': 0
         }
     }
+
+    if matrix not in blosum_diagonals.keys():
+        logger.error(f"Invalid matrix: {matrix}. Must be one of {blosum_diagonals.keys()}")
 
     logger.info(f"Calculating max scores using {matrix} matrix")
 
@@ -1109,12 +1106,12 @@ def pasr_select(yaml_path: str,
 # ===============================
 def pasr(seed_fasta: str,
          query_fasta: str,
-         matrix_name: str,
          output_dir: str,
          sensitivity: str,
          db_path: str,
          block: int,
          chunk: int,
+         matrix: str = 'BLOSUM45',
          key_column: int = 0,
          threads: int = 1,
          update: bool = False,
@@ -1140,7 +1137,7 @@ def pasr(seed_fasta: str,
     Args:
         seed_fasta (str): Path to seed FASTA.
         query_fasta (str): Path to query FASTA.
-        matrix_name (str): BLOSUM matrix ('BLOSUM45' or 'BLOSUM62').
+        matrix (str): BLOSUM matrix ('BLOSUM45' or 'BLOSUM62').
         output_dir (str): Output directory (default: current directory).
         sensitivity (str): Choose sensitivity of diamond blastp search (Default: --fast)
         block (int): Choose diamond blastp sequence block size in billions of letters. (Default: 6)
@@ -1198,7 +1195,7 @@ def pasr(seed_fasta: str,
         # Score calculations
         # ===============================
         logger.info("Calculating max scores")
-        max_scores = max_score(matched_fasta, matrix_name, output_dir, force=force)
+        max_scores = max_score(matched_fasta, output_dir, matrix, force=force)
         intermediate_results['max_scores'] = max_scores
 
         logger.info("Calculating blast score ratios")

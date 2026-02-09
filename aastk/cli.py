@@ -30,6 +30,10 @@ def __all_metadata(group, required=False):
     group.add_argument('--all_metadata', action='store_true', required=required,
                        help='Include all metadata in output file')
 
+def __annotation(group, required=False):
+    group.add_argument('--annotation', type=str, default='COG_ID', required=required,
+                       help='Select annotation from: COG_ID, KEGG_ID, Pfam_ID (default: COG_ID)')
+
 def __bin_width(group, required=False):
     group.add_argument('-b', '--bin_width', type=int, default=50, required=required,
                        help='Bin width for amino acid sequence size plotting (default: 50)')
@@ -71,10 +75,6 @@ def __cugo(group, required=False):
     group.add_argument('--cugo', action='store_true', required=required,
                        help='Generate CUGO plot')
 
-def __cugo_path(group, required=False):
-    group.add_argument('-c', '--cugo_path', type=str, required=required,
-                       help='Path to CUGO file')
-
 def __cugo_range(group, required=False):
     group.add_argument('-r', '--cugo_range', type=int, required=required,
                        help='CUGO range of interest for genomic context analysis')
@@ -114,6 +114,10 @@ def __extracted(group, required=False):
 def __fasta(group, required=False):
     group.add_argument('-f', '--fasta', type=str, required=required,
                        help='Path to FASTA file')
+
+def __filter_seqs(group, required=False):
+    group.add_argument('--filter_seqs', action='store_true', required=required,
+                       help='Filter datasets in FASTA format for improved homogeneity')
 
 def __force(group, required=False):
     group.add_argument('--force', action='store_true', required=required,
@@ -192,7 +196,7 @@ def __matched(group, required=False):
                        help='FASTA file containing matched sequences from previous PASR run')
 
 def __matrix(group, required=False):
-    group.add_argument('-m', '--matrix', choices=['BLOSUM45', 'BLOSUM62'], required=required,
+    group.add_argument('-m', '--matrix', type=str, default='BLOSUM45', required=required,
                        help='Choose BLOSUM substitution matrix (BLOSUM 45 or BLOSUM 62)')
 
 def __matrix_path(group, required=False):
@@ -374,9 +378,9 @@ def get_main_parser():
     with subparser(sub_parsers, 'max_score', 'Calculate max scores for extracted sequences using BLOSUM matrix') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __extracted(grp, required=True)
-            __matrix(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __matrix(grp)
             __force(grp)
 
     with subparser(sub_parsers, 'bsr', 'Compute BSR (Blast Score Ratio) using a BLAST tab file and max scores from a TSV.') as parser:
@@ -421,11 +425,11 @@ def get_main_parser():
 
     with subparser(sub_parsers, 'pasr', 'PASR: protein alignment score ratio') as parser:
         with arg_group(parser, 'Required arguments') as grp:
-            __matrix(grp, required=True)
             __query(grp, required=True)
             __seed(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __matrix(grp)
             __threads(grp)
             __db_path(grp)
             __key_column(grp)
@@ -485,9 +489,10 @@ def get_main_parser():
             __fasta(grp)
             __id_list(grp)
         with arg_group(parser, 'Required arguments') as grp:
-            __cugo_path(grp, required=True)
+            __db_path(grp, required=True)
             __cugo_range(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
+            __annotation(grp)
             __output(grp)
             __threads(grp)
             __force(grp)
@@ -498,6 +503,7 @@ def get_main_parser():
             __flank_lower(grp, required=True)
             __flank_upper(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
+            __annotation(grp)
             __top_n(grp)
             __cugo(grp)
             __size(grp)
@@ -516,11 +522,12 @@ def get_main_parser():
             __fasta(grp)
             __id_list(grp)
         with arg_group(parser, 'Required arguments') as grp:
-            __cugo_path(grp, required=True)
+            __db_path(grp, required=True)
             __cugo_range(grp, required=True)
             __flank_lower(grp, required=True)
             __flank_upper(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
+            __annotation(grp)
             __output(grp)
             __force(grp)
             __top_n(grp)
@@ -538,6 +545,17 @@ def get_main_parser():
             __db_path(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __threads(grp)
+            __filter_seqs(grp)
+            __force(grp)
+
+    with subparser(sub_parsers, 'filter', 'Filter datasets in FASTA format for improved homogeneity') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __fasta(grp, required=True)
+            __db_path(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
+            __threads(grp)
             __force(grp)
 
     with subparser(sub_parsers, 'matrix', 'Create alignment matrix for tSNE embedding and DBSCAN clustering') as parser:
@@ -574,6 +592,7 @@ def get_main_parser():
             __metadata_protein(grp)
             __show(grp)
             __svg(grp)
+            __force(grp)
 
     with subparser(sub_parsers, 'casm', 'CASM: protein clustering using alignment score matrices') as parser:
         with mutex_group(parser, required=True) as grp:
@@ -609,6 +628,14 @@ def get_main_parser():
 
     with subparser(sub_parsers, 'metadata_categories', 'Display avaiilable metadata categories') as parser:
         pass
+
+    with subparser(sub_parsers, 'protein_fasta', 'Create FASTA file containing all GlobDB protein sequences') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __db_path(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
+            __threads(grp)
+            __force(grp)
 
 
     return main_parser

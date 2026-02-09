@@ -2,9 +2,7 @@ from .util import *
 from .database import BASE_COLUMNS, ANNOTATION_COLUMNS, TAXONOMY_COLUMNS, CULTURE_COLLECTION_COLUMNS, HIGH_LEVEL_ENV_COLUMNS, LOW_LEVEL_ENV_COLUMNS
 
 import logging
-import random
 import numpy as np
-import subprocess
 import pandas as pd
 import openTSNE
 from sklearn.cluster import DBSCAN
@@ -15,200 +13,7 @@ import json
 
 logger = logging.getLogger(__name__)
 
-def fasta_subsample(fasta: str,
-                    output_dir: str,
-                    subset_size: int,
-                    force: bool = False):
-    """
-    Randomly selects subset of pre-defined size from input fasta.
-
-    Args:
-        fasta (str): Input fasta file (in most cases homologous dataset as output by PASR)
-        output_dir (str): Output directory
-        subset_size (int): Number of sequences randomly selected from input fasta
-        force (bool): If set, existing files will be overwritten
-
-    Returns:
-        output_path: Path to output subset fasta file
-    """
-    # ===============================
-    # Output file path setup
-    # ===============================
-    dataset = determine_dataset_name(fasta, '.', 0)
-    output_file = f"{dataset}_subsample.faa"
-    output_path = ensure_path(output_dir, output_file, force=force)
-
-    # ===============================
-    # Parse FASTA to dict
-    # ===============================
-    sequences = read_fasta_to_dict(fasta)
-    total_sequences = len(sequences)
-    logger.info(f"Total sequences in FASTA: {total_sequences}")
-
-    # ===========================================================================
-    # Check if subset size is larger than number of sequences in source FASTA
-    # ===========================================================================
-    if subset_size > total_sequences:
-        logger.warning(
-            f"Requested subset size ({subset_size}) is larger than total sequences ({total_sequences}). Using all sequences.")
-        subset_size = total_sequences
-
-    # ======================================================
-    # Random sampling of seed FASTA for subset creation
-    # ======================================================
-    subset_keys = random.sample(list(sequences.keys()), subset_size)
-    subset_dict = {k: sequences[k] for k in subset_keys}
-
-    # =====================================
-    # Write FASTA subset to output file
-    # =====================================
-    with open(output_path, 'w') as f:
-        for header, seq in subset_dict.items():
-            f.write(f">{header}\n")
-            f.write(f'{seq}\n')
-
-    return output_path
-
-def run_diamond_alignment(fasta: str,
-                          align_subset: str,
-                          subset_size: int,
-                          threads: int,
-                          output: str = None,
-                          force: bool = False):
-    """
-    Run DIAMOND makedb and blastp to align a full FASTA file to a subset.
-
-    Args:
-        fasta (str): Path to the full input FASTA file (query)
-        align_subset (str): Path to the subset FASTA file to use as the DIAMOND database (reference)
-        subset_size (int): Number of target sequences
-        threads (int): Number of threads to use
-        output (str): Output directory
-        force (bool): If set, existing files will be overwritten
-
-    Returns:
-        align_output (str): Path to Blast Tabular Output file for the alignment
-    """
-    check_dependency_availability('diamond')
-
-    if Path(fasta).is_file():
-        pass
-    else:
-        logger.error("Input seed FASTA not found")
-        raise FileNotFoundError(f"FASTA file does not exist: {fasta}")
-
-    logger.info(f"Starting DIAMOND alignment process")
-    logger.info(f"Query FASTA: {fasta}")
-    logger.info(f"Reference subset: {align_subset}")
-    logger.info(f"Using {threads} threads")
-
-    # ===============================
-    # Output file path setup
-    # ===============================
-    dataset = determine_dataset_name(fasta, '.', 0)
-    dbname = ensure_path(output, f"{dataset}_subset_dmnd", force=force)
-    align_output = ensure_path(output, f"{dataset}_align", force=force)
-
-    # ===============================
-    # Subprocess command creation
-    # ===============================
-    # ==================================
-    # Create DIAMOND DB from subset
-    # ==================================
-    logger.info(f"Creating DIAMOND database: {dbname}")
-    run_dmnd_makedb = [
-        "diamond", "makedb",
-        "--in", align_subset,
-        "-d", dbname,
-        "-p", str(threads)
-    ]
-
-    # ===========================================================
-    # DIAMOND blastp with seed FASTA as query and subset as DB
-    # ===========================================================
-    logger.info(f"Running DIAMOND blastp alignment")
-    run_dmnd_blastp = [
-        "diamond", "blastp",
-        "-q", fasta,
-        "-d", dbname,
-        "-o", align_output,
-        "-p", str(threads),
-        "-k", str(subset_size),
-        "--sensitive",
-        "--masking", "0",
-        "--outfmt", "6", "qseqid", "sseqid", "score",
-        "--comp-based-stats", "0"
-    ]
-
-    # ===============================
-    # Run commands created above
-    # ===============================
-    logger.debug(f"DIAMOND makedb command: {' '.join(run_dmnd_makedb)}")
-    try:
-        proc = subprocess.Popen(
-            run_dmnd_makedb,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=True
-        )
-        _, stderr = proc.communicate()
-
-        if proc.returncode != 0:
-            logger.error(f"DIAMOND makedb failed with return code {proc.returncode}")
-            if stderr:
-                logger.error(f"STDERR: {stderr}")
-            raise RuntimeError(f"DIAMOND database creation failed with return code {proc.returncode}")
-
-        if stderr:
-            logger.log(99, stderr)
-
-    except Exception as e:
-        if not isinstance(e, RuntimeError):
-            logger.error(f"Unexpected error in building the DIAMOND database: {e}")
-            raise RuntimeError(f"DIAMOND database creation failed: {e}") from e
-        raise
-
-    db_file = Path(f"{dbname}.dmnd")
-    if not db_file.exists():
-        logger.error(f"DIAMOND database file not found at {db_file}")
-        raise RuntimeError(f"DIAMOND database was not created at {db_file}")
-
-    logger.info(f"Successfully built DIAMOND database at {dbname}")
-
-    logger.debug(f"DIAMOND blastp command: {' '.join(run_dmnd_blastp)}")
-    try:
-        proc = subprocess.Popen(
-            run_dmnd_blastp,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=True
-        )
-        _, stderr = proc.communicate()
-
-        if proc.returncode != 0:
-            logger.error(f"DIAMOND blastp failed with return code {proc.returncode}")
-            if stderr:
-                logger.error(f"STDERR: {stderr}")
-            raise RuntimeError(f"DIAMOND blastp search failed with return code {proc.returncode}")
-
-        if stderr:
-            logger.log(99, stderr)
-    except FileNotFoundError as e:
-        logger.error("DIAMOND executable not found")
-        raise RuntimeError("DIAMOND executable not found. Is it installed and in PATH?") from e
-    except Exception as e:
-        if not isinstance(e, RuntimeError):
-            logger.error(f"Unexpected error in DIAMOND blastp search: {e}")
-            raise RuntimeError(f"DIAMOND blastp search failed: {e}") from e
-        raise
-
-    if not Path(align_output).exists():
-        logger.error(f"DIAMOND output file not found at {align_output}")
-        raise RuntimeError(f"DIAMOND search did not produce output at {align_output}")
-
-    logger.info(f"Successfully completed DIAMOND search. Results at {align_output}")
-
-    return align_output
+CASM_BLAST_OUTPUT_COLUMNS = ["qseqid", "sseqid", "score"]
 
 def build_alignment_matrix_split(align_file: str,
                                  output: str = None,
@@ -570,77 +375,51 @@ def fetch_protein_metadata(db_path: str,
                            column: str,
                            batch_size: int = 500
                            ):
-    valid_cols = ANNOTATION_COLUMNS
+    valid_protein_cols = BASE_COLUMNS[1:] + ANNOTATION_COLUMNS
+    valid_genome_cols = TAXONOMY_COLUMNS + CULTURE_COLLECTION_COLUMNS + LOW_LEVEL_ENV_COLUMNS + HIGH_LEVEL_ENV_COLUMNS
 
-    if column not in valid_cols:
+    if column not in valid_protein_cols and column not in valid_genome_cols:
         logger.warning(f"No valid protein metadata columns requested")
         return pd.DataFrame({'seqID': protein_ids})
 
     conn = sqlite3.connect(db_path)
-
-    col_str = ', '.join(['seqID', column])
-
     all_results = []
     n_batches = (len(protein_ids) + batch_size - 1) // batch_size
-    logger.info(f"Fetching protein metadata in {n_batches} batches")
+    logger.info(f"Fetching metadata in {n_batches} batches")
 
     for i in range(0, len(protein_ids), batch_size):
         batch = protein_ids[i:i + batch_size]
         placeholders = ','.join(['?'] * len(batch))
-        query = f"""SELECT {col_str} from protein_data where seqID in ({placeholders})"""
 
-        batch_df = pd.read_sql_query(query, conn, params=batch)
+        if column in valid_protein_cols:
+            query = f"""SELECT seqID, {column} FROM protein_data WHERE seqID IN ({placeholders})"""
+            batch_df = pd.read_sql_query(query, conn, params=batch)
+
+        elif column in valid_genome_cols:
+            query = f"""
+                SELECT p.seqID, g.{column}
+                FROM protein_data p
+                LEFT JOIN genome_data g ON 
+                    CASE 
+                        WHEN instr(p.seqID, '___') > 0 
+                        THEN substr(p.seqID, 1, instr(p.seqID, '___') - 1)
+                        ELSE p.seqID
+                    END = g.genome_ID
+                WHERE p.seqID IN ({placeholders})
+            """
+            batch_df = pd.read_sql_query(query, conn, params=batch)
+
         all_results.append(batch_df)
 
     conn.close()
-
     df = pd.concat(all_results, ignore_index=True)
-
-    logger.info(f"Retrieved {len(df)} genome metadata records total")
-
+    logger.info(f"Retrieved {len(df)} metadata records total")
     return df
-
-
-def fetch_genome_metadata(db_path: str,
-                          genome_ids: list,
-                          column: str,
-                          batch_size: int = 500
-                           ):
-    valid_cols = TAXONOMY_COLUMNS + CULTURE_COLLECTION_COLUMNS + LOW_LEVEL_ENV_COLUMNS + HIGH_LEVEL_ENV_COLUMNS
-
-    if column not in valid_cols:
-        logger.warning(f"No valid protein metadata columns requested")
-        return pd.DataFrame({'genome_ID': genome_ids})
-
-    conn = sqlite3.connect(db_path)
-    col_str = ', '.join(['genome_ID',  column])
-
-    # Process in batches
-    all_results = []
-    n_batches = (len(genome_ids) + batch_size - 1) // batch_size
-    logger.info(f"Fetching genome metadata in {n_batches} batches")
-
-    for i in range(0, len(genome_ids), batch_size):
-        batch = genome_ids[i:i + batch_size]
-        placeholders = ','.join(['?'] * len(batch))
-        query = f"SELECT {col_str} FROM genome_data WHERE genome_ID IN ({placeholders})"
-
-        batch_df = pd.read_sql_query(query, conn, params=batch)
-        all_results.append(batch_df)
-        logger.debug(f"Batch {len(all_results)}/{n_batches}: retrieved {len(batch_df)} records")
-
-    conn.close()
-
-    df = pd.concat(all_results, ignore_index=True) if all_results else pd.DataFrame()
-
-    logger.info(f"Retrieved {len(df)} genome metadata records total")
-    return df
-
 
 def extend_embedding_with_metadata(df: pd.DataFrame,
                                    db_path: str,
                                    protein_col: str = None,
-                                   genome_col: str = None):
+                                   ):
     if not db_path:
         logger.warning("No database path provided, skipping metadata enrichment")
         return df
@@ -650,10 +429,6 @@ def extend_embedding_with_metadata(df: pd.DataFrame,
         protein_metadata = fetch_protein_metadata(db_path, df['seqID'].tolist(), protein_col)
         df = pd.merge(df, protein_metadata, on='seqID', how='left')
 
-    if genome_col is not None:
-        logger.info(f"Fetching genome metadata: {genome_col}")
-        genome_metadata = fetch_genome_metadata(db_path, df['genome_ID'].unique().tolist(), genome_col)
-        df = pd.merge(df, genome_metadata, on='genome_ID', how='left')
 
     return df
 
@@ -700,7 +475,7 @@ def plot_clusters(tsv_file: str,
     if db_path:
         if metadata_protein:
             logger.info(f"Fetching metadata column '{metadata_protein}' for coloring")
-            df = extend_embedding_with_metadata(df, db_path, protein_col=metadata_protein, genome_col=None)
+            df = extend_embedding_with_metadata(df, db_path, protein_col=metadata_protein)
             color_column = metadata_protein
 
     if metadata_protein  and not db_path:
@@ -765,18 +540,6 @@ def plot_clusters(tsv_file: str,
                             linewidths=0.3,
                             label=f'Cluster {cluster}')
 
-                # optionally annotate cluster centers with cluster numbers
-                if show_cluster_numbers:
-                    centroid_x = df.loc[cluster_mask, 'tsne1'].mean()
-                    centroid_y = df.loc[cluster_mask, 'tsne2'].mean()
-                    plt.annotate(str(cluster),
-                                xy=(centroid_x, centroid_y),
-                                fontsize=16,
-                                fontweight='bold',
-                                ha='center',
-                                va='center',
-                                color='black',
-                                alpha=1)
     else:
         unique_vals = df[color_column].dropna().unique()
         n_vals = len(unique_vals)
@@ -799,6 +562,41 @@ def plot_clusters(tsv_file: str,
             scatter = plt.scatter(df['tsne1'], df['tsne2'],
                                   c=df[color_column], cmap='viridis', s=15,
                                   alpha=0.7, edgecolors='white', linewidths=0.3)
+
+    if metadata_protein == 'culture_collection' and 'culture_collection' in df.columns:
+        overlay_mask = df['culture_collection'] == 1
+        if overlay_mask.any():
+            n_overlay = overlay_mask.sum()
+            logger.info(f"Overlaying {n_overlay} points with culture_collection == 1")
+            plt.scatter(df.loc[overlay_mask, 'tsne1'],
+                        df.loc[overlay_mask, 'tsne2'],
+                        c='red',
+                        s=25,
+                        alpha=0.6,
+                        edgecolors='black',
+                        linewidths=0.5,
+                        marker='o',
+                        label='Culture Collection',
+                        zorder=10)
+
+
+    if show_cluster_numbers and 'cluster' in df.columns:
+        clustered_mask = df['cluster'] != -1
+        if clustered_mask.any():
+            unique_clusters = df.loc[clustered_mask, 'cluster'].unique()
+            for cluster in unique_clusters:
+                cluster_mask = df['cluster'] == cluster
+                centroid_x = df.loc[cluster_mask, 'tsne1'].mean()
+                centroid_y = df.loc[cluster_mask, 'tsne2'].mean()
+                plt.annotate(str(cluster),
+                             xy=(centroid_x, centroid_y),
+                             fontsize=16,
+                             fontweight='bold',
+                             ha='center',
+                             va='center',
+                             color='black',
+                             alpha=1,
+                             zorder=100)
 
     # =============================
     # Configure plot appearance
@@ -962,7 +760,7 @@ def matrix(fasta: str,
        subset_fasta = fasta_subsample(fasta, output, subset_size, force=force)
 
     logger.info("=== Phase 1: DIAMOND Alignment ===")
-    align_output = run_diamond_alignment(fasta, subset_fasta, subset_size, threads, force=force)
+    align_output = run_diamond_alignment(fasta, subset_fasta, subset_size, threads, CASM_BLAST_OUTPUT_COLUMNS, force=force)
 
     logger.info("=== Phase 2: Matrix Construction ===")
     _, _, _, matrix_file, metadata_file = build_alignment_matrix_split(align_output, output, force)

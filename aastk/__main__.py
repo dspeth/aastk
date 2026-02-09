@@ -110,7 +110,8 @@ def main():
             max_score(
                 extracted=args.extracted,
                 matrix=args.matrix,
-                output_dir=args.output
+                output_dir=args.output,
+                force=args.force
             )
 
         elif args.subparser_name == 'bsr':
@@ -153,7 +154,7 @@ def main():
             pasr(
                 seed_fasta=args.seed,
                 query_fasta=args.query,
-                matrix_name=args.matrix,
+                matrix=args.matrix,
                 threads=args.threads,
                 output_dir=args.output,
                 db_path=args.db_path,
@@ -210,7 +211,8 @@ def main():
             context(
                 fasta=args.fasta,
                 id_list=args.id_list,
-                cugo_path=args.cugo_path,
+                db_path=args.db_path,
+                annotation=args.annotation,
                 cugo_range=args.cugo_range,
                 output_dir=args.output,
                 threads=args.threads,
@@ -236,11 +238,12 @@ def main():
 
         elif args.subparser_name == 'cugo':
             cugo(
-                cugo_path=args.cugo_path,
+                db_path=args.db_path,
                 cugo_range=args.cugo_range,
                 fasta=args.fasta,
                 id_list=args.id_list,
                 output_dir=args.output,
+                annotation=args.annotation,
                 flank_lower=args.flank_lower,
                 flank_upper=args.flank_upper,
                 top_n=args.top_n,
@@ -258,6 +261,17 @@ def main():
                 position=args.position,
                 db_path=args.db_path,
                 output=args.output,
+                threads=args.threads,
+                filter_seqs=args.filter_seqs,
+                force=args.force
+            )
+
+        elif args.subparser_name == 'filter':
+            filter(
+                fasta=args.fasta,
+                output=args.output,
+                db_path=args.db_path,
+                threads=args.threads,
                 force=args.force
             )
 
@@ -294,7 +308,7 @@ def main():
                 metadata_protein=args.metadata_protein,
                 force=args.force,
                 svg=args.svg,
-                show_cluster_numbers=args.show
+                show_cluster_numbers=args.show,
             )
 
         elif args.subparser_name == 'casm':
@@ -326,6 +340,14 @@ def main():
 
         elif args.subparser_name == 'metadata_categories':
             metadata_categories()
+
+        elif args.subparser_name == 'protein_fasta':
+            protein_fasta(
+                db_path=args.db_path,
+                output=args.output,
+                threads=args.threads,
+                force=args.force
+            )
 
 
     except Exception as e:
