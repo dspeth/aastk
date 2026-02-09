@@ -76,8 +76,8 @@ def main():
         ### PARSER FOR PASR FUNCTIONALITIES AND WORKFLOW ###
         if args.subparser_name == 'build':
             build(
-                db_dir=args.db,
                 seed_fasta=args.seed,
+                output=args.output,
                 threads=args.threads,
                 force=args.force
             )

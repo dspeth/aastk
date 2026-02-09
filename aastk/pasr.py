@@ -20,16 +20,16 @@ logger = logging.getLogger(__name__)
 # aastk build CLI FUNCTION
 # ===============================
 def build(seed_fasta: str,
-                     threads: int,
-                     db_dir: str,
-                     force: bool = False):
+          threads: int,
+          output: str,
+          force: bool = False):
     """
     Builds a DIAMOND protein database from a seed FASTA file.
 
     Args:
         seed_fasta (str): Path to the FASTA file containing seed sequences.
         threads (int): Number of threads to use.
-        db_dir (str): Directory where the database should be stored. (Default: current working directory)
+        output (str): Directory where the database should be stored. (Default: current working directory)
         force (bool): If true, existing files/directories in output path are overwritten
 
     Returns:
@@ -44,7 +44,6 @@ def build(seed_fasta: str,
     if Path(seed_fasta).is_file():
         pass
     else:
-        logger.error("Input seed FASTA not found")
         raise FileNotFoundError(f"Seed FASTA file does not exist: {seed_fasta}")
 
     seed_fasta_filename = Path(seed_fasta).name
@@ -53,7 +52,7 @@ def build(seed_fasta: str,
     # ===============================
     # Database path setup
     # ===============================
-    db_path = ensure_path(db_dir, f"{protein_name}_seed_db", force=force)
+    db_path = ensure_path(path=output, target=f"{protein_name}_seed_db", suffix='.dmnd', force=force)
 
     # log the path
     logger.info(f"Building DIAMOND database for {protein_name} at {db_path}")
@@ -96,11 +95,10 @@ def build(seed_fasta: str,
 
     db_file = Path(f"{db_path}.dmnd")
     if not db_file.exists():
-        logger.error(f"DIAMOND database file not found at {db_file}")
         raise RuntimeError(f"DIAMOND database was not created at {db_file}")
 
 
-    logger.info(f"Successfully built DIAMOND database at {db_path}")
+    logger.info(f"Successfully built DIAMOND database at {db_file}")
     return db_path
 
 
@@ -111,13 +109,13 @@ def build(seed_fasta: str,
 # aastk search CLI FUNCTION
 # ===============================
 def search(db_path: str,
-                      query_path: str,
-                      threads: int,
-                      output_dir: str,
-                      sensitivity: str,
-                      block: int = 6,
-                      chunk: int = 2,
-                      force: bool = False):
+           query_path: str,
+           threads: int,
+           output_dir: str,
+           sensitivity: str,
+           block: int = 6,
+           chunk: int = 2,
+           force: bool = False):
     """
     Searches a DIAMOND reference database for homologous sequences.
 

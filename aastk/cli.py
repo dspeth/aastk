@@ -87,9 +87,9 @@ def __dataset(group, required=False):
     group.add_argument('-d', '--dataset', type=str, required=required,
                        help='Dataset name')
 
-def __db(group, required=False):
-    group.add_argument('-d', '--db', type=str, required=required,
-                       help='Specify path to DIAMOND database')
+def __diamond_db(group, required=False):
+    group.add_argument('-d', '--diamond_db', type=str, required=required,
+                       help='Path to DIAMOND database')
 
 def __dbmin(group, required=False):
     group.add_argument('-d', '--dbmin', type=int, default=None, required=required,
@@ -241,7 +241,7 @@ def __score_column(group, required=False):
 
 def __seed(group, required=False):
     group.add_argument('-s', '--seed', type=str, default=None, required=required,
-                       help='Path to FASTA files containing seed sequences for database creation')
+                       help='Path to seed FASTA file for DIAMOND database creation')
 
 def __selfmax(group, required=False):
     group.add_argument('-u', '--selfmax', type=int, required=required,
@@ -290,7 +290,7 @@ def __taxonomy_path(group, required=False):
 
 def __threads(group, required=False):
     group.add_argument('-n', '--threads', type=int, default=1, required=required,
-                       help='Number of threads to be used (default: 1)')
+                       help='Number of threads (default: 1)')
 
 def __tmhmm_dir(group, required=False):
     group.add_argument('-t', '--tmhmm_dir', type=str, required=required,
@@ -333,14 +333,14 @@ def get_main_parser():
     with subparser(sub_parsers, 'build', 'Build DIAMOND database from seed sequence(s)') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __seed(grp, required=True)
-            __db(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
+            __output(grp)
             __threads(grp)
             __force(grp)
 
     with subparser(sub_parsers, 'search', 'Search DIAMOND reference database for homologous sequences') as parser:
         with arg_group(parser, 'Required arguments') as grp:
-            __db(grp, required=True),
+            __diamond_db(grp, required=True),
             __query(grp, required=True),
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
