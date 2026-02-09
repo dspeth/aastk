@@ -740,15 +740,15 @@ def pasr_plot(bsr_file: str,
             except Exception as e:
                 raise RuntimeError(f"Failed to load thresholds from {yaml_path}: {e}") from e
 
-            selfmin = thresholds.get("selfmin", 0)
-            selfmax = thresholds.get("selfmax", float('inf'))
+            max_score_min = thresholds.get("max_score_min", 0)
+            max_score_max = thresholds.get("max_score_max", float('inf'))
             dbmin = thresholds.get("dbmin", None)
             bsr_min = thresholds.get("bsr", None)
 
-            if selfmin is not None:
-                axs['scatter'].axvline(selfmin, color='black', linestyle='--', linewidth=1.0)
-            if selfmax is not None:
-                axs['scatter'].axvline(selfmax, color='black', linestyle='--', linewidth=1.0)
+            if max_score_min is not None:
+                axs['scatter'].axvline(max_score_min, color='black', linestyle='--', linewidth=1.0)
+            if max_score_max is not None:
+                axs['scatter'].axvline(max_score_max, color='black', linestyle='--', linewidth=1.0)
             if dbmin is not None:
                 axs['scatter'].axhline(dbmin, color='black', linestyle='--', linewidth=1.0)
             if bsr_min is not None:
@@ -774,22 +774,22 @@ def pasr_plot(bsr_file: str,
 
 
 # ===============================
-# aastk metadata CLI FUNCTION
+# aastk pasr_select CLI FUNCTION
 # ===============================
-def pasr_metadata(selfmin: int,
-             selfmax: int,
-             output_dir: str,
-             dbmin: int = None,
-             bsr: float = None,
-             seed: str = None,
-             bsr_file: str = None,
-             force: bool = False):
+def pasr_metadata(max_score_min: int,
+                  max_score_max: int,
+                  output_dir: str,
+                  dbmin: int = None,
+                  bsr: float = None,
+                  seed: str = None,
+                  bsr_file: str = None,
+                  force: bool = False):
     """
     Writes metadata parameters to a YAML file.
 
     Args:
-        selfmin: Minimum self-score threshold.
-        selfmax: Maximum self-score threshold.
+        max_score_min: Minimum max_score-score threshold.
+        max_score_max: Maximum max_score-score threshold.
         output_dir: Directory to save the metadata file.
         dbmin: Minimum database score threshold.
         bsr: Minimum BSR threshold.
@@ -845,17 +845,17 @@ def pasr_metadata(selfmin: int,
     # ===============================
     # Parameter collection and validation
     # ===============================
-    logger.debug(f"Collecting parameters: selfmin={selfmin}, selfmax={selfmax}, "
+    logger.debug(f"Collecting parameters: max_score_min={max_score_min}, max_score_max={max_score_max}, "
                  f"dbmin={dbmin}, bsr={bsr}")
 
     # Validate threshold values
-    if selfmin < 0 or selfmax < 0:
-        error_msg = "selfmin and selfmax must be non-negative"
+    if max_score_min < 0 or max_score_max < 0:
+        error_msg = "max_score_min and max_score_max must be non-negative"
         logger.error(error_msg)
         raise ValueError(error_msg)
 
-    if selfmin > selfmax:
-        error_msg = f"selfmin ({selfmin}) cannot be greater than selfmax ({selfmax})"
+    if max_score_min > max_score_max:
+        error_msg = f"max_score_min ({max_score_min}) cannot be greater than max_score_max ({max_score_max})"
         logger.error(error_msg)
         raise ValueError(error_msg)
 
@@ -871,8 +871,8 @@ def pasr_metadata(selfmin: int,
 
     params = {
         "protein_name": protein_name,
-        "selfmin": selfmin,
-        "selfmax": selfmax,
+        "max_score_min": max_score_min,
+        "max_score_max": max_score_max,
         "dbmin": dbmin,
         "bsr": bsr
     }
@@ -897,25 +897,18 @@ def pasr_metadata(selfmin: int,
     except Exception as e:
         logger.error(f"Failed to write metadata file {yaml_path}: {e}")
         raise RuntimeError(f"Failed to write metadata file: {e}") from e
-
-
-
-
-
-# ===============================
-# aastk pasr_select CLI FUNCTION
-# ===============================
+    
 def pasr_select(yaml_path: str,
-           matched_fasta: str,
-           bsr_table: str,
-           output_dir: str,
-           selfmin: int = None,
-           selfmax: int = None,
-           dbmin: int = None,
-           bsr: float = None,
-           force: bool = False,
-           create_yaml: bool = False,
-           params: bool = False):
+                matched_fasta: str,
+                bsr_table: str,
+                output_dir: str,
+                max_score_min: int = None,
+                max_score_max: int = None,
+                dbmin: int = None,
+                bsr: float = None,
+                force: bool = False,
+                create_yaml: bool = False,
+                params: bool = False):
     """
     Subsets matched sequences based on YAML thresholds or provided parameters.
 
@@ -924,8 +917,8 @@ def pasr_select(yaml_path: str,
         matched_fasta (str): Path to the matched sequences FASTA.
         bsr_table (str): Path to the BSR table.
         output_dir (str): Directory to save the subsetted sequences.
-        selfmin (int): Minimum self score threshold (required when params=True).
-        selfmax (int): Maximum self score threshold (required when params=True).
+        max_score_min (int): Minimum max_score score threshold (required when params=True).
+        max_score_max (int): Maximum max_score score threshold (required when params=True).
         dbmin (int): Minimum database score threshold (mutually exclusive with bsr).
         bsr (float): Minimum BSR threshold (mutually exclusive with dbmin).
         force (bool): If true, existing files/directories in output path are overwritten.
@@ -957,8 +950,8 @@ def pasr_select(yaml_path: str,
     # ===============================
     if params:
         # validate required parameters when using params=True
-        if selfmin is None or selfmax is None:
-            raise ValueError("selfmin and selfmax are required when params=True")
+        if max_score_min is None or max_score_max is None:
+            raise ValueError("max_score_min and max_score_max are required when params=True")
 
         # ensure either dbmin or bsr is provided (but not both)
         if dbmin is None and bsr is None:
@@ -976,8 +969,8 @@ def pasr_select(yaml_path: str,
         if create_yaml:
             logger.info("Creating YAML file with provided parameters")
             created_yaml_path = pasr_metadata(
-                selfmin=selfmin,
-                selfmax=selfmax,
+                max_score_min=max_score_min,
+                max_score_max=max_score_max,
                 output_dir=output_dir,
                 dbmin=dbmin,
                 bsr=bsr,
@@ -997,8 +990,8 @@ def pasr_select(yaml_path: str,
 
         # get thresholds and assign default values
         protein_name = thresholds.get("protein_name", None)
-        selfmin = thresholds.get("selfmin", 0)
-        selfmax = thresholds.get("selfmax", float('inf'))
+        max_score_min = thresholds.get("max_score_min", 0)
+        max_score_max = thresholds.get("max_score_max", float('inf'))
         dbmin = thresholds.get("dbmin", None)
         bsr_min = thresholds.get("bsr", None)
 
@@ -1020,8 +1013,8 @@ def pasr_select(yaml_path: str,
     # load BSR table
     bsr_df = pd.read_csv(bsr_table, sep='\t')
 
-    # apply filters defined by the required arguments selfmin and selfmax to the BSR table
-    filtered = bsr_df[(bsr_df['max_score'] >= selfmin) & (bsr_df['max_score'] <= selfmax)]
+    # apply filters defined by the required arguments max_score_min and max_score_max to the BSR table
+    filtered = bsr_df[(bsr_df['max_score'] >= max_score_min) & (bsr_df['max_score'] <= max_score_max)]
 
     # apply mutually exclusive filters to the BSR table (either min. alignment score or min. BSR)
     if dbmin is not None:

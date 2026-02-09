@@ -207,9 +207,17 @@ def __matrix_path(group, required=False):
     group.add_argument('-m', '--matrix_path', type=str, required=required,
                        help='Path to .npy file containing alignment matrix')
 
+def __max_score_max(group, required=False):
+    group.add_argument('-u', '--max_score_max', type=int, required=required,
+                       help='Upper cutoff for max score range')
+
+def __max_score_min(group, required=False):
+    group.add_argument('-l', '--max_score_min', type=int, required=required,
+                       help='Lower cutoff for max score range')
+
 def __max_scores(group, required=False):
     group.add_argument('-m', '--max_scores', type=str, required=required,
-                       help='Path to file containing max self scores')
+                       help='Path to file containing max scores')
 
 def __metadata_protein(group, required=False):
     group.add_argument('--metadata_protein', type=str, required=required,
@@ -258,14 +266,6 @@ def __score_column(group, required=False):
 def __seed(group, required=False):
     group.add_argument('-s', '--seed', type=str, default=None, required=required,
                        help='Path to seed FASTA file for DIAMOND database creation')
-
-def __selfmax(group, required=False):
-    group.add_argument('-u', '--selfmax', type=int, required=required,
-                       help='Upper cutoff for self score range to be included in updated dataset')
-
-def __selfmin(group, required=False):
-    group.add_argument('-l', '--selfmin', type=int, required=required,
-                       help='Lower cutoff for self score range to be included in updated dataset')
 
 def __sensitivity(group, required=False):
     group.add_argument('--sensitivity', required=required,
@@ -416,8 +416,8 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __create_yaml(grp)
-            __selfmin(grp)
-            __selfmax(grp)
+            __max_score_min(grp)
+            __max_score_max(grp)
             __dbmin(grp)
             __bsr_cutoff(grp)
             __force(grp)
