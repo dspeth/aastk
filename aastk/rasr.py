@@ -591,8 +591,7 @@ def rasr(query: str,
         logger.info("Building protein database")
         db_path = pasr_build(gene_db_fasta, threads, protein_dir, force=force)
 
-        # intermediate_results['db_path'] = f"{db_path}.dmnd"
-        results['db_path'] = f"{db_path}.dmnd"
+        intermediate_results['db_path'] = f"{db_path}.dmnd"
 
         # ===============================
         # Gene of interest database search
@@ -601,16 +600,16 @@ def rasr(query: str,
 
         search_output, column_info_path = search(db_path, query, threads, dataset_output_dir, sensitivity, block=block, chunk=chunk, force=force)
 
-        results['search_output'] = search_output
-        results['column_info_path'] = column_info_path
+        intermediate_results['search_output'] = search_output
+        intermediate_results['column_info_path'] = column_info_path
 
         # ===============================
         # Read sequence extraction
         # ===============================
         logger.info("Extracting hit sequences from search results")
         matched_fastq, id_file = get_hit_seqs(search_output, query, dataset_output_dir, key_column=key_column, force=force)
-        results['hit_seqs_path'] = matched_fastq
-        results['hit_ids_path'] = id_file
+        intermediate_results['hit_seqs_path'] = matched_fastq
+        intermediate_results['hit_ids_path'] = id_file
 
         # ===============================
         # Outgroup database search
@@ -618,8 +617,8 @@ def rasr(query: str,
         logger.info("Searching outgroup database")
         outgrp_search_output, outgrp_column_info_path = search(outgrp_db, matched_fastq, threads, dataset_output_dir, sensitivity, block=block, chunk=chunk, force=force)
 
-        results['outgrp_search_output'] = outgrp_search_output
-        results['outgrp_column_info_path'] = outgrp_column_info_path
+        intermediate_results['outgrp_search_output'] = outgrp_search_output
+        intermediate_results['outgrp_column_info_path'] = outgrp_column_info_path
 
         # ===============================
         # Score calculations
@@ -641,9 +640,10 @@ def rasr(query: str,
         # Final selection of RASR hits
         # ===============================
         logger.info("Selecting final RASR hits")
-        selected_fastq = rasr_select(score_cutoff=dbmin, bsr_cutoff=bsr_cutoff, matched_fastq=matched_fastq, bsr_file=bsr_output, output_dir=dataset_output_dir, force=force)
+        selected_fastq, selected_ids_file = rasr_select(score_cutoff=dbmin, bsr_cutoff=bsr_cutoff, matched_fastq=matched_fastq, bsr_file=bsr_output, output_dir=dataset_output_dir, force=force)
 
         results['selected_fastq'] = selected_fastq
+        intermediate_results['selected_ids_file'] = selected_ids_file
 
         logger.info("RASR workflow completed successfully")
         return results
@@ -662,3 +662,5 @@ def rasr(query: str,
                         logger.debug(f"Deleted {filepath}")
                 except Exception as e:
                     logger.warning(f"Failed to delete {filepath}: {e}")
+        else:
+            logger.info(f"Keeping intermediate files (keep=True)")
