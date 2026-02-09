@@ -328,6 +328,25 @@ def main():
                 keep=args.keep,
                 force=args.force
             )
+        
+        elif args.subparser_name == 'rasr_plot':
+            rasr_plot(
+                bsr_file=args.bsr,
+                output_dir=args.output,
+                force=args.force,
+                bsr_cutoff=args.bsr_cutoff,
+                dbmin=args.dbmin
+            )
+
+        elif args.subparser_name == 'rasr_select':
+            rasr_select(
+                score_cutoff=args.dbmin,
+                bsr_cutoff=args.bsr_cutoff,
+                matched_fastq=args.matched,
+                bsr_file=args.bsr,
+                output_dir=args.output,
+                force=args.force
+            )
 
 
     except Exception as e:

@@ -609,4 +609,23 @@ def get_main_parser():
             __keep(grp)
             __force(grp)
 
+    with subparser(sub_parsers, 'rasr_plot', 'Plot the Blast Score Ratio for RASR analysis') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __bsr(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
+            __bsr_cutoff(grp)
+            __dbmin(grp)
+            __force(grp)
+
+    with subparser(sub_parsers, 'rasr_select', 'Select RASR hits based on BSR and score cutoffs') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __matched(grp, required=True)
+            __bsr(grp, required=True)
+            __dbmin(grp, required=True)
+            __bsr_cutoff(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
+            __force(grp)
+
     return main_parser    
