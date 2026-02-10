@@ -32,7 +32,7 @@ def __all_metadata(group, required=False):
 
 def __annotation(group, required=False):
     group.add_argument('--annotation', type=str, default='COG_ID', required=required,
-                       help='Select annotation from: COG_ID, KEGG_ID, Pfam_ID (default: COG_ID)')
+                       help='Annotation: COG_ID, KEGG_ID, Pfam_ID (default: COG_ID)')
 
 def __bin_width(group, required=False):
     group.add_argument('-b', '--bin_width', type=int, default=50, required=required,
@@ -81,7 +81,7 @@ def __cugo(group, required=False):
 
 def __cugo_range(group, required=False):
     group.add_argument('-r', '--cugo_range', type=int, required=required,
-                       help='CUGO range of interest for genomic context analysis')
+                       help='CUGO range for genomic context analysis')
 
 def __culture_collection_path(group, required=False):
     group.add_argument('-c', '--culture_collection_path', type=str, required=required,
