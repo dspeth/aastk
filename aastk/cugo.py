@@ -829,12 +829,20 @@ def filter(fasta: str,
            output: str,
            threads: int,
            sql: bool = False,
+           svg: bool = False,
            force: bool = False):
     if sql and not db_path:
         raise ValueError('SQL mode requires db_path')
 
     prefix = determine_dataset_name(fasta, '.', 0)
     output_path = ensure_path(output, f'{prefix}_filtered.faa', force=force)
+
+    if svg:
+        plot_path = ensure_path(output, f'{prefix}_filtered.svg', force=force)
+    else:
+        plot_path = ensure_path(output, f'{prefix}_filtered.png', force=force)
+
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
 
     subset = fasta_subsample(fasta, output, 100, force=force)
 
@@ -849,6 +857,13 @@ def filter(fasta: str,
 
     mean_avg_length = means.loc[:, 'mean100_length'].mean()
 
+    # first pass filter histogram
+    binwidth = 10
+    ax1.hist(means['mean100_length'], bins=range(round(min(means['mean100_length'])), round(max(means['mean100_length'])), binwidth))
+    ax1.axvline(x=(mean_avg_length + 150), color='red', linestyle='dashed', linewidth=1)
+    ax1.axvline(x=(mean_avg_length - 150), color='red', linestyle='dashed', linewidth=1)
+    ax1.set_xlabel("mean100_length")
+
     count = 0
     for qseqid in means.index:
         avg_length = means.loc[qseqid, 'mean100_length']
@@ -857,17 +872,25 @@ def filter(fasta: str,
             means.drop(qseqid, inplace=True)
             count += 1
 
+
+
     remaining = len(means.index)
     logger.info(f"First pass: dropped {count} sequences. Remaining sequences: {remaining}")
 
     updated_mean_avg_length = means.loc[:, 'mean100_length'].mean()
     updated_std_avg_length = means.loc[:, 'mean100_length'].std()
+    lower_bound = updated_mean_avg_length - 3 * updated_std_avg_length
+    upper_bound = updated_mean_avg_length + 3 * updated_std_avg_length
+
+    # second pass filter histogram
+    ax2.hist(means['mean100_length'], bins=range(round(min(means['mean100_length'])), round(max(means['mean100_length'])), binwidth))
+    ax2.axvline(x=lower_bound, color='red', linestyle='dashed', linewidth=1)
+    ax2.axvline(x=upper_bound, color='red', linestyle='dashed', linewidth=1)
+    ax2.set_xlabel("mean100_length")
 
     count = 0
     for qseqid in means.index:
         avg_length = means.loc[qseqid, 'mean100_length']
-        lower_bound = updated_mean_avg_length - 3 * updated_std_avg_length
-        upper_bound = updated_mean_avg_length + 3 * updated_std_avg_length
 
         if avg_length < lower_bound or avg_length > upper_bound:
             means.drop(qseqid, inplace=True)
@@ -877,6 +900,12 @@ def filter(fasta: str,
     logger.info(f"Second pass: dropped {count} sequences. Remaining sequences: {remaining}")
 
     penultimate_mean_avg_length = means.loc[:, 'mean100_length'].mean()
+    boundary = 0.5 * penultimate_mean_avg_length
+
+    ax3.hist(means['mean100_unaligned_length'],
+             bins=range(round(min(means['mean100_unaligned_length'])), round(max(means['mean100_unaligned_length'])), binwidth))
+    ax3.axvline(x=boundary, color='red', linestyle='dashed', linewidth=1)
+    ax3.set_xlabel("mean100_unaligned_length")
 
     count = 0
     for qseqid in means.index:
@@ -901,6 +930,8 @@ def filter(fasta: str,
                 f.write(f"{header}\n{sequence}\n")
                 sequences_written += 1
         logger.info(f"Retrieved {sequences_written} sequences to {output_path}")
+
+    plt.savefig(plot_path)
 
     return output_path
 
