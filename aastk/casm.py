@@ -9,6 +9,7 @@ from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
 import sqlite3
 import json
+import hashlib
 
 
 logger = logging.getLogger(__name__)
@@ -197,9 +198,8 @@ def create_embedding_file(output_file: str,
         queries (list): List of protein IDs in format "genomeID_locusNr" (e.g., "genome_ABC_001")
         clusters (np.ndarray): 1D array of cluster assignments for each protein
         col_names (list): Column names for each embedding dimension (e.g., ["dim_0", "dim_1", ...])
-        metadata_protein (str): Protein metadata
     """
-    logger.info(f"Creating embedding TSV with {len(queries)} proteins")
+    logger.info(f"Embedded {len(queries)} proteins")
 
     loci = [seqID.rsplit("_", 1)[1] for seqID in queries]
     genome_ids = [seqID.rsplit("_", 1)[0] for seqID in queries]
@@ -211,9 +211,6 @@ def create_embedding_file(output_file: str,
         for q, c, l, g, emb in zip(queries, clusters, loci, genome_ids, embedding):
             row = [q, l, g] + [f"{x:.6f}" for x in emb] + [str(c)]
             f.write("\t".join(row) + "\n")
-
-    logger.info(f"Finished writing TSV: {output_file}")
-
 
 def create_embedding_dataframe(embedding: np.ndarray,
                                queries: list,
@@ -228,7 +225,6 @@ def create_embedding_dataframe(embedding: np.ndarray,
         queries (list): List of protein IDs corresponding to embedding rows
         clusters (np.ndarray): Cluster assignments for each protein
         col_names (list): Column names for embedding dimensions
-        metadata_protein (str, optional): Path to protein metadata TSV file
 
     Returns:
         df (pd.DataFrame): DataFrame with protein IDs, coordinates, clusters, and metadata
@@ -256,10 +252,10 @@ def tsne_embedding(matrix: np.ndarray,
                    queries: list,
                    output: str,
                    basename: str,
-                   perplexity: int,
-                   iterations: int,
-                   exaggeration: int,
-                   threads: int,
+                   perplexity: int = 50,
+                   iterations: int = 500,
+                   exaggeration: int = 6,
+                   threads: int = 1,
                    force: bool = False
                    ):
     """
@@ -271,6 +267,7 @@ def tsne_embedding(matrix: np.ndarray,
     Args:
         matrix (np.ndarray): Alignment matrix for embedding
         queries (list): List of protein IDs corresponding to matrix rows
+        output (str): Output directory (default: current working directory)
         basename (str): Base name for output files
         perplexity (int): t-SNE perplexity parameter
         iterations (int): Number of optimization iterations per phase
@@ -490,7 +487,33 @@ def plot_clusters(tsv_file: str,
     # ========================
     plt.figure(figsize=(14, 10))
 
-    if color_column == 'cluster':
+    if metadata_protein == 'culture_collection' and 'culture_collection' in df.columns:
+        overlay_mask = df['culture_collection'] == 1
+        non_overlay_mask = ~overlay_mask
+
+        plt.scatter(df.loc[non_overlay_mask, 'tsne1'],
+                    df.loc[non_overlay_mask, 'tsne2'],
+                    color='lightgray',
+                    s=15,
+                    alpha=0.5,
+                    edgecolors='none')
+
+        if overlay_mask.any():
+            n_overlay = overlay_mask.sum()
+            logger.info(f"Overlaying {n_overlay} points with culture_collection == 1")
+            plt.scatter(df.loc[overlay_mask, 'tsne1'],
+                        df.loc[overlay_mask, 'tsne2'],
+                        c='red',
+                        s=25,
+                        alpha=0.6,
+                        edgecolors='black',
+                        linewidths=0.5,
+                        marker='o',
+                        label='Culture Collection',
+                        zorder=10)
+
+
+    elif color_column == 'cluster':
         # create masks to separate noise points (cluster -1) from clustered points
         noise_mask = df['cluster'] == -1
         clustered_mask = df['cluster'] != -1
@@ -542,42 +565,27 @@ def plot_clusters(tsv_file: str,
 
     else:
         unique_vals = df[color_column].dropna().unique()
-        n_vals = len(unique_vals)
+
+        color_map = {
+            metadatum: '#' + hashlib.md5(str(metadatum).encode()).hexdigest()[:6]
+            for metadatum in unique_vals
+        }
 
         na_mask = df[color_column].isna()
         if na_mask.any():
             plt.scatter(df.loc[na_mask, 'tsne1'], df.loc[na_mask, 'tsne2'],
                         c='lightgray', alpha=0.4, s=12, edgecolors='none', label='No data')
 
-        if df[color_column].dtype in ['object', 'category']:
-            colors = plt.cm.tab20(np.linspace(0, 1, n_vals))
-            if n_vals > 20:
-                colors = plt.cm.hsv(np.linspace(0, 1, n_vals))
-            for i, val in enumerate(unique_vals):
+        if pd.api.types.is_string_dtype(df[color_column]) or pd.api.types.is_categorical_dtype(df[color_column]):
+            for val in unique_vals:
                 mask = df[color_column] == val
                 plt.scatter(df.loc[mask, 'tsne1'], df.loc[mask, 'tsne2'],
-                            c=[colors[i]], s=15, alpha=0.7,
+                            color=color_map[val], s=15, alpha=0.7,
                             edgecolors='white', linewidths=0.3, label=str(val))
         else:
-            scatter = plt.scatter(df['tsne1'], df['tsne2'],
-                                  c=df[color_column], cmap='viridis', s=15,
-                                  alpha=0.7, edgecolors='white', linewidths=0.3)
-
-    if metadata_protein == 'culture_collection' and 'culture_collection' in df.columns:
-        overlay_mask = df['culture_collection'] == 1
-        if overlay_mask.any():
-            n_overlay = overlay_mask.sum()
-            logger.info(f"Overlaying {n_overlay} points with culture_collection == 1")
-            plt.scatter(df.loc[overlay_mask, 'tsne1'],
-                        df.loc[overlay_mask, 'tsne2'],
-                        c='red',
-                        s=25,
-                        alpha=0.6,
-                        edgecolors='black',
-                        linewidths=0.5,
-                        marker='o',
-                        label='Culture Collection',
-                        zorder=10)
+            plt.scatter(df['tsne1'], df['tsne2'],
+                        c=df[color_column], cmap='viridis', s=15,
+                        alpha=0.7, edgecolors='white', linewidths=0.3)
 
 
     if show_cluster_numbers and 'cluster' in df.columns:
@@ -649,6 +657,7 @@ def plot_clusters(tsv_file: str,
     logger.info(f"Plot saved to: {output_file}")
 
     return output_file
+
 
 def casm_select(final_embedding_file: str,
          fasta: str,
@@ -821,14 +830,13 @@ def cluster(matrix_path: str,
     return early_filename, final_filename
 
 
-def casm_plot(early_clust_path: str,
-        full_clust_path: str,
-        output: str,
-        db_path: str = None,
-        metadata_protein: str = None,
-        svg: bool = False,
-        force: bool = False,
-        show_cluster_numbers: bool = False):
+def casm_plot(clust_path: str,
+              output: str,
+              metadata_protein: str,
+              db_path: str,
+              svg: bool = False,
+              force: bool = False,
+              show_cluster_numbers: bool = False):
     """
     Generate t-SNE cluster visualization plots for early and final embeddings.
 
@@ -837,41 +845,29 @@ def casm_plot(early_clust_path: str,
     "_early_tsne_clusters" and "_final_tsne_clusters" suffixes.
 
     Args:
-        early_clust_path (str): Path to early clustering results TSV file
-        full_clust_path (str): Path to final clustering results TSV file
+        clust_path (str): Path to  clustering results TSV file
         output (str): Base name for output plot files
 
     Returns:
         early_cluster_plot
         full_cluster_plot
     """
-    logger.info("=== Starting Plot Generation ===")
-    logger.info(f"Early clustering file: {early_clust_path}")
-    logger.info(f"Full clustering file: {full_clust_path}")
-    logger.info(f"Output basename: {output}")
+    logger.info('=== Starting Plot Generation ===')
+    logger.info(f'Plotting file: {clust_path}')
+    logger.info(f'Output basename: {output}')
 
     # Generate plots
-    logger.info("Generating early clustering plot")
-    early_cluster_plot = plot_clusters(early_clust_path,
-                                       output=output,
-                                       db_path=db_path,
-                                       metadata_protein=metadata_protein,
-                                       force=force,
-                                       svg=svg,
-                                       show_cluster_numbers=show_cluster_numbers)
-
-    logger.info("Generating full clustering plot")
-    full_cluster_plot = plot_clusters(full_clust_path,
-                                      output=output,
-                                      db_path=db_path,
-                                      metadata_protein=metadata_protein,
-                                      force=force,
-                                      svg=svg,
-                                      show_cluster_numbers=show_cluster_numbers)
+    cluster_plot = plot_clusters(clust_path,
+                                 output=output,
+                                 metadata_protein=metadata_protein,
+                                 db_path=db_path,
+                                 force=force,
+                                 svg=svg,
+                                 show_cluster_numbers=show_cluster_numbers)
 
     logger.info("=== Plot Generation Completed ===")
 
-    return early_cluster_plot, full_cluster_plot
+    return cluster_plot
 
 
 def casm(fasta: str,
@@ -897,11 +893,13 @@ def casm(fasta: str,
         output (str): Output basename
         subset (str, optional): Path to subset FASTA file. If None, creates random subset
         subset_size (int): Size of subset for alignment
+        db_path (str): Path to GlobDB SQLite database
         threads (int): Number of threads
         perplexity (int): t-SNE perplexity parameter
         iterations (int): Number of optimization iterations
         exaggeration (int): Early exaggeration parameter
-        metadata_protein (str, optional): Path to protein metadata file
+        metadata_protein (str): Path to protein metadata file
+        keep (bool): Keep intermediate files
         svg (bool): Generate plot in SVG format
         force (bool): Force overwrite existing files
         show_cluster_numbers (bool): Display cluster enumeration in cluster centers in output plot
@@ -953,12 +951,21 @@ def casm(fasta: str,
 
     # Phase 3: Plot generation
     logger.info("=== Phase 3: Plot Generation ===")
-    early_cluster_plot, full_cluster_plot = casm_plot(
-        early_clust_path=early_filename,
-        full_clust_path=final_filename,
+    early_cluster_plot = casm_plot(
+        clust_path=early_filename,
         output=output,
-        db_path=db_path,
         metadata_protein=metadata_protein,
+        db_path=db_path,
+        svg=svg,
+        force=force,
+        show_cluster_numbers=show_cluster_numbers
+    )
+
+    full_cluster_plot = casm_plot(
+        clust_path=early_filename,
+        output=output,
+        metadata_protein=metadata_protein,
+        db_path=db_path,
         svg=svg,
         force=force,
         show_cluster_numbers=show_cluster_numbers

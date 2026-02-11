@@ -362,7 +362,6 @@ def plot_top_annotations_per_position(
 
     # Save if requested
     if save and plot_path is not None:
-        #plt.tight_layout()
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
 
     return positions, [pos + 0.5 for pos in positions[:-1]]
@@ -796,74 +795,6 @@ def cugo(db_path: str,
     return context_file, plot_file
 
 
-def filter(fasta: str,
-           db_path: str,
-           output: str,
-           threads: int,
-           force: bool = False):
-    prefix = determine_dataset_name(fasta, '.', 0)
-    output_path = ensure_path(output, f'{prefix}_filtered.faa', force=force)
-
-    subset = fasta_subsample(fasta, output, 100, force=force)
-
-    align_output = run_diamond_alignment(fasta, subset, None, threads, FILTER_BLAST_OUTPUT_COLUMNS, output, force)
-
-    alignment_df = pd.read_csv(align_output, sep='\t', names=FILTER_BLAST_OUTPUT_COLUMNS)
-
-    alignment_df['unaligned_length'] = alignment_df['qlen'] - alignment_df['length']
-
-    means = alignment_df.groupby('qseqid').mean(numeric_only=True)
-    means.rename(columns={'nident': 'mean100_nident', 'length': 'mean100_length', 'qlen': 'mean100_qlen', 'unaligned_length': 'mean100_unaligned_length'}, inplace=True)
-
-    mean_avg_length = means.loc[:, 'mean100_length'].mean()
-
-    count = 0
-    for qseqid in means.index:
-        avg_length = means.loc[qseqid, 'mean100_length']
-        avg_length_deviation = avg_length - mean_avg_length
-        if abs(avg_length_deviation) >= 150:
-            means.drop(qseqid, inplace=True)
-            count += 1
-
-    remaining = len(means.index)
-    logger.info(f"First pass: dropped {count} sequences. Remaining sequences: {remaining}")
-
-    updated_mean_avg_length = means.loc[:, 'mean100_length'].mean()
-    updated_std_avg_length = means.loc[:, 'mean100_length'].std()
-
-    count = 0
-    for qseqid in means.index:
-        avg_length = means.loc[qseqid, 'mean100_length']
-        lower_bound = updated_mean_avg_length - 3 * updated_std_avg_length
-        upper_bound = updated_mean_avg_length + 3 * updated_std_avg_length
-
-        if avg_length < lower_bound or avg_length > upper_bound:
-            means.drop(qseqid, inplace=True)
-            count += 1
-
-    remaining = len(means.index)
-    logger.info(f"Second pass: dropped {count} sequences. Remaining sequences: {remaining}")
-
-    penultimate_mean_avg_length = means.loc[:, 'mean100_length'].mean()
-
-    count = 0
-    for qseqid in means.index:
-        mean_unaligned_length = means.loc[qseqid, 'mean100_unaligned_length']
-        boundary = 0.5 * penultimate_mean_avg_length
-
-        if abs(mean_unaligned_length) > boundary:
-            means.drop(qseqid, inplace=True)
-            count += 1
-
-    remaining = len(means.index)
-    logger.info(f"Third pass: dropped {count} sequences. Remaining sequences: {remaining}")
-
-    seq_ids = means.index.dropna().unique().tolist()
-
-    final_fasta = retrieve_sequences_from_db(seq_ids, output_path, db_path)
-
-    return final_fasta
-
 def cugo_select(context_path: str,
              position: int,
              db_path: str,
@@ -892,5 +823,120 @@ def cugo_select(context_path: str,
     else:
         return select_fasta
 
+def filter(fasta: str,
+           db_path: str,
+           output: str,
+           threads: int,
+           sql: bool = False,
+           svg: bool = False,
+           force: bool = False):
+    if sql and not db_path:
+        raise ValueError('SQL mode requires db_path')
+
+    prefix = determine_dataset_name(fasta, '.', 0)
+    output_path = ensure_path(output, f'{prefix}_filtered.faa', force=force)
+
+    if svg:
+        plot_path = ensure_path(output, f'{prefix}_filtered.svg', force=force)
+    else:
+        plot_path = ensure_path(output, f'{prefix}_filtered.png', force=force)
+
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
+
+    subset = fasta_subsample(fasta, output, 100, force=force)
+
+    align_output = run_diamond_alignment(fasta, subset, None, threads, FILTER_BLAST_OUTPUT_COLUMNS, output, force)
+
+    alignment_df = pd.read_csv(align_output, sep='\t', names=FILTER_BLAST_OUTPUT_COLUMNS)
+
+    alignment_df['unaligned_length'] = alignment_df['qlen'] - alignment_df['length']
+
+    means = alignment_df.groupby('qseqid').mean(numeric_only=True)
+    means.rename(columns={'nident': 'mean100_nident', 'length': 'mean100_length', 'qlen': 'mean100_qlen', 'unaligned_length': 'mean100_unaligned_length'}, inplace=True)
+
+    mean_avg_length = means.loc[:, 'mean100_length'].mean()
+
+    # first pass filter histogram
+    binwidth = 10
+    ax1.hist(means['mean100_length'], bins=range(round(min(means['mean100_length'])), round(max(means['mean100_length'])), binwidth))
+    ax1.axvline(x=(mean_avg_length + 150), color='red', linestyle='dashed', linewidth=1)
+    ax1.axvline(x=(mean_avg_length - 150), color='red', linestyle='dashed', linewidth=1)
+    ax1.set_xlabel("mean100_length")
+    ax1.set_title('First pass')
+
+    count = 0
+    for qseqid in means.index:
+        avg_length = means.loc[qseqid, 'mean100_length']
+        avg_length_deviation = avg_length - mean_avg_length
+        if abs(avg_length_deviation) >= 150:
+            means.drop(qseqid, inplace=True)
+            count += 1
+
+
+
+    remaining = len(means.index)
+    logger.info(f"First pass: dropped {count} sequences. Remaining sequences: {remaining}")
+
+    updated_mean_avg_length = means.loc[:, 'mean100_length'].mean()
+    updated_std_avg_length = means.loc[:, 'mean100_length'].std()
+    lower_bound = updated_mean_avg_length - 3 * updated_std_avg_length
+    upper_bound = updated_mean_avg_length + 3 * updated_std_avg_length
+
+    # second pass filter histogram
+    ax2.hist(means['mean100_length'], bins=range(round(min(means['mean100_length'])), round(max(means['mean100_length'])), binwidth))
+    ax2.axvline(x=lower_bound, color='red', linestyle='dashed', linewidth=1)
+    ax2.axvline(x=upper_bound, color='red', linestyle='dashed', linewidth=1)
+    ax2.set_xlabel("mean100_length")
+    ax2.set_title('Second pass')
+
+    count = 0
+    for qseqid in means.index:
+        avg_length = means.loc[qseqid, 'mean100_length']
+
+        if avg_length < lower_bound or avg_length > upper_bound:
+            means.drop(qseqid, inplace=True)
+            count += 1
+
+    remaining = len(means.index)
+    logger.info(f"Second pass: dropped {count} sequences. Remaining sequences: {remaining}")
+
+    penultimate_mean_avg_length = means.loc[:, 'mean100_length'].mean()
+    boundary = 0.5 * penultimate_mean_avg_length
+
+    ax3.hist(means['mean100_unaligned_length'],
+             bins=range(round(min(means['mean100_unaligned_length'])), round(max(means['mean100_unaligned_length'])), binwidth))
+    ax3.axvline(x=boundary, color='red', linestyle='dashed', linewidth=1)
+    ax3.set_xlabel("mean100_unaligned_length")
+    ax3.set_title('Third pass')
+
+    count = 0
+    for qseqid in means.index:
+        mean_unaligned_length = means.loc[qseqid, 'mean100_unaligned_length']
+        boundary = 0.5 * penultimate_mean_avg_length
+
+        if abs(mean_unaligned_length) > boundary:
+            means.drop(qseqid, inplace=True)
+            count += 1
+
+    remaining = len(means.index)
+    logger.info(f"Third pass: dropped {count} sequences. Remaining sequences: {remaining}")
+
+    seq_ids = means.index.dropna().unique().tolist()
+
+    if sql:
+        _ = retrieve_sequences_from_db(seq_ids, output_path, db_path)
+    else:
+        sequences_written = 0
+        with open(output_path, 'w') as f:
+            for header, sequence in write_fa_matches(fasta, seq_ids):
+                f.write(f"{header}\n{sequence}\n")
+                sequences_written += 1
+        logger.info(f"Retrieved {sequences_written} sequences to {output_path}")
+
+    plt.subplots_adjust(wspace=0.8)
+    fig.suptitle('Distribution of sequences during filtering with cutoffs')
+    plt.savefig(plot_path, dpi=300)
+
+    return output_path
 
 

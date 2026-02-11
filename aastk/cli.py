@@ -32,15 +32,19 @@ def __all_metadata(group, required=False):
 
 def __annotation(group, required=False):
     group.add_argument('--annotation', type=str, default='COG_ID', required=required,
-                       help='Select annotation from: COG_ID, KEGG_ID, Pfam_ID (default: COG_ID)')
+                       help='Annotation: COG_ID, KEGG_ID, Pfam_ID (default: COG_ID)')
 
 def __bin_width(group, required=False):
     group.add_argument('-b', '--bin_width', type=int, default=50, required=required,
                        help='Bin width for amino acid sequence size plotting (default: 50)')
 
+def __blast_output(group, required=False):
+    group.add_argument('-b', '--blast_output', type=str, default=None, required=required,
+                       help='Path to BLAST/DIAMOND output file')
+
 def __block(group, required=False):
     group.add_argument('-b', '--block', type=int, default=6, required=required,
-                       help='Choose diamond blastp sequence block size in billions of letters (default: 6)')
+                       help='blastp sequence block size in billions of letters (default: 6)')
 
 def __bsr(group, required=False):
     group.add_argument('-b', '--bsr', type=str, required=required,
@@ -52,8 +56,11 @@ def __bsr_cutoff(group, required=False):
 
 def __chunk(group, required=False):
     group.add_argument('-c', '--chunk', type=int, default=2, required=required,
-                       help='Choose number of chunks for diamond blastp index processing (default: 2)')
+                       help='Number of chunks for diamond blastp index processing (default: 2)')
 
+def __cluster_path(group, required=False):
+    group.add_argument('-c', '--cluster_path', type=str, default=None, required=required,
+                       help='Path to cluster TSV file')
 
 def __create_yaml(group, required=False):
     group.add_argument('--create_yaml', action='store_true', required=required,
@@ -77,7 +84,7 @@ def __cugo(group, required=False):
 
 def __cugo_range(group, required=False):
     group.add_argument('-r', '--cugo_range', type=int, required=required,
-                       help='CUGO range of interest for genomic context analysis')
+                       help='CUGO range for genomic context analysis')
 
 def __culture_collection_path(group, required=False):
     group.add_argument('-c', '--culture_collection_path', type=str, required=required,
@@ -87,9 +94,9 @@ def __dataset(group, required=False):
     group.add_argument('-d', '--dataset', type=str, required=required,
                        help='Dataset name')
 
-def __db(group, required=False):
-    group.add_argument('-d', '--db', type=str, required=required,
-                       help='Specify path to DIAMOND database')
+def __diamond_db(group, required=False):
+    group.add_argument('-d', '--diamond_db', type=str, required=required,
+                       help='Path to DIAMOND database')
 
 def __dbmin(group, required=False):
     group.add_argument('-d', '--dbmin', type=int, default=None, required=required,
@@ -99,13 +106,9 @@ def __db_path(group, required=False):
     group.add_argument('-d', '--db_path', type=str, default='temp_genome_data.db', required=required,
                        help='Path to SQLite database')
 
-def __early_clust(group, required=False):
-    group.add_argument('-e', '--early_clust', type=str, required=required,
-                       help='Path to early clustering TSV file')
-
 def __exaggeration(group, required=False):
     group.add_argument('-e', '--exaggeration', type=int, default=6, required=required,
-                       help='Exaggeration value for tSNE clustering')
+                       help='Exaggeration value for tSNE embedding (default: 6)')
 
 def __extracted(group, required=False):
     group.add_argument('-e', '--extracted', type=str, required=required,
@@ -121,7 +124,7 @@ def __filter_seqs(group, required=False):
 
 def __force(group, required=False):
     group.add_argument('--force', action='store_true', required=required,
-                       help='Set flag to overwrite existing files in specified path')
+                       help='Overwrite existing files in specified path')
 
 def __flank_lower(group, required=False):
     group.add_argument('-l', '--flank_lower', type=int, required=required,
@@ -130,10 +133,6 @@ def __flank_lower(group, required=False):
 def __flank_upper(group, required=False):
     group.add_argument('-u', '--flank_upper', type=int, required=required,
                        help='End of flanking window (inclusive)')
-
-def __full_clust(group, required=False):
-    group.add_argument('-f', '--full_clust', type=str, required=required,
-                       help='Path to full clustering TSV file')
 
 def __globdb_version(group, required=False):
     group.add_argument('-g', '--globdb_version', type=str, required=required,
@@ -173,7 +172,7 @@ def __include_taxonomy(group, required=False):
 
 def __iterations(group, required=False):
     group.add_argument('-i', '--iterations', type=str, default=500, required=required,
-                       help='Number of clustering iterations')
+                       help='Number of tSNE embedding iterations (default: 500)')
 
 def __keep(group, required=False):
     group.add_argument('--keep', action='store_true', required=required,
@@ -185,7 +184,7 @@ def __kegg_gff(group, required=False):
 
 def __key_column(group, required=False):
     group.add_argument('-k', '--key_column', type=int, default=0, required=required,
-                       help='Column index in the BLAST tab file to pull unique IDs from (default is 0)')
+                       help='Column index in the BLAST tab file to pull unique IDs from (default: 0)')
 
 def __low_level_environment_path(group, required=False):
     group.add_argument('-l', '--low_level_environment_path', type=str, required=required,
@@ -193,19 +192,27 @@ def __low_level_environment_path(group, required=False):
 
 def __matched(group, required=False):
     group.add_argument('-m', '--matched', type=str, required=required,
-                       help='FASTA file containing matched sequences from previous PASR run')
+                       help='Path to matched sequences FASTA file from previous PASR run')
 
 def __matrix(group, required=False):
     group.add_argument('-m', '--matrix', type=str, default='BLOSUM45', required=required,
-                       help='Choose BLOSUM substitution matrix (BLOSUM 45 or BLOSUM 62)')
+                       help='BLOSUM substitution matrix: BLOSUM45, BLOSUM62 (default: BLOSUM45)')
 
 def __matrix_path(group, required=False):
     group.add_argument('-m', '--matrix_path', type=str, required=required,
-                       help='Path to .npy file containing alignment matrix')
+                       help='Path to alignment matrix .npy file')
+
+def __max_score_max(group, required=False):
+    group.add_argument('-u', '--max_score_max', type=int, required=required,
+                       help='Upper cutoff for max score range')
+
+def __max_score_min(group, required=False):
+    group.add_argument('-l', '--max_score_min', type=int, required=required,
+                       help='Lower cutoff for max score range')
 
 def __max_scores(group, required=False):
     group.add_argument('-m', '--max_scores', type=str, required=required,
-                       help='Path to file containing max self scores')
+                       help='Path to file containing max scores')
 
 def __metadata_protein(group, required=False):
     group.add_argument('--metadata_protein', type=str, required=required,
@@ -213,7 +220,7 @@ def __metadata_protein(group, required=False):
 
 def __metadata_matrix(group, required=False):
     group.add_argument('--metadata_matrix', type=str, required=required,
-                       help='Path to matrix metadata file')
+                       help='Path to alignment matrix metadata file')
 
 def __no_cluster(group, required=False):
     group.add_argument('-n', '--no_cluster', type=int, required=required,
@@ -221,7 +228,7 @@ def __no_cluster(group, required=False):
 
 def __output(group, required=False):
     group.add_argument('-o', '--output', type=str, required=required,
-                       help='Desired output directory (default: current working directory)')
+                       help='Output directory (default: current working directory)')
 
 def __params(group, required=False):
     group.add_argument('--params', action='store_true', required=required,
@@ -229,7 +236,7 @@ def __params(group, required=False):
 
 def __perplexity(group, required=False):
     group.add_argument('-p', '--perplexity', type=int, default=50, required=required,
-                       help='Perplexity value for tSNE clustering')
+                       help='Perplexity value for tSNE embedding (default: 50)')
 
 def __pfam_gff(group, required=False):
     group.add_argument('-p', '--pfam_gff', type=str, required=required,
@@ -245,27 +252,19 @@ def __protein_ids(group, required=False):
 
 def __query(group, required=False):
     group.add_argument('-q', '--query', type=str, default=None, required=required,
-                       help='Path to query FASTA')
+                       help='Path to DIAMOND query FASTA file')
 
 def __score_column(group, required=False):
     group.add_argument('-s', '--score_column', type=int, default=None, required=required,
-                       help='Index of the raw score column of BLAST tabular output file. Counting starts at 1')
+                       help='Index of the raw score column of BLAST output file')
 
 def __seed(group, required=False):
     group.add_argument('-s', '--seed', type=str, default=None, required=required,
-                       help='Path to FASTA files containing seed sequences for database creation')
-
-def __selfmax(group, required=False):
-    group.add_argument('-u', '--selfmax', type=int, required=required,
-                       help='Upper cutoff for self score range to be included in updated dataset')
-
-def __selfmin(group, required=False):
-    group.add_argument('-l', '--selfmin', type=int, required=required,
-                       help='Lower cutoff for self score range to be included in updated dataset')
+                       help='Path to seed FASTA file for DIAMOND database creation')
 
 def __sensitivity(group, required=False):
-    group.add_argument('--sensitivity', choices=['fast', 'sensitive', 'mid-sensitive', 'very-sensitive', 'ultra-sensitive', 'faster'], required=required,
-                       help='Set the sensitivity level for the DIAMOND search: fast, sensitive, mid-sensitive, very-sensitive, '
+    group.add_argument('--sensitivity', required=required,
+                       help='DIAMOND search sensitivity level: fast, sensitive, mid-sensitive, very-sensitive, '
                             'ultra-sensitive, or faster (default: fast)')
 
 def __show(group, required=False):
@@ -278,23 +277,19 @@ def __size(group, required=False):
 
 def __sql(group, required=False):
     group.add_argument('--sql', action='store_true', required=required,
-                       help='Use AASTK SQLite database for sequence retrieval')
+                       help='Retrieve sequences from AASTK SQLite database')
 
 def __subset(group, required=False):
     group.add_argument('-s', '--subset', type=str, required=required,
-                       help='Path to subset fasta to use as DIAMOND alignment reference set')
+                       help='Path to subset FASTA')
 
 def __subset_size(group, required=False):
     group.add_argument('--subset_size', type=int, required=required,
-                       help='Number of sequences to randomly subset from input FASTA file')
+                       help='Number of sequences in subset FASTA file')
 
 def __svg(group, required=False):
     group.add_argument('--svg', action='store_true', required=required,
                        help='Generate plot in SVG format')
-
-def __tabular(group, required=False):
-    group.add_argument('-t', '--tabular', type=str, default=None, required=required,
-                       help='Path to tabular BLAST/DIAMOND output file')
 
 def __taxonomy_path(group, required=False):
     group.add_argument('-t', '--taxonomy_path', type=str, default=None, required=required,
@@ -302,7 +297,7 @@ def __taxonomy_path(group, required=False):
 
 def __threads(group, required=False):
     group.add_argument('-n', '--threads', type=int, default=1, required=required,
-                       help='Number of threads to be used (default: 1)')
+                       help='Number of threads (default: 1)')
 
 def __tmhmm_dir(group, required=False):
     group.add_argument('-t', '--tmhmm_dir', type=str, required=required,
@@ -345,14 +340,14 @@ def get_main_parser():
     with subparser(sub_parsers, 'build', 'Build DIAMOND database from seed sequence(s)') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __seed(grp, required=True)
-            __db(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
+            __output(grp)
             __threads(grp)
             __force(grp)
 
     with subparser(sub_parsers, 'search', 'Search DIAMOND reference database for homologous sequences') as parser:
         with arg_group(parser, 'Required arguments') as grp:
-            __db(grp, required=True),
+            __diamond_db(grp, required=True),
             __query(grp, required=True),
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
@@ -367,7 +362,7 @@ def get_main_parser():
             __sql(grp)
             __query(grp)
         with arg_group(parser, 'Required arguments') as grp:
-            __tabular(grp, required=True)
+            __blast_output(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __db_path(grp)
@@ -388,7 +383,7 @@ def get_main_parser():
             __column_info_path(grp)
             __score_column(grp)
         with arg_group(parser, 'Required arguments') as grp:
-            __tabular(grp, required=True)
+            __blast_output(grp, required=True)
             __max_scores(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
@@ -416,8 +411,8 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __create_yaml(grp)
-            __selfmin(grp)
-            __selfmax(grp)
+            __max_score_min(grp)
+            __max_score_max(grp)
             __dbmin(grp)
             __bsr_cutoff(grp)
             __force(grp)
@@ -552,10 +547,11 @@ def get_main_parser():
     with subparser(sub_parsers, 'filter', 'Filter datasets in FASTA format for improved homogeneity') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __fasta(grp, required=True)
-            __db_path(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __threads(grp)
+            __sql(grp)
+            __db_path(grp)
             __force(grp)
 
     with subparser(sub_parsers, 'matrix', 'Create alignment matrix for tSNE embedding and DBSCAN clustering') as parser:
@@ -584,8 +580,7 @@ def get_main_parser():
 
     with subparser(sub_parsers, 'casm_plot', 'Plot CASM .tsv output files') as parser:
         with arg_group(parser, 'Required arguments') as grp:
-            __early_clust(grp, required=True)
-            __full_clust(grp, required=True)
+            __cluster_path(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __db_path(grp)
@@ -609,17 +604,13 @@ def get_main_parser():
             __exaggeration(grp)
             __metadata_protein(grp)
             __force(grp)
-            __early_clust(grp)
-            __full_clust(grp)
-            __matrix_path(grp)
-            __metadata_matrix(grp)
             __keep(grp)
             __show(grp)
             __svg(grp)
 
     with subparser(sub_parsers, 'casm_select', 'Pick CASM clusters to generate .faa file for further analysis') as parser:
         with arg_group(parser, 'Required arguments') as grp:
-            __full_clust(grp, required=True)
+            __cluster_path(grp, required=True)
             __fasta(grp, required=True)
             __no_cluster(grp, required=True)
         with arg_group(parser, 'Optional') as grp:

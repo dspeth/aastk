@@ -58,9 +58,16 @@ def determine_file_type(file_path):
 		else:
 			raise ValueError(f"Unrecognized file type in {file_path}")
 
-def ensure_path(path: Optional[str] = None, target: Optional[str] = None, force: bool = False):
+def ensure_path(path: Optional[str] = None,
+				target: Optional[str] = None,
+				suffix: Optional[str] = None,
+				force: bool = False):
 	path = Path(path) if path else Path('.')
 	final_path = path / target if target else path
+
+	# add suffix to final_path for path check and optional removal
+	if suffix:
+		final_path = Path(str(final_path) + f'{suffix}')
 
 	if final_path.exists():
 		if final_path.is_dir():
@@ -70,6 +77,10 @@ def ensure_path(path: Optional[str] = None, target: Optional[str] = None, force:
 			final_path.unlink()
 		else:
 			raise FileExistsError(f"Path already exists: {final_path}")
+
+	# remove suffix again
+	if suffix:
+		final_path = Path(str(final_path).replace(suffix, ''))
 
 	if not final_path.exists():
 		final_path.parent.mkdir(parents=True, exist_ok=True)

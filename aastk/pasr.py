@@ -16,21 +16,33 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logger = logging.getLogger(__name__)
 
+BLOSUM_DIAGONALS = {
+    "BLOSUM45": {
+        'A': 5, 'R': 7, 'N': 6, 'D': 7, 'C': 12, 'Q': 6, 'E': 6, 'G': 7,
+        'H': 10, 'I': 5, 'L': 5, 'K': 5, 'M': 6, 'F': 8, 'P': 9, 'S': 4,
+        'T': 5, 'W': 15, 'Y': 8, 'V': 5, 'B': 5, 'J': 4, 'Z': 5, 'X': 0
+    },
+    "BLOSUM62": {
+        'A': 4, 'R': 5, 'N': 6, 'D': 6, 'C': 9, 'Q': 5, 'E': 5, 'G': 6,
+        'H': 8, 'I': 4, 'L': 4, 'K': 5, 'M': 5, 'F': 6, 'P': 7, 'S': 4,
+        'T': 5, 'W': 11, 'Y': 7, 'V': 4, 'B': 4, 'J': 3, 'Z': 4, 'X': 0
+    }
+}
 
 # ===============================
 # aastk build CLI FUNCTION
 # ===============================
 def build(seed_fasta: str,
-                     threads: int,
-                     db_dir: str,
-                     force: bool = False):
+          threads: int,
+          output: str,
+          force: bool = False):
     """
     Builds a DIAMOND protein database from a seed FASTA file.
 
     Args:
         seed_fasta (str): Path to the FASTA file containing seed sequences.
         threads (int): Number of threads to use.
-        db_dir (str): Directory where the database should be stored. (Default: current working directory)
+        output (str): Directory where the database should be stored. (Default: current working directory)
         force (bool): If true, existing files/directories in output path are overwritten
 
     Returns:
@@ -45,7 +57,6 @@ def build(seed_fasta: str,
     if Path(seed_fasta).is_file():
         pass
     else:
-        logger.error("Input seed FASTA not found")
         raise FileNotFoundError(f"Seed FASTA file does not exist: {seed_fasta}")
 
     seed_fasta_filename = Path(seed_fasta).name
@@ -54,7 +65,7 @@ def build(seed_fasta: str,
     # ===============================
     # Database path setup
     # ===============================
-    db_path = ensure_path(db_dir, f"{protein_name}_seed_db", force=force)
+    db_path = ensure_path(path=output, target=f"{protein_name}_seed_db", suffix='.dmnd', force=force)
 
     # log the path
     logger.info(f"Building DIAMOND database for {protein_name} at {db_path}")
@@ -97,11 +108,10 @@ def build(seed_fasta: str,
 
     db_file = Path(f"{db_path}.dmnd")
     if not db_file.exists():
-        logger.error(f"DIAMOND database file not found at {db_file}")
         raise RuntimeError(f"DIAMOND database was not created at {db_file}")
 
 
-    logger.info(f"Successfully built DIAMOND database at {db_path}")
+    logger.info(f"Successfully built DIAMOND database at {db_file}")
     return db_path
 
 
@@ -112,13 +122,13 @@ def build(seed_fasta: str,
 # aastk search CLI FUNCTION
 # ===============================
 def search(db_path: str,
-                      query_path: str,
-                      threads: int,
-                      output_dir: str,
-                      sensitivity: str,
-                      block: int = 6,
-                      chunk: int = 2,
-                      force: bool = False):
+           query_path: str,
+           threads: int,
+           output_dir: str,
+           sensitivity: str,
+           block: int = 6,
+           chunk: int = 2,
+           force: bool = False):
     """
     Searches a DIAMOND reference database for homologous sequences.
 
@@ -328,14 +338,14 @@ def get_hit_seqs(blast_tab: str,
                     for i, batch in enumerate(batches)
                 }
 
-                # Process completed batches as they finish
+                # process completed batches as they finish
                 for future in tqdm(as_completed(future_to_batch),
                                    total=len(batches),
                                    desc="Fetching sequences"):
                     try:
                         results = future.result()
 
-                        # Write results to file
+                        # write results to file
                         for seqid, sequence in results:
                             out.write(f">{seqid}\n{sequence}\n")
                             sequences_written += 1
@@ -364,7 +374,6 @@ def get_hit_seqs(blast_tab: str,
                     sequences_written += 1
 
             else:
-                logger.error(f"Unsupported file type: {file_type}")
                 raise ValueError(f"Unsupported file type: {file_type}")
 
             logger.info(f"Successfully wrote {sequences_written} matching sequences to {out_fasta}")
@@ -398,7 +407,7 @@ def max_score(extracted: str,
 
     Args:
         extracted (str): Path to the extracted FASTA file.
-        matrix (str): BLOSUM matrix name ('BLOSUM45' or 'BLOSUM62').
+        matrix (str): BLOSUM matrix name (default: 'BLOSUM45').
         output_dir (str): Directory where the output file should be stored.
         force (bool): If true, existing files/directories in output path are overwritten
 
@@ -412,25 +421,9 @@ def max_score(extracted: str,
     # ===============================
     out_file = ensure_path(output_dir, f"{protein_name}_max_scores.tsv", force=force)
 
-    # ============================================================
-    # BLOSUM matrix choice validation and BLOSUM diagonals setup
-    # ============================================================
-    # define the diagonals of the usable BLOSUM matrices
-    blosum_diagonals = {
-        "BLOSUM45": {
-            'A': 5, 'R': 7, 'N': 6, 'D': 7, 'C': 12, 'Q': 6, 'E': 6, 'G': 7,
-            'H': 10, 'I': 5, 'L': 5, 'K': 5, 'M': 6, 'F': 8, 'P': 9, 'S': 4,
-            'T': 5, 'W': 15, 'Y': 8, 'V': 5, 'B': 5, 'J': 4, 'Z': 5, 'X': 0
-        },
-        "BLOSUM62": {
-            'A': 4, 'R': 5, 'N': 6, 'D': 6, 'C': 9, 'Q': 5, 'E': 5, 'G': 6,
-            'H': 8, 'I': 4, 'L': 4, 'K': 5, 'M': 5, 'F': 6, 'P': 7, 'S': 4,
-            'T': 5, 'W': 11, 'Y': 7, 'V': 4, 'B': 4, 'J': 3, 'Z': 4, 'X': 0
-        }
-    }
-
-    if matrix not in blosum_diagonals.keys():
-        logger.error(f"Invalid matrix: {matrix}. Must be one of {blosum_diagonals.keys()}")
+    # validate requested matrix
+    if matrix not in BLOSUM_DIAGONALS.keys():
+        raise ValueError(f"Invalid matrix: {matrix}. Must be one of {BLOSUM_DIAGONALS.keys()}")
 
     logger.info(f"Calculating max scores using {matrix} matrix")
 
@@ -448,8 +441,8 @@ def max_score(extracted: str,
         score = 0
         for amino_acid in sequence:
             aa = amino_acid.upper()  # just to make sure that we have consistency
-            if aa in blosum_diagonals[matrix]:
-                score += blosum_diagonals[matrix][amino_acid]
+            if aa in BLOSUM_DIAGONALS[matrix]:
+                score += BLOSUM_DIAGONALS[matrix][amino_acid]
             else:
                 logger.warning(f"Unknown amino acid '{amino_acid}' in sequence {header}")
         max_scores[header] = score
@@ -474,12 +467,12 @@ def max_score(extracted: str,
 # aastk bsr CLI FUNCTION
 # ===============================
 def bsr(blast_tab: str,
-                      max_scores_path: str,
-                      output_dir: str,
-                      key_column: int = 0,
-                      column_info_path: str = None,
-                      score_column: int = None,
-                      force: bool = False):
+        max_scores_path: str,
+        output_dir: str,
+        key_column: int = 0,
+        column_info_path: str = None,
+        score_column: int = None,
+        force: bool = False):
     """
     Computes BSR (Blast Score Ratio) using a BLAST tab file and max scores from a TSV.
 
@@ -516,19 +509,16 @@ def bsr(blast_tab: str,
                 column_info = json.load(f)
                 if 'score' in column_info:
                     raw_score_column = column_info['score']
-                    logger.info(f"Using score column index {raw_score_column} from column info file")
                 else:
-                    logger.warning(f"'Score column not found in column info")
+                    raise ValueError("Column 'score' not found in column info file")
                 if 'qlen' in column_info:
                     qlen_column = column_info['qlen']
-                    logger.info(f"Using qlen column index {qlen_column} from column info file")
                 else:
-                    logger.warning(f"'qlen column not found in column info")
+                    raise ValueError("Column 'qlen' not found in column info file")
                 if 'pident' in column_info:
                     pident_column = column_info['pident']
-                    logger.info(f"Using pident column index {pident_column} from column info file")
                 else:
-                    logger.warning(f"'pident column not found in column info")
+                    raise ValueError("Column 'pident' not found in column info file")
         except (json.JSONDecodeError, IOError) as e:
             logger.warning(f"Error reading column info file: {e}")
     # if no column info file is provided we use the input score column index
@@ -745,15 +735,15 @@ def pasr_plot(bsr_file: str,
             except Exception as e:
                 raise RuntimeError(f"Failed to load thresholds from {yaml_path}: {e}") from e
 
-            selfmin = thresholds.get("selfmin", 0)
-            selfmax = thresholds.get("selfmax", float('inf'))
+            max_score_min = thresholds.get("max_score_min", 0)
+            max_score_max = thresholds.get("max_score_max", float('inf'))
             dbmin = thresholds.get("dbmin", None)
             bsr_min = thresholds.get("bsr", None)
 
-            if selfmin is not None:
-                axs['scatter'].axvline(selfmin, color='black', linestyle='--', linewidth=1.0)
-            if selfmax is not None:
-                axs['scatter'].axvline(selfmax, color='black', linestyle='--', linewidth=1.0)
+            if max_score_min is not None:
+                axs['scatter'].axvline(max_score_min, color='black', linestyle='--', linewidth=1.0)
+            if max_score_max is not None:
+                axs['scatter'].axvline(max_score_max, color='black', linestyle='--', linewidth=1.0)
             if dbmin is not None:
                 axs['scatter'].axhline(dbmin, color='black', linestyle='--', linewidth=1.0)
             if bsr_min is not None:
@@ -779,22 +769,22 @@ def pasr_plot(bsr_file: str,
 
 
 # ===============================
-# aastk metadata CLI FUNCTION
+# aastk pasr_select CLI FUNCTION
 # ===============================
-def pasr_metadata(selfmin: int,
-             selfmax: int,
-             output_dir: str,
-             dbmin: int = None,
-             bsr: float = None,
-             seed: str = None,
-             bsr_file: str = None,
-             force: bool = False):
+def pasr_metadata(max_score_min: int,
+                  max_score_max: int,
+                  output_dir: str,
+                  dbmin: int = None,
+                  bsr: float = None,
+                  seed: str = None,
+                  bsr_file: str = None,
+                  force: bool = False):
     """
     Writes metadata parameters to a YAML file.
 
     Args:
-        selfmin: Minimum self-score threshold.
-        selfmax: Maximum self-score threshold.
+        max_score_min: Minimum max_score-score threshold.
+        max_score_max: Maximum max_score-score threshold.
         output_dir: Directory to save the metadata file.
         dbmin: Minimum database score threshold.
         bsr: Minimum BSR threshold.
@@ -850,17 +840,17 @@ def pasr_metadata(selfmin: int,
     # ===============================
     # Parameter collection and validation
     # ===============================
-    logger.debug(f"Collecting parameters: selfmin={selfmin}, selfmax={selfmax}, "
+    logger.debug(f"Collecting parameters: max_score_min={max_score_min}, max_score_max={max_score_max}, "
                  f"dbmin={dbmin}, bsr={bsr}")
 
     # Validate threshold values
-    if selfmin < 0 or selfmax < 0:
-        error_msg = "selfmin and selfmax must be non-negative"
+    if max_score_min < 0 or max_score_max < 0:
+        error_msg = "max_score_min and max_score_max must be non-negative"
         logger.error(error_msg)
         raise ValueError(error_msg)
 
-    if selfmin > selfmax:
-        error_msg = f"selfmin ({selfmin}) cannot be greater than selfmax ({selfmax})"
+    if max_score_min > max_score_max:
+        error_msg = f"max_score_min ({max_score_min}) cannot be greater than max_score_max ({max_score_max})"
         logger.error(error_msg)
         raise ValueError(error_msg)
 
@@ -876,8 +866,8 @@ def pasr_metadata(selfmin: int,
 
     params = {
         "protein_name": protein_name,
-        "selfmin": selfmin,
-        "selfmax": selfmax,
+        "max_score_min": max_score_min,
+        "max_score_max": max_score_max,
         "dbmin": dbmin,
         "bsr": bsr
     }
@@ -902,25 +892,18 @@ def pasr_metadata(selfmin: int,
     except Exception as e:
         logger.error(f"Failed to write metadata file {yaml_path}: {e}")
         raise RuntimeError(f"Failed to write metadata file: {e}") from e
-
-
-
-
-
-# ===============================
-# aastk pasr_select CLI FUNCTION
-# ===============================
+    
 def pasr_select(yaml_path: str,
-           matched_fasta: str,
-           bsr_table: str,
-           output_dir: str,
-           selfmin: int = None,
-           selfmax: int = None,
-           dbmin: int = None,
-           bsr: float = None,
-           force: bool = False,
-           create_yaml: bool = False,
-           params: bool = False):
+                matched_fasta: str,
+                bsr_table: str,
+                output_dir: str,
+                max_score_min: int = None,
+                max_score_max: int = None,
+                dbmin: int = None,
+                bsr: float = None,
+                force: bool = False,
+                create_yaml: bool = False,
+                params: bool = False):
     """
     Subsets matched sequences based on YAML thresholds or provided parameters.
 
@@ -929,8 +912,8 @@ def pasr_select(yaml_path: str,
         matched_fasta (str): Path to the matched sequences FASTA.
         bsr_table (str): Path to the BSR table.
         output_dir (str): Directory to save the subsetted sequences.
-        selfmin (int): Minimum self score threshold (required when params=True).
-        selfmax (int): Maximum self score threshold (required when params=True).
+        max_score_min (int): Minimum max_score score threshold (required when params=True).
+        max_score_max (int): Maximum max_score score threshold (required when params=True).
         dbmin (int): Minimum database score threshold (mutually exclusive with bsr).
         bsr (float): Minimum BSR threshold (mutually exclusive with dbmin).
         force (bool): If true, existing files/directories in output path are overwritten.
@@ -962,8 +945,8 @@ def pasr_select(yaml_path: str,
     # ===============================
     if params:
         # validate required parameters when using params=True
-        if selfmin is None or selfmax is None:
-            raise ValueError("selfmin and selfmax are required when params=True")
+        if max_score_min is None or max_score_max is None:
+            raise ValueError("max_score_min and max_score_max are required when params=True")
 
         # ensure either dbmin or bsr is provided (but not both)
         if dbmin is None and bsr is None:
@@ -981,8 +964,8 @@ def pasr_select(yaml_path: str,
         if create_yaml:
             logger.info("Creating YAML file with provided parameters")
             created_yaml_path = pasr_metadata(
-                selfmin=selfmin,
-                selfmax=selfmax,
+                max_score_min=max_score_min,
+                max_score_max=max_score_max,
                 output_dir=output_dir,
                 dbmin=dbmin,
                 bsr=bsr,
@@ -1002,8 +985,8 @@ def pasr_select(yaml_path: str,
 
         # get thresholds and assign default values
         protein_name = thresholds.get("protein_name", None)
-        selfmin = thresholds.get("selfmin", 0)
-        selfmax = thresholds.get("selfmax", float('inf'))
+        max_score_min = thresholds.get("max_score_min", 0)
+        max_score_max = thresholds.get("max_score_max", float('inf'))
         dbmin = thresholds.get("dbmin", None)
         bsr_min = thresholds.get("bsr", None)
 
@@ -1025,8 +1008,8 @@ def pasr_select(yaml_path: str,
     # load BSR table
     bsr_df = pd.read_csv(bsr_table, sep='\t')
 
-    # apply filters defined by the required arguments selfmin and selfmax to the BSR table
-    filtered = bsr_df[(bsr_df['max_score'] >= selfmin) & (bsr_df['max_score'] <= selfmax)]
+    # apply filters defined by the required arguments max_score_min and max_score_max to the BSR table
+    filtered = bsr_df[(bsr_df['max_score'] >= max_score_min) & (bsr_df['max_score'] <= max_score_max)]
 
     # apply mutually exclusive filters to the BSR table (either min. alignment score or min. BSR)
     if dbmin is not None:
@@ -1155,6 +1138,9 @@ def pasr(seed_fasta: str,
     if update and not yaml_path:
         logger.error("YAML path is required if update is True")
         exit()
+
+    if matrix not in BLOSUM_DIAGONALS.keys():
+        raise ValueError(f"Invalid matrix: {matrix}. Must be one of {BLOSUM_DIAGONALS.keys()}")
 
     seed_name = Path(seed_fasta).name
     protein_name = determine_dataset_name(seed_name, '.', 0)

@@ -58,6 +58,7 @@ def main():
         sys.exit(0)
     elif sys.argv[1] in {'-v', '--v', '-version', '--version'}:
         print(f"AASTK: version {__version__} {__copyright__} {__author__}")
+        sys.exit(0)
     elif sys.argv[1] in {'-h', '--h', '-help', '--help'}:
         print_help()
         sys.exit(0)
@@ -76,15 +77,15 @@ def main():
         ### PARSER FOR PASR FUNCTIONALITIES AND WORKFLOW ###
         if args.subparser_name == 'build':
             build(
-                db_dir=args.db,
                 seed_fasta=args.seed,
+                output=args.output,
                 threads=args.threads,
                 force=args.force
             )
 
         elif args.subparser_name == 'search':
             search(
-                db_path=args.db,
+                db_path=args.diamond_db,
                 query_path=args.query,
                 output_dir=args.output,
                 threads=args.threads,
@@ -96,7 +97,7 @@ def main():
 
         elif args.subparser_name == 'get_hit_seqs':
             get_hit_seqs(
-                blast_tab=args.tabular,
+                blast_tab=args.blast_output,
                 query_path=args.query,
                 output_dir=args.output,
                 db_path=args.db_path,
@@ -116,7 +117,7 @@ def main():
 
         elif args.subparser_name == 'bsr':
             bsr(
-                blast_tab=args.tabular,
+                blast_tab=args.blast_output,
                 max_scores_path=args.max_scores,
                 output_dir=args.output,
                 key_column=args.key_column,
@@ -141,8 +142,8 @@ def main():
                 matched_fasta=args.matched,
                 bsr_table=args.bsr,
                 output_dir=args.output,
-                selfmin=args.selfmin,
-                selfmax=args.selfmax,
+                max_score_min=args.max_score_min,
+                max_score_max=args.max_score_max,
                 dbmin=args.dbmin,
                 bsr=args.bsr_cutoff,
                 force=args.force,
@@ -293,7 +294,7 @@ def main():
                 output=args.output,
                 perplexity=args.perplexity,
                 iterations=args.iterations,
-                exaggeration=args.exagerration,
+                exaggeration=args.exaggeration,
                 threads=args.threads,
                 force=args.force,
             )
@@ -301,11 +302,10 @@ def main():
 
         elif args.subparser_name == 'casm_plot':
             casm_plot(
-                early_clust_path=args.early_clust,
-                full_clust_path=args.full_clust,
+                clust_path=args.cluster_path,
                 output=args.output,
-                db_path=args.db_path,
                 metadata_protein=args.metadata_protein,
+                db_path=args.db_path,
                 force=args.force,
                 svg=args.svg,
                 show_cluster_numbers=args.show,
@@ -331,7 +331,7 @@ def main():
 
         elif args.subparser_name == 'casm_select':
             casm_select(
-                final_embedding_file=args.full_clust,
+                final_embedding_file=args.cluster_path,
                 fasta=args.fasta,
                 no_cluster=args.no_cluster,
                 output=args.output,
