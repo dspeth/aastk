@@ -83,6 +83,7 @@ Where:
 `-u` specifies the number of positions downstream of the gene of interest  
 `-d` is the path to the AASTK SQL database  
 `-f` and -o control the input and output  
+All command line options for CASM are available on the [CUGO command line reference page](https://globdb.org/aastk/cugo).  
 
 ### Meta
 `aastk meta --all_metadata -d aastk_sql_database.db -f fasta_file.faa -o output_directory`  
@@ -90,6 +91,8 @@ Where:
 `--all_metadata` controls which metadata is added to the output tsv file  
 `-d` is the path to the AASTK SQL database  
 `-f` and `-o` control the input and output  
+All command line options for CASM are available on the [Meta command line reference page](https://globdb.org/aastk/meta).  
+
 
 ## Example plots
 
