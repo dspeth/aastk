@@ -374,7 +374,6 @@ def get_hit_seqs(blast_tab: str,
                     sequences_written += 1
 
             else:
-                logger.error(f"Unsupported file type: {file_type}")
                 raise ValueError(f"Unsupported file type: {file_type}")
 
             logger.info(f"Successfully wrote {sequences_written} matching sequences to {out_fasta}")

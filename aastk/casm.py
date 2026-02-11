@@ -487,7 +487,33 @@ def plot_clusters(tsv_file: str,
     # ========================
     plt.figure(figsize=(14, 10))
 
-    if color_column == 'cluster':
+    if metadata_protein == 'culture_collection' and 'culture_collection' in df.columns:
+        overlay_mask = df['culture_collection'] == 1
+        non_overlay_mask = ~overlay_mask
+
+        plt.scatter(df.loc[non_overlay_mask, 'tsne1'],
+                    df.loc[non_overlay_mask, 'tsne2'],
+                    color='lightgray',
+                    s=15,
+                    alpha=0.5,
+                    edgecolors='none')
+
+        if overlay_mask.any():
+            n_overlay = overlay_mask.sum()
+            logger.info(f"Overlaying {n_overlay} points with culture_collection == 1")
+            plt.scatter(df.loc[overlay_mask, 'tsne1'],
+                        df.loc[overlay_mask, 'tsne2'],
+                        c='red',
+                        s=25,
+                        alpha=0.6,
+                        edgecolors='black',
+                        linewidths=0.5,
+                        marker='o',
+                        label='Culture Collection',
+                        zorder=10)
+
+
+    elif color_column == 'cluster':
         # create masks to separate noise points (cluster -1) from clustered points
         noise_mask = df['cluster'] == -1
         clustered_mask = df['cluster'] != -1
@@ -560,22 +586,6 @@ def plot_clusters(tsv_file: str,
             plt.scatter(df['tsne1'], df['tsne2'],
                         c=df[color_column], cmap='viridis', s=15,
                         alpha=0.7, edgecolors='white', linewidths=0.3)
-
-    if metadata_protein == 'culture_collection' and 'culture_collection' in df.columns:
-        overlay_mask = df['culture_collection'] == 1
-        if overlay_mask.any():
-            n_overlay = overlay_mask.sum()
-            logger.info(f"Overlaying {n_overlay} points with culture_collection == 1")
-            plt.scatter(df.loc[overlay_mask, 'tsne1'],
-                        df.loc[overlay_mask, 'tsne2'],
-                        c='red',
-                        s=25,
-                        alpha=0.6,
-                        edgecolors='black',
-                        linewidths=0.5,
-                        marker='o',
-                        label='Culture Collection',
-                        zorder=10)
 
 
     if show_cluster_numbers and 'cluster' in df.columns:
