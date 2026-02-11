@@ -293,7 +293,7 @@ def main():
                 output=args.output,
                 perplexity=args.perplexity,
                 iterations=args.iterations,
-                exaggeration=args.exagerration,
+                exaggeration=args.exaggeration,
                 threads=args.threads,
                 force=args.force,
             )
@@ -301,11 +301,10 @@ def main():
 
         elif args.subparser_name == 'casm_plot':
             casm_plot(
-                early_clust_path=args.early_clust,
-                full_clust_path=args.full_clust,
+                clust_path=args.cluster_path,
                 output=args.output,
-                db_path=args.db_path,
                 metadata_protein=args.metadata_protein,
+                db_path=args.db_path,
                 force=args.force,
                 svg=args.svg,
                 show_cluster_numbers=args.show,
@@ -331,7 +330,7 @@ def main():
 
         elif args.subparser_name == 'casm_select':
             casm_select(
-                final_embedding_file=args.full_clust,
+                final_embedding_file=args.cluster_path,
                 fasta=args.fasta,
                 no_cluster=args.no_cluster,
                 output=args.output,

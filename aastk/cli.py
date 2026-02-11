@@ -58,6 +58,9 @@ def __chunk(group, required=False):
     group.add_argument('-c', '--chunk', type=int, default=2, required=required,
                        help='Number of chunks for diamond blastp index processing (default: 2)')
 
+def __cluster_path(group, required=False):
+    group.add_argument('-c', '--cluster_path', type=str, default=None, required=required,
+                       help='Path to cluster TSV file')
 
 def __create_yaml(group, required=False):
     group.add_argument('--create_yaml', action='store_true', required=required,
@@ -103,13 +106,9 @@ def __db_path(group, required=False):
     group.add_argument('-d', '--db_path', type=str, default='temp_genome_data.db', required=required,
                        help='Path to SQLite database')
 
-def __early_clust(group, required=False):
-    group.add_argument('-e', '--early_clust', type=str, required=required,
-                       help='Path to early clustering TSV file')
-
 def __exaggeration(group, required=False):
     group.add_argument('-e', '--exaggeration', type=int, default=6, required=required,
-                       help='Exaggeration value for tSNE clustering')
+                       help='Exaggeration value for tSNE embedding (default: 6)')
 
 def __extracted(group, required=False):
     group.add_argument('-e', '--extracted', type=str, required=required,
@@ -134,10 +133,6 @@ def __flank_lower(group, required=False):
 def __flank_upper(group, required=False):
     group.add_argument('-u', '--flank_upper', type=int, required=required,
                        help='End of flanking window (inclusive)')
-
-def __full_clust(group, required=False):
-    group.add_argument('-f', '--full_clust', type=str, required=required,
-                       help='Path to full clustering TSV file')
 
 def __globdb_version(group, required=False):
     group.add_argument('-g', '--globdb_version', type=str, required=required,
@@ -177,7 +172,7 @@ def __include_taxonomy(group, required=False):
 
 def __iterations(group, required=False):
     group.add_argument('-i', '--iterations', type=str, default=500, required=required,
-                       help='Number of clustering iterations')
+                       help='Number of tSNE embedding iterations (default: 500)')
 
 def __keep(group, required=False):
     group.add_argument('--keep', action='store_true', required=required,
@@ -197,7 +192,7 @@ def __low_level_environment_path(group, required=False):
 
 def __matched(group, required=False):
     group.add_argument('-m', '--matched', type=str, required=required,
-                       help='FASTA file containing matched sequences from previous PASR run')
+                       help='Path to matched sequences FASTA file from previous PASR run')
 
 def __matrix(group, required=False):
     group.add_argument('-m', '--matrix', type=str, default='BLOSUM45', required=required,
@@ -205,7 +200,7 @@ def __matrix(group, required=False):
 
 def __matrix_path(group, required=False):
     group.add_argument('-m', '--matrix_path', type=str, required=required,
-                       help='Path to .npy file containing alignment matrix')
+                       help='Path to alignment matrix .npy file')
 
 def __max_score_max(group, required=False):
     group.add_argument('-u', '--max_score_max', type=int, required=required,
@@ -225,7 +220,7 @@ def __metadata_protein(group, required=False):
 
 def __metadata_matrix(group, required=False):
     group.add_argument('--metadata_matrix', type=str, required=required,
-                       help='Path to matrix metadata file')
+                       help='Path to alignment matrix metadata file')
 
 def __no_cluster(group, required=False):
     group.add_argument('-n', '--no_cluster', type=int, required=required,
@@ -241,7 +236,7 @@ def __params(group, required=False):
 
 def __perplexity(group, required=False):
     group.add_argument('-p', '--perplexity', type=int, default=50, required=required,
-                       help='Perplexity value for tSNE clustering')
+                       help='Perplexity value for tSNE embedding (default: 50)')
 
 def __pfam_gff(group, required=False):
     group.add_argument('-p', '--pfam_gff', type=str, required=required,
@@ -286,11 +281,11 @@ def __sql(group, required=False):
 
 def __subset(group, required=False):
     group.add_argument('-s', '--subset', type=str, required=required,
-                       help='Path to subset fasta to use as DIAMOND alignment reference set')
+                       help='Path to subset FASTA')
 
 def __subset_size(group, required=False):
     group.add_argument('--subset_size', type=int, required=required,
-                       help='Number of sequences to randomly subset from input FASTA file')
+                       help='Number of sequences in subset FASTA file')
 
 def __svg(group, required=False):
     group.add_argument('--svg', action='store_true', required=required,
@@ -585,8 +580,7 @@ def get_main_parser():
 
     with subparser(sub_parsers, 'casm_plot', 'Plot CASM .tsv output files') as parser:
         with arg_group(parser, 'Required arguments') as grp:
-            __early_clust(grp, required=True)
-            __full_clust(grp, required=True)
+            __cluster_path(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __db_path(grp)
@@ -610,17 +604,13 @@ def get_main_parser():
             __exaggeration(grp)
             __metadata_protein(grp)
             __force(grp)
-            __early_clust(grp)
-            __full_clust(grp)
-            __matrix_path(grp)
-            __metadata_matrix(grp)
             __keep(grp)
             __show(grp)
             __svg(grp)
 
     with subparser(sub_parsers, 'casm_select', 'Pick CASM clusters to generate .faa file for further analysis') as parser:
         with arg_group(parser, 'Required arguments') as grp:
-            __full_clust(grp, required=True)
+            __cluster_path(grp, required=True)
             __fasta(grp, required=True)
             __no_cluster(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
