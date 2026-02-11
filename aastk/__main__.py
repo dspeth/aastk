@@ -58,6 +58,7 @@ def main():
         sys.exit(0)
     elif sys.argv[1] in {'-v', '--v', '-version', '--version'}:
         print(f"AASTK: version {__version__} {__copyright__} {__author__}")
+        sys.exit(0)
     elif sys.argv[1] in {'-h', '--h', '-help', '--help'}:
         print_help()
         sys.exit(0)
