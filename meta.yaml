@@ -12,28 +12,16 @@ source:
 
 build:
   noarch: python
-  number: 0
-  skip: true  # [py<38]
   script: {{ PYTHON }} -m pip install . -vv
 
 requirements:
   host:
-    - python >=3.13
+    - python>=3.13
     - pip
   run:
     - python>=3.13
-    - pip
-    - contourpy>=1.3.2
-    - matplotlib>=3.10.1
-    - numpy>=2.2.5
-    - opentsne>=1.0.2
-    - pandas>=2.2.3
-    - pyyaml>=6.0.2
-    - scikit-learn>=1.6.1
-    - scipy>=1.15.3
     - diamond>=2.1.8
     - seqkit>=2.5.1
-    - tqdm>=4.67.1
 
 test:
   imports:
@@ -41,5 +29,17 @@ test:
   commands:
     - aastk --help
     - pip check
+    - diamond help
+    - seqkit --help
   requires:
     - pip
+
+about:
+  home: https://github.com/dspeth/aastk/
+  license: GPL v3.0
+  summary: 'Toolkit for analyses of amino acid sequences'
+  description: |
+    This package contains several tools to generate and work with amino acid sequence datasets.
+    AASTK is primarily designed to work with the GlobDB genome database.
+  dev_url: https://github.com/dspeth/aastk/
+  doc_url: https://globdb.org/aastk
