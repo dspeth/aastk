@@ -362,7 +362,6 @@ def plot_top_annotations_per_position(
 
     # Save if requested
     if save and plot_path is not None:
-        #plt.tight_layout()
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
 
     return positions, [pos + 0.5 for pos in positions[:-1]]
@@ -863,6 +862,7 @@ def filter(fasta: str,
     ax1.axvline(x=(mean_avg_length + 150), color='red', linestyle='dashed', linewidth=1)
     ax1.axvline(x=(mean_avg_length - 150), color='red', linestyle='dashed', linewidth=1)
     ax1.set_xlabel("mean100_length")
+    ax1.set_title('First pass')
 
     count = 0
     for qseqid in means.index:
@@ -887,6 +887,7 @@ def filter(fasta: str,
     ax2.axvline(x=lower_bound, color='red', linestyle='dashed', linewidth=1)
     ax2.axvline(x=upper_bound, color='red', linestyle='dashed', linewidth=1)
     ax2.set_xlabel("mean100_length")
+    ax2.set_title('Second pass')
 
     count = 0
     for qseqid in means.index:
@@ -906,6 +907,7 @@ def filter(fasta: str,
              bins=range(round(min(means['mean100_unaligned_length'])), round(max(means['mean100_unaligned_length'])), binwidth))
     ax3.axvline(x=boundary, color='red', linestyle='dashed', linewidth=1)
     ax3.set_xlabel("mean100_unaligned_length")
+    ax3.set_title('Third pass')
 
     count = 0
     for qseqid in means.index:
@@ -931,7 +933,9 @@ def filter(fasta: str,
                 sequences_written += 1
         logger.info(f"Retrieved {sequences_written} sequences to {output_path}")
 
-    plt.savefig(plot_path)
+    plt.subplots_adjust(wspace=0.8)
+    fig.suptitle('Distribution of sequences during filtering with cutoffs')
+    plt.savefig(plot_path, dpi=300)
 
     return output_path
 
