@@ -95,4 +95,4 @@ All command line options for CASM are available on the [Meta command line refere
 
 
 ## Example plots
-
+![test PASR image](https://globdb.org/sites/globdb.org/files/inline-images/mobNAR_bsr.png)
