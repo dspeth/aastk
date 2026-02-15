@@ -719,7 +719,7 @@ def pasr_plot(bsr_file: str,
             align='edge',
             color='black'
         )
-        axs['histy'].set_ylim(ylim)
+        axs['histy'].set_ylim(bottom=0)
         axs['histy'].set_xlabel('Counts')
         axs['histy'].set_xticks([0, max(y_hist)/2, max(y_hist)])
         axs['histy'].tick_params(labelleft=False)
