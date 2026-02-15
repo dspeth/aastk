@@ -706,7 +706,7 @@ def pasr_plot(bsr_file: str,
         )
         axs['histx'].set_xlim(xlim)
         axs['histx'].set_ylabel('Counts')
-        axs['histx'].set_yticks([0, max(x_hist)/2, max(x_hist)])
+        axs['histx'].set_yticks([0, round(max(x_hist)/2), round(max(x_hist))])
         axs['histx'].tick_params(labelbottom=False)
         axs['histx'].set_title(f'Protein Alignment Score Ratio for {protein_name}')
 
@@ -721,7 +721,7 @@ def pasr_plot(bsr_file: str,
         )
         axs['histy'].set_ylim(bottom=0)
         axs['histy'].set_xlabel('Counts')
-        axs['histy'].set_xticks([0, max(y_hist)/2, max(y_hist)])
+        axs['histy'].set_xticks([0, round(max(y_hist)/2), round(max(y_hist))])
         axs['histy'].tick_params(labelleft=False)
 
 
