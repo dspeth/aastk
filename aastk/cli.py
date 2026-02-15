@@ -620,7 +620,7 @@ def get_main_parser():
     with subparser(sub_parsers, 'metadata_categories', 'Display avaiilable metadata categories') as parser:
         pass
 
-    with subparser(sub_parsers, 'protein_fasta', 'Create FASTA file containing all GlobDB protein sequences') as parser:
+    with subparser(sub_parsers, 'export_fasta', 'Create FASTA file containing all GlobDB protein sequences') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __db_path(grp, required=True)
         with arg_group(parser, 'Optional') as grp:

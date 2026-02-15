@@ -347,8 +347,8 @@ def main():
         elif args.subparser_name == 'metadata_categories':
             metadata_categories()
 
-        elif args.subparser_name == 'protein_fasta':
-            protein_fasta(
+        elif args.subparser_name == 'export_fasta':
+            export_fasta(
                 db_path=args.db_path,
                 output=args.output,
                 threads=args.threads,

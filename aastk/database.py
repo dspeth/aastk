@@ -1291,7 +1291,7 @@ def fetch_sequences(db_path, seq_ids):
 
 
 
-def protein_fasta(db_path: str,
+def export_fasta(db_path: str,
                   output: str,
                   threads: int = 1,
                   force: bool =False):
