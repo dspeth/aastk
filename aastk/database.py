@@ -1222,7 +1222,7 @@ def meta(db_path: str,
 
 
 
-def metadata_categories():
+def list_metadata():
     print("───────────────────────────")
     print("Protein metadata")
     print("───────────────────────────")
