@@ -305,11 +305,11 @@ def __tmhmm_dir(group, required=False):
 
 def __tmh_y_range(group, required=False):
     group.add_argument('-t', '--tmh_y_range', type=int, required=required,
-                       help='Upper limit for TMH plot y-axis (default: maximum length)')
+                       help='Upper limit for TMH plot y-axis (default: maximum number of transmembrane helices)')
 
 def __top_n(group, required=False):
     group.add_argument('-t', '--top_n', type=int, default=3, required=required,
-                       help='Number of top COGs to plot per position (default: 3)')
+                       help='Number of top annotations to plot per position (default: 3)')
 
 def __tsv(group, required=False):
     group.add_argument('-t', '--tsv', type=str, required=required,
@@ -524,7 +524,6 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __annotation(grp)
             __output(grp)
-            __force(grp)
             __top_n(grp)
             __bin_width(grp)
             __y_range(grp)
@@ -532,6 +531,8 @@ def get_main_parser():
             __output(grp)
             __threads(grp)
             __svg(grp)
+            __force(grp)
+
 
     with subparser(sub_parsers, 'cugo_select', 'Retrieve protein IDs for select CUGO position') as parser:
         with arg_group(parser, 'Required arguments') as grp:
