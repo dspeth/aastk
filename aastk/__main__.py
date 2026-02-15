@@ -10,6 +10,7 @@ from aastk.database import *
 from aastk.rasr import *
 from aastk import __version__, __copyright__, __author__
 import sys
+from aastk.rasr_multiple import *
 
 def print_help():
     print('''\
@@ -346,6 +347,24 @@ def main():
                 bsr_file=args.bsr,
                 output_dir=args.output,
                 force=args.force
+            )
+
+        ### PARSER FOR RASR_MULTIPLE (Multi-dataset/Multi-gene workflow) ###
+        elif args.subparser_name == 'rasr_multiple':
+            rasr_multiple(
+                query=args.query,
+                gene_db=args.seed,
+                outgrp_db=args.outgrp_db,
+                output_dir=args.output,
+                sensitivity=args.sensitivity,
+                block=args.block,
+                chunk=args.chunk,
+                threads=args.threads,
+                keep=args.keep,
+                force=args.force,
+                bsr_cutoff=args.bsr_cutoff,
+                dbmin=args.dbmin,
+                use_existing_merged=args.use_existing_merged
             )
 
 

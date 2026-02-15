@@ -316,6 +316,10 @@ def __update(group, required=False):
     group.add_argument('--update', action='store_true', required=required,
                        help='Update subset of data using metadata yaml file')
 
+def __use_existing_merged(group, required=False):
+    group.add_argument('--use_existing_merged', action='store_true', required=required,
+                       help='Reuse existing merged hits file if it exists (default: raise error if exists)')
+
 def __yaml(group, required=False):
     group.add_argument('-y', '--yaml', type=str, required=required,
                        help='Path to metadata yaml file')
@@ -627,5 +631,23 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __force(grp)
+
+    ### PARSER FOR RASR_MULTIPLE (Multi-dataset/Multi-gene workflow) ###
+    with subparser(sub_parsers, 'rasr_multiple', 'RASR: multi-dataset and multi-gene workflow') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __query(grp, required=True)
+            __seed(grp, required=True)
+            __outgrp_db(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
+            __threads(grp)
+            __block(grp)
+            __chunk(grp)
+            __sensitivity(grp)
+            __dbmin(grp)
+            __bsr_cutoff(grp)
+            __keep(grp)
+            __force(grp)
+            __use_existing_merged(grp)
 
     return main_parser    
