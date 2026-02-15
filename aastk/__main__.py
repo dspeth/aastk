@@ -7,7 +7,7 @@ from aastk.pasr import *
 from aastk.cugo import *
 from aastk.casm import *
 from aastk.database import *
-from aastk import __version__, __copyright__, __author__
+from aastk.version import __version__, __copyright__, __author__
 import sys
 
 def print_help():
@@ -21,32 +21,38 @@ def print_help():
     aastk --silent <command>       to suppress all console output except errors
 
   Main Tools:
-    pasr         Generate or update a comprehensive dataset of homologous proteins
-                    Runs the subcommands: build, search, get_hit_seqs, max_score, bsr, and pasr_plot
-    casm         Cluster and visualize a complex dataset of proteins (eg. a superfamily)
-                    Runs the subcommands: matrix, cluster, and casm_plot
-    cugo         Retrieve, calculate, and visualise consensus genomic context of protein data sets
-                    Runs the subcommands: context, cugo_plot
-    meta         Retrieve protein metadata from AASTK SQLite database
+    pasr           Generate or update a comprehensive dataset of homologous proteins
+                      Runs the subcommands: build, search, get_hit_seqs, max_score, bsr, and pasr_plot
+    casm           Cluster and visualize a complex dataset of proteins (eg. a superfamily)
+                      Runs the subcommands: matrix, cluster, and casm_plot
+    cugo           Retrieve, calculate, and visualise consensus genomic context of protein data sets
+                      Runs the subcommands: context, cugo_plot
+    meta           Retrieve protein metadata from AASTK SQLite database
 
   Helper tools:
-    pasr_select  Select target sequences from pasr run based on bsr and score cutoffs
-    casm_select  Select cluster(s) from casm analysis, and retrieve sequences
-    cugo_select  Select genomic position from cugo analysis and retrieve sequences
-    filter       Filter sequence dataset to remove non-homologous seqeunces
+    pasr_select    Select target sequences from pasr run based on bsr and score cutoffs
+    casm_select    Select cluster(s) from casm analysis, and retrieve sequences
+    cugo_select    Select genomic position from cugo analysis and retrieve sequences
+    filter         Filter sequence dataset to remove non-homologous sequences
+    list_metadata  List available metadata
 
   Subcommands:
-    build        Build DIAMOND database from seed sequence(s)
-    search       Search query sequences against DIAMOND database
-    get_hit_seqs Extract sequences that have DIAMOND hits against custom database
-    max_score    Calculate max scores for extracted sequences using BLOSUM matrix
-    bsr          Compute BSR (Blast Score Ratio) using a BLAST tab file and max scores from a TSV
-    pasr_plot    Scatterplot with max score on the x-axis and score against the seed db on y-axis
-    matrix       Create alignment score matrix for tSNE embedding and DBSCAN clustering
-    cluster      Run tSNE embedding and DBSCAN clustering on input matrix
-    casm_plot    Scatterplot of sequences with tSNE coordinates as axes
-    context      Parse context information from AASTK SQL database
-    cugo_plot    Consensus genomic context plot of annotation, length, and transmembrane segments
+    build          Build DIAMOND database from seed sequence(s)
+    search         Search query sequences against DIAMOND database
+    get_hit_seqs   Extract sequences that have DIAMOND hits against custom database
+    max_score      Calculate max scores for extracted sequences using BLOSUM matrix
+    bsr            Compute BSR (Blast Score Ratio) using a BLAST tab file and max scores from a TSV
+    pasr_plot      Scatterplot with max score on the x-axis and score against the seed db on y-axis
+    matrix         Create alignment score matrix for tSNE embedding and DBSCAN clustering
+    cluster        Run tSNE embedding and DBSCAN clustering on input matrix
+    casm_plot      Scatterplot of sequences with tSNE coordinates as axes
+    context        Parse context information from AASTK SQL database
+    cugo_plot      Consensus genomic context plot of annotation, length, and transmembrane segments
+
+  Database utilities
+    database       Construct an SQL database from amino acid fasta sequences and associated metadata
+    database_check Check whether the SQL database is internally consistent
+    export_fasta   Export a fasta file from the AASTK SQL database
     ''' % __version__)
 
 

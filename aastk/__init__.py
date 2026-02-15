@@ -15,17 +15,19 @@
 #                                                                             #
 ###############################################################################
 
-__author__ = 'Marcel Rennig and Daan Speth'
-__author_email__ = 'daan.speth@univie.ac.at'
-__copyright__ = 'Copyright 2024'
-__credits__ = ['Daan Speth', 'Marcel Rennig']
-__description__ = 'toolkit for working with amino acid sequences obtained from GlobDB genomes'
-__license__ = 'GPL3'
-__maintainer__ = 'Marcel Rennig and Daan Speth'
-__maintainer_email__ = 'daan.speth@univie.ac.at'
-__name__ = 'aastk'
-__python_requires__ = '>=3.8'
-__status__ = 'development'
-__title__ = 'aastk'
-__url__ = 'https://github.com/dspeth/aastk'
-__version__ = '0.0.1'
+from .version import (
+    __version__,
+    __author__,
+    __author_email__,
+    __copyright__,
+    __credits__,
+    __description__,
+    __license__,
+    __maintainer__,
+    __maintainer_email__,
+    __name__,
+    __python_requires__,
+    __status__,
+    __title__,
+    __url__
+)
