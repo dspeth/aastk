@@ -219,8 +219,6 @@ def search(gene_db_out_path: str,
            "-c", str(chunk),
            "--min-score", str(min_score),
            "--comp-based-stats", str(0),
-           "-v",
-           "--log",
            sensitivity_param]
 
     logger.debug(f"Running command: {' '.join(cmd)}")
@@ -255,19 +253,40 @@ def search(gene_db_out_path: str,
     if not Path(output_path).exists():
         logger.error(f"DIAMOND output file not found at {output_path}")
         raise RuntimeError(f"DIAMOND search did not produce output at {output_path}")
+        
+    logger.info(f"Successfully completed DIAMOND search. Results at {output_path}")
+    return output_path, column_info_path
 
-    # ===============================================================================
-    # Deduplicate hits, keeping highest scoring one for each qseqid with score >= 50
-    # ===============================================================================
-    min_score_threshold = 50
-    logger.info(f"Deduplicating hits, keeping highest scoring hit per query (score >= {min_score_threshold})")
+
+
+
+# ===============================
+# search_filtering function
+# ===============================
+def search_filtering(search_output_path: str,
+                     min_score_threshold: int):
+    """
+    Filters DIAMOND search output, keeping only the highest scoring hit per query above a minimum score threshold.
+
+    Args:
+        search_output_path (str): Path to DIAMOND search output file
+        min_score_threshold (int): Minimum score threshold to keep hits
+
+    Returns:
+        search_output_path (str): Path to filtered search output file
+    """
+    logger.info(f"Filtering search results, keeping highest scoring hit per query (score >= {min_score_threshold})")
+    
+    # Determine columns structure from the file content
+    columns = ["qseqid", "sseqid", "pident", "qlen", "slen", "length", "mismatch", "gapopen", "qstart", "qend",
+               "sstart", "send", "evalue", "bitscore", "score"]
     
     best_hits = {}  # {qseqid: (score, full_row)}
     score_idx = columns.index('score')
     qseqid_idx = columns.index('qseqid')
     
     # Stream through file to find best hits
-    with open(output_path, 'r') as f:
+    with open(search_output_path, 'r') as f:
         for line in f:
             fields = line.strip().split('\t')
             qseqid = fields[qseqid_idx]
@@ -279,19 +298,18 @@ def search(gene_db_out_path: str,
                     best_hits[qseqid] = (score, line)
     
     # ===========================
-    # Write dereplicated results
+    # Write filtered results
     # ===========================
-    temp_output = output_path + '.tmp'
+    temp_output = search_output_path + '.tmp'
     with open(temp_output, 'w') as f:
         for score, line in best_hits.values():
             f.write(line)
     
-    # Replace original with dereplicated
-    Path(temp_output).replace(output_path)
-        
-    logger.info(f"Successfully completed DIAMOND search. Results at {output_path}")
-    return output_path, column_info_path
-
+    # Replace original with filtered
+    Path(temp_output).replace(search_output_path)
+    
+    logger.info(f"Filtering complete. Retained {len(best_hits)} hits after filtering.")
+    return search_output_path
 
 
 
@@ -971,6 +989,11 @@ def rasr_multiple(query: str,
             # ======================
             logger.info(f"Searching protein database")
             search_output, column_info_path = search(db_path, str(query_file), threads, dataset_output_dir, sensitivity, block=block, chunk=chunk, force=force)
+            
+            # =========================
+            # Filter search results
+            # =========================
+            search_output = search_filtering(search_output, min_score_threshold=50)
 
             if 'search_output' not in intermediate_results:
                 intermediate_results['search_output'] = []
