@@ -6,7 +6,7 @@ import subprocess
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from textwrap import dedent
-
+import logging
 
 logger = logging.getLogger(__name__)
 
@@ -838,8 +838,6 @@ def database(cog_gff_tar_path: str,
     Main parsing function - processes COG first with full data, then updates with KEGG and Pfam.
     All annotations use Name= attribute from GFF files.
     """
-    logger = getLogger(__name__)
-
     logger.info("Processing files: Protein sequences → COG → TMHMM → KEGG → Pfam → Taxonomy → Culture collection "
                 "→ High level environment data → Low level environment data → Checking missing data")
 
