@@ -829,6 +829,12 @@ def rasr_select(score_cutoff: float,
 
     logger.info(f"Selecting RASR hits with database score >= {score_cutoff} and BSR >= {bsr_cutoff}")
 
+    # Handle None values from cli.py
+    if bsr_cutoff is None:
+        bsr_cutoff = 0.9
+    if dbmin is None:
+        dbmin = 110
+    
     # ===============================
     # Output file path setup
     # ===============================
@@ -1081,7 +1087,11 @@ def rasr_multiple(query: str,
         # =================== Split outgroup search results per dataset ===================
 
         logger.info("Splitting outgroup search results per dataset")
-        og_split_outputs = split_search_outputs(og_search_output, mapping_dict=dataset_to_queries, output_dir=output_dir, split_column=0, force=force)
+        og_split_outputs = {}
+        for dataset_name, query_ids in dataset_to_queries.items():
+            dataset_output_dir = ensure_path(output_dir, dataset_name, force=force)
+            dataset_og_split = split_search_outputs(og_search_output, mapping_dict={dataset_name: query_ids}, output_dir=dataset_output_dir, split_column=0, force=force)
+            og_split_outputs.update(dataset_og_split)
 
         intermediate_results['og_split_outputs'] = og_split_outputs
 
