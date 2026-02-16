@@ -84,7 +84,7 @@ def search(gene_db_out_path: str,
     # =======================================
     # DIAMOND blastx command construction
     # =======================================
-    min_score = 30
+    min_score = 10
     cmd = ["diamond", "blastx",
            "-d", gene_db_out_path,
            "-q", query_fastq,
@@ -261,11 +261,12 @@ def bsr(gene_blast_tab: str,
                 qseqid_col = column_info.get('qseqid', 0)
                 sseqid_col = column_info.get('sseqid', 1)
                 pident_col = column_info.get('pident', 2)
+                length_col = column_info.get('length', 5)
                 score_column = column_info.get('score', 14)
                 
                 logger.info(f"Loaded column indices from {column_info_path}")
                 logger.debug(f"Column indices: qseqid={qseqid_col}, sseqid={sseqid_col}, "
-                           f"pident={pident_col}, score={score_column}")
+                           f"pident={pident_col}, length={length_col}, score={score_column}")
 
         except Exception as e:
             logger.warning(f"Failed to load column info from {column_info_path}: {e}")
@@ -273,24 +274,26 @@ def bsr(gene_blast_tab: str,
             qseqid_col = 0
             sseqid_col = 1
             pident_col = 2
+            length_col = 5
             score_column = 14
     else:
         # Use default column indices if no JSON file provided
         qseqid_col = 0
         sseqid_col = 1
         pident_col = 2
+        length_col = 5
         score_column = 14
         logger.info(f"Using default column indices (no column_info file provided)")
         
     
     # Load blast results
-    dtype={0: "string", 1: "string", 2: "float32", 3: "float32",}
-    usecols = [qseqid_col, sseqid_col, pident_col, score_column]
+    dtype={0: "string", 1: "string", 2: "float32", 3: "float32", 4: "float32"}
+    usecols = [qseqid_col, sseqid_col, pident_col, length_col, score_column]
 
     gene_df = pd.read_csv(gene_blast_tab, sep='\t', usecols=usecols, dtype=dtype,
-                            names=['qseqid', 'sseqid_db', 'pident_db', 'score_db'])
+                            names=['qseqid', 'sseqid_db', 'pident_db', 'length_db', 'score_db'])
     outgrp_df = pd.read_csv(outgrp_blast_tab, sep='\t', usecols=usecols, dtype=dtype,
-                           names=['qseqid', 'sseqid_og', 'pident_og', 'score_og'])
+                           names=['qseqid', 'sseqid_og', 'pident_og', 'length_og', 'score_og'])
 
     # Merge DataFrames on 'qseqid'
     bsr_df = gene_df.merge(outgrp_df, on='qseqid', how='inner') # inner join to keep only matching qseqid (default behavior)
@@ -508,7 +511,7 @@ def rasr(query: str,
             keep: bool = False,
             key_column: int = 0,
             bsr_cutoff: float = 0.9,
-            dbmin: int = 100):
+            dbmin: int = 110):
     """
     RASR workflow:
     Runs:
@@ -533,7 +536,7 @@ def rasr(query: str,
         keep (bool): if True, keep intermediate files; if False, delete them after workflow completion
         key_column (int): column index in BLAST output to use as key for sequence extraction
         bsr_cutoff (float): minimum BSR threshold for selection and plotting (default: 0.9)
-        dbmin (int): minimum database score threshold for selection and plotting (default: 100)
+        dbmin (int): minimum database score threshold for selection and plotting (default: 110)
     
     Returns:
         results (dict): dictionary containing paths to all output files
