@@ -441,16 +441,16 @@ def get_main_parser():
     ### PARSER FOR CUGO FUNCTIONALITIES AND WORKFLOW ###
     with subparser(sub_parsers, 'database', 'Create AASTK SQLite database') as parser:
         with arg_group(parser, 'Required arguments') as grp:
-            __cog_gff(grp, required=True)
-            __kegg_gff(grp, required=True)
-            __pfam_gff(grp, required=True)
             __all_proteins(grp, required=True)
-            __taxonomy_path(grp, required=True)
-            __culture_collection_path(grp, required=True)
-            __high_level_environment_path(grp, required=True)
-            __low_level_environment_path(grp, required=True)
-            __globdb_version(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
+            __cog_gff(grp)
+            __kegg_gff(grp)
+            __pfam_gff(grp)
+            __taxonomy_path(grp)
+            __culture_collection_path(grp)
+            __high_level_environment_path(grp)
+            __low_level_environment_path(grp)
+            __globdb_version(grp)
             __output(grp)
             __tmhmm_dir(grp)
 

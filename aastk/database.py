@@ -840,7 +840,7 @@ def database(cog_gff_tar_path: str,
     """
     logger = getLogger(__name__)
 
-    logger.info("Processing files: COG → TMHMM → KEGG → Pfam → Protein sequences → Taxonomy → Culture collection "
+    logger.info("Processing files: Protein sequences → COG → TMHMM → KEGG → Pfam → Taxonomy → Culture collection "
                 "→ High level environment data → Low level environment data → Checking missing data")
 
     db_path = f"globdb_{globdb_version}_cugo.db"
@@ -857,8 +857,18 @@ def database(cog_gff_tar_path: str,
     # Setup database
     conn = setup_database(db_path)
 
-    # ===== STEP 1: Process COG GFF files =====
-    logger.info("STEP 1: Processing COG GFF files...")
+    # ===== STEP 1: Process Protein FASTA file =====
+    if protein_fasta_path:
+        logger.info("STEP 1: Processing protein sequences...")
+        populate_protein_sequences(conn, protein_fasta_path)
+
+    logger.info("Creating seqID index...")
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_all_seqid ON protein_data(seqID)')
+    conn.commit()
+    logger.info("seqID index created")
+
+    # ===== STEP 2: Process COG GFF files =====
+    logger.info("STEP 2: Processing COG GFF files...")
     subprocess.run(["tar", "-xzf", cog_gff_tar_path, "-C", str(tempdir)], check=True)
 
     cog_gff_files = list(tempdir.rglob("*.gff.gz")) + list(tempdir.rglob("*.gff"))
@@ -868,24 +878,29 @@ def database(cog_gff_tar_path: str,
         gff_data = process_gff_file(str(gff_file), update_mode=False)
         if gff_data:
             conn.executemany("""
-                INSERT OR REPLACE INTO protein_data
+                INSERT INTO protein_data
                 (seqID, parent_ID, aa_length, strand, COG_ID, cugo_number)
                 VALUES (?, ?, ?, ?, ?, ?)
-            """, gff_data)
+                    ON CONFLICT(seqID) DO UPDATE SET
+                    parent_ID = excluded.parent_ID,
+                    aa_length = excluded.aa_length,
+                    strand = excluded.strand,
+                    COG_ID = excluded.COG_ID,
+                    cugo_number = excluded.cugo_number
+            """, [(seq_id, parent_ID, aa_length, strand, COG_ID, cugo_number) for seqID, parent, aa_length, strand, COG_ID, cugo_number in gff_data])
             conn.commit()
 
-    logger.info("Creating protein_data indexes...")
-    conn.execute('CREATE INDEX IF NOT EXISTS idx_all_seqid ON protein_data(seqID)')
+    logger.info("Creating parent_ID index...")
     conn.execute('CREATE INDEX IF NOT EXISTS idx_parent_id ON protein_data(parent_ID)')
     conn.commit()
-    logger.info("protein_data indexes created")
+    logger.info("parent_ID index created")
 
     shutil.rmtree(tempdir)
     tempdir.mkdir(parents=True, exist_ok=True)
 
-    # ===== STEP 2: Process TMHMM files =====
+    # ===== STEP 3: Process TMHMM files =====
     if tmhmm_tar_path:
-        logger.info("STEP 2: Processing TMHMM files...")
+        logger.info("STEP 3: Processing TMHMM files...")
         subprocess.run(["tar", "-xzf", tmhmm_tar_path, "-C", str(tempdir)], check=True)
 
         tmhmm_files = list(tempdir.rglob("*_tmhmm_clean"))
@@ -906,53 +921,66 @@ def database(cog_gff_tar_path: str,
         shutil.rmtree(tempdir)
         tempdir.mkdir(parents=True, exist_ok=True)
 
-    # ===== STEP 3: Process KEGG GFF files =====
+    # ===== STEP 4: Process KEGG GFF files =====
     if kegg_gff_tar_path:
-        logger.info("STEP 3: Updating KEGG annotations...")
+        logger.info("STEP 4: Updating KEGG annotations...")
         subprocess.run(["tar", "-xzf", kegg_gff_tar_path, "-C", str(tempdir)], check=True)
 
         kegg_gff_files = list(tempdir.rglob("*.gff.gz")) + list(tempdir.rglob("*.gff"))
         logger.info(f"Found {len(kegg_gff_files)} KEGG GFF files")
 
         for gff_file in tqdm(kegg_gff_files, desc="Updating KEGG IDs"):
-            kegg_data = process_gff_file(str(gff_file), update_mode=True)
-            if kegg_data:
+            kegg_data = process_gff_file(str(gff_file))
+            update_kegg_data = process_gff_file(str(gff_file), update_mode=True)
+            if kegg_data and update_kegg_data:
+                update_dict = {seqid: annotation_id for annotation_id, seqid in update_kegg_data}
+                data = []
+                for record in kegg_data:
+                    seqID, parent, aa_length, direction, annotation_ID, cugo = record
+                    update_annotation_ID = update_dict.get(seqID, annotation_ID)
+
+                    data.append((seqID, parent, aa_length, direction, annotation_ID, cugo, update_annotation_ID))
+
                 conn.executemany("""
-                                 INSERT INTO protein_data (seqID, KEGG_ID)
-                                 VALUES (?, ?)
+                                 INSERT INTO protein_data (seqID, parent, aa_length, strand, KEGG_ID, cugo_number)
+                                 VALUES (?, ?, ?, ?, ?, ?)
                                      ON CONFLICT(seqID) DO UPDATE SET
-                                     KEGG_ID = excluded.KEGG_ID
-                                 """, [(seqid, kegg_id) for kegg_id, seqid in kegg_data])
+                                     KEGG_ID = ?
+                                 """, data)
                 conn.commit()
 
         shutil.rmtree(tempdir)
         tempdir.mkdir(parents=True, exist_ok=True)
 
-    # ===== STEP 4: Process Pfam GFF files =====
+    # ===== STEP 5: Process Pfam GFF files =====
     if pfam_gff_tar_path:
-        logger.info("STEP 4: Updating Pfam annotations...")
+        logger.info("STEP 5: Updating Pfam annotations...")
         subprocess.run(["tar", "-xzf", pfam_gff_tar_path, "-C", str(tempdir)], check=True)
 
         pfam_gff_files = list(tempdir.rglob("*.gff.gz")) + list(tempdir.rglob("*.gff"))
         logger.info(f"Found {len(pfam_gff_files)} Pfam GFF files")
 
         for gff_file in tqdm(pfam_gff_files, desc="Updating Pfam IDs"):
-            pfam_data = process_gff_file(str(gff_file), update_mode=True)
-            if pfam_data:
+            pfam_data = process_gff_file(str(gff_file))
+            update_pfam_data = process_gff_file(str(gff_file), update_mode=True)
+            if pfam_data and update_pfam_data:
+                update_dict = {seqid: annotation_id for annotation_id, seqid in update_pfam_data}
+                data = []
+                for record in pfam_data:
+                    seqID, parent, aa_length, direction, annotation_ID, cugo = record
+                    update_annotation_ID = update_dict.get(seqID, annotation_ID)
+
+                    data.append((seqID, parent, aa_length, direction, annotation_ID, cugo, update_annotation_ID))
+
                 conn.executemany("""
-                                 INSERT INTO protein_data (seqID, Pfam_ID)
-                                 VALUES (?, ?)
+                                 INSERT INTO protein_data (seqID, parent, aa_length, strand, Pfam_ID, cugo_number)
+                                 VALUES (?, ?, ?, ?, ?, ?)
                                      ON CONFLICT(seqID) DO UPDATE SET
-                                     Pfam_ID = excluded.Pfam_ID
-                                 """, [(seqid, pfam_id) for pfam_id, seqid in pfam_data])
+                                     Pfam_ID = ?
+                                 """, data)
                 conn.commit()
 
         shutil.rmtree(tempdir)
-
-    # ===== STEP 5: Process Protein FASTA file =====
-    if protein_fasta_path:
-        logger.info("STEP 5: Processing protein sequences...")
-        populate_protein_sequences(conn, protein_fasta_path)
 
     # ===== STEP 6: Process Taxonomy file =====
     if taxonomy_path:
