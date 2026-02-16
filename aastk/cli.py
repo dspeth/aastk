@@ -305,11 +305,11 @@ def __tmhmm_dir(group, required=False):
 
 def __tmh_y_range(group, required=False):
     group.add_argument('-t', '--tmh_y_range', type=int, required=required,
-                       help='Upper limit for TMH plot y-axis (default: maximum length)')
+                       help='Upper limit for TMH plot y-axis (default: maximum number of transmembrane helices)')
 
 def __top_n(group, required=False):
     group.add_argument('-t', '--top_n', type=int, default=3, required=required,
-                       help='Number of top COGs to plot per position (default: 3)')
+                       help='Number of top annotations to plot per position (default: 3)')
 
 def __tsv(group, required=False):
     group.add_argument('-t', '--tsv', type=str, required=required,
@@ -441,16 +441,16 @@ def get_main_parser():
     ### PARSER FOR CUGO FUNCTIONALITIES AND WORKFLOW ###
     with subparser(sub_parsers, 'database', 'Create AASTK SQLite database') as parser:
         with arg_group(parser, 'Required arguments') as grp:
-            __cog_gff(grp, required=True)
-            __kegg_gff(grp, required=True)
-            __pfam_gff(grp, required=True)
             __all_proteins(grp, required=True)
-            __taxonomy_path(grp, required=True)
-            __culture_collection_path(grp, required=True)
-            __high_level_environment_path(grp, required=True)
-            __low_level_environment_path(grp, required=True)
-            __globdb_version(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
+            __cog_gff(grp)
+            __kegg_gff(grp)
+            __pfam_gff(grp)
+            __taxonomy_path(grp)
+            __culture_collection_path(grp)
+            __high_level_environment_path(grp)
+            __low_level_environment_path(grp)
+            __globdb_version(grp)
             __output(grp)
             __tmhmm_dir(grp)
 
@@ -524,7 +524,6 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __annotation(grp)
             __output(grp)
-            __force(grp)
             __top_n(grp)
             __bin_width(grp)
             __y_range(grp)
@@ -532,6 +531,8 @@ def get_main_parser():
             __output(grp)
             __threads(grp)
             __svg(grp)
+            __force(grp)
+
 
     with subparser(sub_parsers, 'cugo_select', 'Retrieve protein IDs for select CUGO position') as parser:
         with arg_group(parser, 'Required arguments') as grp:
@@ -617,10 +618,10 @@ def get_main_parser():
             __output(grp)
             __force(grp)
 
-    with subparser(sub_parsers, 'metadata_categories', 'Display avaiilable metadata categories') as parser:
+    with subparser(sub_parsers, 'list_metadata', 'Display avaiilable metadata categories') as parser:
         pass
 
-    with subparser(sub_parsers, 'protein_fasta', 'Create FASTA file containing all GlobDB protein sequences') as parser:
+    with subparser(sub_parsers, 'export_fasta', 'Create FASTA file containing all GlobDB protein sequences') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __db_path(grp, required=True)
         with arg_group(parser, 'Optional') as grp:

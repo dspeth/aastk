@@ -859,10 +859,10 @@ def filter(fasta: str,
     # first pass filter histogram
     binwidth = 10
     ax1.hist(means['mean100_length'], bins=range(round(min(means['mean100_length'])), round(max(means['mean100_length'])), binwidth))
-    ax1.axvline(x=(mean_avg_length + 150), color='red', linestyle='dashed', linewidth=1)
-    ax1.axvline(x=(mean_avg_length - 150), color='red', linestyle='dashed', linewidth=1)
-    ax1.set_xlabel("mean100_length")
-    ax1.set_title('First pass')
+    ax1.axvline(x=(mean_avg_length + 150), color='black', linestyle='dashed', linewidth=1)
+    ax1.axvline(x=(mean_avg_length - 150), color='black', linestyle='dashed', linewidth=1)
+    ax1.set_xlabel('avg. alignment length')
+    ax1.set_title(label='First pass:\nmean avg. alignment length\n+/- 150', fontdict={'fontsize': 10})
 
     count = 0
     for qseqid in means.index:
@@ -884,10 +884,10 @@ def filter(fasta: str,
 
     # second pass filter histogram
     ax2.hist(means['mean100_length'], bins=range(round(min(means['mean100_length'])), round(max(means['mean100_length'])), binwidth))
-    ax2.axvline(x=lower_bound, color='red', linestyle='dashed', linewidth=1)
-    ax2.axvline(x=upper_bound, color='red', linestyle='dashed', linewidth=1)
-    ax2.set_xlabel("mean100_length")
-    ax2.set_title('Second pass')
+    ax2.axvline(x=lower_bound, color='black', linestyle='dashed', linewidth=1)
+    ax2.axvline(x=upper_bound, color='black', linestyle='dashed', linewidth=1)
+    ax2.set_xlabel('avg. alignment length')
+    ax2.set_title('Second pass:\nmean avg. alignment length\n+/- 3 SD', fontdict={'fontsize': 10})
 
     count = 0
     for qseqid in means.index:
@@ -905,9 +905,9 @@ def filter(fasta: str,
 
     ax3.hist(means['mean100_unaligned_length'],
              bins=range(round(min(means['mean100_unaligned_length'])), round(max(means['mean100_unaligned_length'])), binwidth))
-    ax3.axvline(x=boundary, color='red', linestyle='dashed', linewidth=1)
-    ax3.set_xlabel("mean100_unaligned_length")
-    ax3.set_title('Third pass')
+    ax3.axvline(x=boundary, color='black', linestyle='dashed', linewidth=1)
+    ax3.set_xlabel("avg. unaligned length")
+    ax3.set_title('Third pass:\nmean unaligned length >\n0.5 * mean alignment length', fontdict={'fontsize': 10})
 
     count = 0
     for qseqid in means.index:
@@ -933,8 +933,8 @@ def filter(fasta: str,
                 sequences_written += 1
         logger.info(f"Retrieved {sequences_written} sequences to {output_path}")
 
-    plt.subplots_adjust(wspace=0.8)
-    fig.suptitle('Distribution of sequences during filtering with cutoffs')
+    plt.subplots_adjust(wspace=1.2)
+    #fig.suptitle('Distribution of sequences during filtering with cutoffs')
     plt.savefig(plot_path, dpi=300)
 
     return output_path

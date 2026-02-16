@@ -344,11 +344,11 @@ def main():
                 force=args.force
             )
 
-        elif args.subparser_name == 'metadata_categories':
-            metadata_categories()
+        elif args.subparser_name == 'list_metadata':
+            list_metadata()
 
-        elif args.subparser_name == 'protein_fasta':
-            protein_fasta(
+        elif args.subparser_name == 'export_fasta':
+            export_fasta(
                 db_path=args.db_path,
                 output=args.output,
                 threads=args.threads,
