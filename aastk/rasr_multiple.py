@@ -519,41 +519,21 @@ def merge_hits(all_hit_seqs_paths: list,
         )
         raise FileExistsError(f"Stale merged hits file detected: {merged_hits_file}")
         
-    # ======================================================
-    # Concatenate hit sequences (search 1) in gzipped FASTQ
-    # ======================================================
-    cmd = ["seqkit", "scat",
-            "-o", merged_hits_file,
-            "-j", str(threads),
-            "--infile-list", infile_list]
+    # =======================================================
+    # Merge and deduplicate all matched sequences (search 1)
+    # =======================================================
+    logger.info(f"Merging and deduplicating {len(all_hit_seqs_paths)} hit FASTQ files")
+    
+    cmd = ["seqkit", "rmdup", "-s", "-o", merged_hits_file, *all_hit_seqs_paths]
 
     try:
         subprocess.run(cmd, check=True, capture_output=True, text=True)
-        logger.info(f"Merged {len(all_hit_seqs_paths)} hit FASTQ files into {merged_hits_file}")
-    
-    except subprocess.CalledProcessError as e:
-        logger.error(f"seqkit scat failed: {e.stderr}")
-        raise RuntimeError(f"Failed to merge hit sequences: {e.stderr}") from e
-    
-    # ======================================================
-    # Deduplicate sequences in merged FASTQ (keep first occurrence)
-    # ======================================================
-    logger.info(f"Deduplicating sequences by removing exact duplicates")
-    dedup_hits_file = merged_hits_file.replace('.fastq.gz', '_dedup.fastq.gz')
-    
-    cmd_dedup = ["seqkit", "rmdup", "-s", merged_hits_file, "-o", dedup_hits_file]
-    
-    try:
-        subprocess.run(cmd_dedup, check=True, capture_output=True, text=True)
-        logger.info(f"Deduplicated merged hits file to {dedup_hits_file}")
-        
-        # Replace original with deduplicated version
-        Path(dedup_hits_file).replace(merged_hits_file)
-        logger.info(f"Replaced original merged hits file with deduplicated version")
+        logger.info(f"Successfully merged and deduplicated {len(all_hit_seqs_paths)} FASTQ files into {merged_hits_file}")
+        loggger.info(f"The merged file contains {count_fastq_records(merged_hits_file):,} unique sequences")
     
     except subprocess.CalledProcessError as e:
         logger.error(f"seqkit rmdup failed: {e.stderr}")
-        raise RuntimeError(f"Failed to deduplicate merged sequences: {e.stderr}") from e
+        raise RuntimeError(f"Failed to merge and deduplicate hit sequences: {e.stderr}") from e
     
     return merged_hits_file, infile_list
 
