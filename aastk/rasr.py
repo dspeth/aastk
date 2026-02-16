@@ -314,7 +314,7 @@ def rasr_plot(bsr_file: str,
              output_dir: str,
              force: bool = False,
              bsr_cutoff: float = 0.9,
-             dbmin: int = 100):
+             dbmin: int = 110):
     """
     Creates a scatter plot of the BSR data flanked by histograms showing the distribution of datapoints alongside the axes.
     
@@ -323,9 +323,15 @@ def rasr_plot(bsr_file: str,
         output_dir (str): Directory to save output plot
         force (bool): Whether to overwrite existing files
         bsr_cutoff (float): Minimum BSR threshold to draw as reference line (default: 0.9)
-        dbmin (int): Minimum database score threshold to draw as reference line (default: 100)
+        dbmin (int): Minimum database score threshold to draw as reference line (default: 110)
     """
     logger = logging.getLogger(__name__)
+
+    # Handle None values from cli.py
+    if bsr_cutoff is None:
+        bsr_cutoff = 0.9
+    if dbmin is None:
+        dbmin = 110
 
     protein_name = determine_dataset_name(bsr_file, '.', 0, '_bsr')
 
@@ -348,33 +354,31 @@ def rasr_plot(bsr_file: str,
                 raise ValueError(f"Required column '{col}' not found in BSR data")
         
         # ===============================
-        # Define axis ranges and bins
+        # Define axis ranges
         # ===============================
-        bin_width = 10
-        score_max = max(bsr_df['score_og'].max(), bsr_df['score_db'].max())
+        x_max = bsr_df['score_og'].max()
+        y_max = bsr_df['score_db'].max()
+        x_min = 45
+        y_min = 45
 
-        # define common axis limits for scatter + histograms
-        xlim = (0, score_max)
-        ylim = (0, score_max)
-        x_bins = np.arange(xlim[0], xlim[1] + bin_width, bin_width)
-        y_bins = np.arange(ylim[0], ylim[1] + bin_width, bin_width)
+        # Add padding
+        x_range = x_max - x_min
+        y_range = y_max - y_min
+        x_pad = max(x_range * 0.05, 10)
+        y_pad = max(y_range * 0.05, 10)
+
+        xlim = (max(0, x_min - x_pad), x_max + x_pad)
+        ylim = (max(0, y_min - y_pad), y_max + y_pad)
 
         # ===============================
         # Layout
         # ===============================
-        fig, axs = plt.subplot_mosaic(
-            [['histx', '.'],
-             ['scatter', 'histy']],
-            figsize=(8, 8),
-            width_ratios=(4, 1),
-            height_ratios=(1, 4),
-            layout='constrained'
-        )
+        fig, ax = plt.subplots(figsize=(8, 8), layout='constrained')
 
         # ===============================
         # Scatter plot
         # ===============================
-        scatter = axs['scatter'].scatter(
+        scatter = ax.scatter(
             bsr_df['score_og'],
             bsr_df['score_db'],
             c=bsr_df['pident_db'],
@@ -385,57 +389,24 @@ def rasr_plot(bsr_file: str,
             vmax=100
         )
         # Set labels and title
-        axs['scatter'].set_xlabel('Alignment score to outgroup')
-        axs['scatter'].set_ylabel('Alignment score to database')
-        axs['scatter'].set_title(f'BSR Plot for {protein_name}')
-        axs['scatter'].set_xlim(xlim)
-        axs['scatter'].set_ylim(ylim)
+        ax.set_xlabel('Alignment score to outgroup')
+        ax.set_ylabel('Alignment score to database')
+        ax.set_title(f'BSR Plot for {protein_name}')
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
 
         # Add cutoff lines
         if dbmin is not None and dbmin > 0:
-            axs['scatter'].axhline(dbmin, color='black', linestyle='--', linewidth=1.0, label=f'DB score ≥ {dbmin}')
+            ax.axhline(dbmin, color='black', linestyle='--', linewidth=1.0, label=f'DB score ≥ {dbmin}')
         if bsr_cutoff is not None and bsr_cutoff > 0:
             x_vals = np.linspace(xlim[0], xlim[1], 500)
             y_vals = bsr_cutoff * x_vals
-            axs['scatter'].plot(x_vals, y_vals, color='black', linestyle='--', linewidth=1.0, label=f'BSR ≥ {bsr_cutoff}')
+            ax.plot(x_vals, y_vals, color='black', linestyle='--', linewidth=1.0, label=f'BSR ≥ {bsr_cutoff}')
         
         # Add colorbar
-        cb_ax = inset_axes(axs['scatter'], width="5%", height="30%", loc='upper left', borderpad=1)
+        cb_ax = inset_axes(ax, width="5%", height="30%", loc='upper left', borderpad=1)
         cbar = fig.colorbar(scatter, cax=cb_ax)
         cbar.set_label('% seq id to database')
-        
-        # ===============================
-        # Histograms aligned with scatter
-        # ===============================
-        # Top histogram
-        x_hist, x_edges = np.histogram(bsr_df['score_og'], bins=x_bins)
-        axs['histx'].bar(
-            x_edges[:-1],
-            x_hist,
-            width=bin_width,
-            align='edge',
-            color='black'
-        )
-        axs['histx'].set_xlim(xlim)
-        axs['histx'].set_ylabel('Counts')
-        axs['histx'].set_yticks([0, max(x_hist)/2, max(x_hist)])
-        axs['histx'].tick_params(labelbottom=False)
-        axs['histx'].set_title(f'Read Alignment Score Ratio for {protein_name}')
-
-        # Right histogram
-        y_hist, y_edges = np.histogram(bsr_df['score_db'], bins=y_bins)
-        axs['histy'].barh(
-            y_edges[:-1],
-            y_hist,
-            height=bin_width,
-            align='edge',
-            color='black'
-        )
-        axs['histy'].set_ylim(ylim)
-        axs['histy'].set_xlabel('Counts')
-        axs['histy'].set_xticks([0, max(y_hist)/2, max(y_hist)])
-        axs['histy'].tick_params(labelleft=False)
-
 
         # ===============================
         # Save
@@ -608,6 +579,7 @@ def rasr(query: str,
         # ===============================
         logger.info("Extracting hit sequences from search results")
         matched_fastq, id_file = get_hit_seqs(search_output, query, dataset_output_dir, key_column=key_column, force=force)
+        
         intermediate_results['hit_seqs_path'] = matched_fastq
         intermediate_results['hit_ids_path'] = id_file
 
