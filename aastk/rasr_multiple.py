@@ -205,7 +205,7 @@ def search(gene_db_out_path: str,
     # =======================================
     # DIAMOND blastx command construction
     # =======================================
-    min_score = 30
+    min_score = 10
     cmd = ["diamond", "blastx",
            "-d", gene_db_out_path,
            "-q", query_fastq,
@@ -256,10 +256,11 @@ def search(gene_db_out_path: str,
         logger.error(f"DIAMOND output file not found at {output_path}")
         raise RuntimeError(f"DIAMOND search did not produce output at {output_path}")
 
-    # ==============================================================
-    # Deduplicate hits, keeping highest scoring one for each qseqid
-    # ==============================================================
-    logger.info(f"Deduplicating hits, keeping highest scoring hit per query")
+    # ===============================================================================
+    # Deduplicate hits, keeping highest scoring one for each qseqid with score >= 50
+    # ===============================================================================
+    min_score_threshold = 50
+    logger.info(f"Deduplicating hits, keeping highest scoring hit per query (score >= {min_score_threshold})")
     
     best_hits = {}  # {qseqid: (score, full_row)}
     score_idx = columns.index('score')
@@ -272,8 +273,10 @@ def search(gene_db_out_path: str,
             qseqid = fields[qseqid_idx]
             score = float(fields[score_idx])
             
-            if qseqid not in best_hits or score > best_hits[qseqid][0]:
-                best_hits[qseqid] = (score, line)
+            # Only keep hits with score >= threshold
+            if score >= min_score_threshold:
+                if qseqid not in best_hits or score > best_hits[qseqid][0]:
+                    best_hits[qseqid] = (score, line)
     
     # ===========================
     # Write dereplicated results
