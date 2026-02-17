@@ -13,6 +13,7 @@ source:
 build:
   noarch: python
   script: {{ PYTHON }} -m pip install . -vv
+  number: 0
 
 requirements:
   host:
@@ -35,11 +36,17 @@ test:
     - pip
 
 about:
-  home: https://github.com/dspeth/aastk/
-  license: GPL v3.0
+  homepage: https://github.com/dspeth/aastk/
   summary: 'Toolkit for analyses of amino acid sequences'
   description: |
     This package contains several tools to generate and work with amino acid sequence datasets.
     AASTK is primarily designed to work with the GlobDB genome database.
-  dev_url: https://github.com/dspeth/aastk/
-  doc_url: https://globdb.org/aastk
+  license: GPL v3.0
+  license_file: LICENSE
+  repository: https://github.com/dspeth/aastk/
+  documentation: https://globdb.org/aastk
+
+extra:
+  recipe-maintainers:
+    - dspeth
+    - rennigm
