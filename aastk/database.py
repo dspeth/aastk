@@ -7,6 +7,10 @@ from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from textwrap import dedent
 import logging
+import gzip
+from pathlib import Path
+import shutil
+
 
 logger = logging.getLogger(__name__)
 
@@ -885,7 +889,7 @@ def database(cog_gff_tar_path: str,
                     strand = excluded.strand,
                     COG_ID = excluded.COG_ID,
                     cugo_number = excluded.cugo_number
-            """, [(seq_id, parent_ID, aa_length, strand, COG_ID, cugo_number) for seqID, parent, aa_length, strand, COG_ID, cugo_number in gff_data])
+            """, gff_data)
             conn.commit()
 
     logger.info("Creating parent_ID index...")
@@ -940,7 +944,7 @@ def database(cog_gff_tar_path: str,
                     data.append((seqID, parent, aa_length, direction, annotation_ID, cugo, update_annotation_ID))
 
                 conn.executemany("""
-                                 INSERT INTO protein_data (seqID, parent, aa_length, strand, KEGG_ID, cugo_number)
+                                 INSERT INTO protein_data (seqID, parent_ID, aa_length, strand, KEGG_ID, cugo_number)
                                  VALUES (?, ?, ?, ?, ?, ?)
                                      ON CONFLICT(seqID) DO UPDATE SET
                                      KEGG_ID = ?
@@ -971,7 +975,7 @@ def database(cog_gff_tar_path: str,
                     data.append((seqID, parent, aa_length, direction, annotation_ID, cugo, update_annotation_ID))
 
                 conn.executemany("""
-                                 INSERT INTO protein_data (seqID, parent, aa_length, strand, Pfam_ID, cugo_number)
+                                 INSERT INTO protein_data (seqID, parent_ID, aa_length, strand, Pfam_ID, cugo_number)
                                  VALUES (?, ?, ?, ?, ?, ?)
                                      ON CONFLICT(seqID) DO UPDATE SET
                                      Pfam_ID = ?
