@@ -862,7 +862,7 @@ def filter(fasta: str,
     ax1.axvline(x=(mean_avg_length + 150), color='black', linestyle='dashed', linewidth=1)
     ax1.axvline(x=(mean_avg_length - 150), color='black', linestyle='dashed', linewidth=1)
     ax1.set_xlabel('avg. alignment length')
-    ax1.set_title(label='First pass:\nmean avg. alignment length\n+/- 150', fontdict={'fontsize': 10})
+    ax1.set_title(label='First pass:\nmean avg. align. length\n+/- 150', fontdict={'fontsize': 10})
 
     count = 0
     for qseqid in means.index:
@@ -887,7 +887,7 @@ def filter(fasta: str,
     ax2.axvline(x=lower_bound, color='black', linestyle='dashed', linewidth=1)
     ax2.axvline(x=upper_bound, color='black', linestyle='dashed', linewidth=1)
     ax2.set_xlabel('avg. alignment length')
-    ax2.set_title('Second pass:\nmean avg. alignment length\n+/- 3 SD', fontdict={'fontsize': 10})
+    ax2.set_title('Second pass:\nmean avg. align. length\n+/- 3 SD', fontdict={'fontsize': 10})
 
     count = 0
     for qseqid in means.index:
@@ -907,7 +907,7 @@ def filter(fasta: str,
              bins=range(round(min(means['mean100_unaligned_length'])), round(max(means['mean100_unaligned_length'])), binwidth))
     ax3.axvline(x=boundary, color='black', linestyle='dashed', linewidth=1)
     ax3.set_xlabel("avg. unaligned length")
-    ax3.set_title('Third pass:\nmean unaligned length >\n0.5 * mean alignment length', fontdict={'fontsize': 10})
+    ax3.set_title('Third pass:\nmean unaligned length >\n0.5 * mean align. length', fontdict={'fontsize': 10})
 
     count = 0
     for qseqid in means.index:
