@@ -922,6 +922,7 @@ def filter(fasta: str,
     logger.info(f"Third pass: dropped {count} sequences. Remaining sequences: {remaining}")
 
     seq_ids = means.index.dropna().unique().tolist()
+    seq_ids = [str(seq_id) for seq_id in seq_ids]
 
     if sql:
         _ = retrieve_sequences_from_db(seq_ids, output_path, db_path)
