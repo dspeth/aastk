@@ -17,41 +17,56 @@ logger = logging.getLogger(__name__)
 # ===============================
 # Input normalization function
 # ===============================
-def list_inputs(seed_db_fasta, query_fastq):
+def list_inputs(input_to_list: str,
+                input_type: str,
+                input_mode: str):
     """
     Normalizes inputs to lists of files
     Accepts both individual files and directories
 
     Args:
-        seed_db_fasta (str): Path to FASTA file or directory of FASTA files
-        query_fastq (str): Path to FASTQ file or directory of FASTQ files
+        input_to_list (str): Path to input file or directory of input files
+        input_type (str): Type of input files ("seed" or "query")
     
-    Returns:
-        db_files (list): List of paths to FASTA files
-        query_files (list): List of paths to FASTQ files
-    """
-    # Normalize gene database inputs
-    if Path(seed_db_fasta).is_dir(): 
-        db_files = []
-        for ext in ["*.fasta", "*.fa", "*.faa"]: 
-            db_files.extend(Path(seed_db_fasta).glob(ext)) 
-        db_files.sort()  # Sort files for consistent order
-    else: 
-        db_files = [Path(seed_db_fasta)]
-    
-    # Normalize query inputs 
-    if Path(query_fastq).is_dir(): 
-        query_files = []
-        for ext in ["*.fastq", "*.fastq.gz", "*.fq", "*.fq.gz"]:     
-            query_files.extend(Path(query_fastq).glob(ext)) 
-        query_files.sort()  
-    else: 
-        query_files = [Path(query_fastq)]
-    
-    logger.info(f"Found {len(query_files)} query file(s)")
-    logger.info(f"Found {len(db_files)} database file(s)")
+        input_mode (str): Input mode for validation ("file" or "dir")
 
-    return db_files, query_files
+    Returns:
+        list_of_paths (list): List of Path objects for input files
+    """
+    if input_type == "seed":
+        valid_extensions = ["*.fasta", "*.fa", "*.faa"]
+    elif input_type == "query":
+        valid_extensions = ["*.fastq", "*.fastq.gz", "*.fq", "*.fq.gz"]
+    else :
+        logger.error(f"Unsupported input type: {input_type}")
+        raise ValueError(f"Unsupported input type: {input_type}")
+
+    if input_mode not in {"file", "dir"}:
+        logger.error(f"Unsupported input mode: {input_mode}")
+        raise ValueError(f"Unsupported input mode: {input_mode}")
+
+    input_path = Path(input_to_list)
+
+    # Transform input into list of paths based on explicit mode
+    if input_mode == "dir":
+        if not input_path.is_dir():
+            raise ValueError(f"--query_dir and --seed_dir expects a directory path, got: {input_to_list} for {input_type} files")
+
+        list_of_paths = []
+        for ext in valid_extensions:
+            list_of_paths.extend(input_path.glob(ext))
+        list_of_paths.sort()  # Sort files for consistent order
+
+    elif input_mode == "file":
+        if input_path.is_dir():
+            raise ValueError(f"--query and --seed expects a file path, got: {input_to_list} for {input_type} file")
+        if not input_path.exists():
+            raise FileNotFoundError(f"Input file not found: {input_to_list}")
+        list_of_paths = [input_path]
+
+
+    logger.info(f"Found {len(list_of_paths)} {input_type} file(s) at {input_to_list}")
+    return list_of_paths
 
 
 
@@ -878,23 +893,30 @@ def rasr_select(dbmin: float,
 # ===============================
 # aastk build_execution_plan FUNCTION
 # ===============================
-def build_execution_plan(query_mode: str,
-                          seed_mode: str,
-                          query_files: list,
-                          db_files: list):
+def build_execution_plan(query_files: list,
+                          db_files: list,
+                          query_mode: str,
+                          seed_mode: str):
 
-    if query_mode not in {"file", "dir"}:
-        raise ValueError(f"Invalid query_mode: {query_mode}. Expected 'file' or 'dir'.")
+    # Validate input modes by type and number of files
+    if query_mode == "file" and len(query_files) != 1:
+        raise ValueError(f"--query expects exactly one file, got {len(query_files)}")
+    if seed_mode == "file" and len(db_files) != 1:
+        raise ValueError(f"--seed expects exactly one file, got {len(db_files)}")
 
-    if seed_mode not in {"file", "dir"}:
-        raise ValueError(f"Invalid seed_mode: {seed_mode}. Expected 'file' or 'dir'.")
+    # Set upper limit on number of files
+    if seed_mode == "dir" and len(db_files) > 20:
+        logger.error(f"Too many seed database files provided ({len(db_files)}). Please provide 20 or fewer.")
+        raise ValueError(f"Too many seed database files provided ({len(db_files)}). Please provide 20 or fewer.\nOr consider running in single database mode (--seed) and iterateating over genes.")
 
-    seed_is_multi = len(db_files) > 1        # type=bool, True if there are multiple seed database files (only relevant if seed_mode is 'dir')
-    query_is_multi = len(query_files) > 1
+    if query_mode == "dir" and len(query_files) > 20:
+        logger.error(f"Too many query files provided ({len(query_files)}). Please provide 20 or fewer.")
+        raise ValueError(f"Too many query files provided ({len(query_files)}). Please provide 20 or fewer.\nOr consider running in single query mode (--query) and iterating over datasets.")
+
+    seed_is_multi = seed_mode == "dir"
+    query_is_multi = query_mode == "dir"
 
     return {
-        "query_mode": query_mode,                       # "file" if query is a single file, "dir" if query is a directory containing multiple files
-        "seed_mode": seed_mode,                         # "file" if seed_db is a single file, "dir" if seed_db is a directory containing multiple files
         "seed_is_multi": seed_is_multi,                 # True if seed_mode is 'dir' and contains multiple files
         "query_is_multi": query_is_multi,               # True if query_mode is 'dir' and contains multiple files
         "do_seed_merge": seed_is_multi,                 # True if we need to merge multiple seed db files into one = if seed_is_multi is True
@@ -1013,15 +1035,16 @@ def rasr_multiple(query: str,
     # ==========================
     logger.info("Listing input files for datasets and gene databases")
 
-    query_files = list_inputs(query, "fastq")
-    db_files = list_inputs(seed_db, "fasta")
+    query_files = list_inputs(query, "query", input_mode=query_mode)
+    db_files = list_inputs(seed_db, "seed", input_mode=seed_mode)
     
     if not db_files:
         raise RuntimeError("No seed database files found")
     if not query_files:
         raise RuntimeError("No query files found")
 
-    plan = build_execution_plan(query_files, db_files)
+    plan = build_execution_plan(query_files, db_files, query_mode=query_mode, seed_mode=seed_mode)
+    
     # ========================
     # Output directory setup
     # ========================
