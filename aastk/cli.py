@@ -239,6 +239,10 @@ def __query(group, required=False):
     group.add_argument('-q', '--query', type=str, default=None, required=required,
                        help='Path to query FASTA')
 
+def __query_dir(group, required=False):
+    group.add_argument('-q', '--query_dir', type=str, required=required,
+                       help='Path to directory containing query FASTA/FASTQ files')
+
 def __score_column(group, required=False):
     group.add_argument('-s', '--score_column', type=int, default=None, required=required,
                        help='Index of the raw score column of BLAST tabular output file. Counting starts at 1')
@@ -246,6 +250,10 @@ def __score_column(group, required=False):
 def __seed(group, required=False):
     group.add_argument('-s', '--seed', type=str, default=None, required=required,
                        help='Path to FASTA files containing seed sequences for database creation')
+
+def __seed_dir(group, required=False):
+    group.add_argument('-s', '--seed_dir', type=str, required=required,
+                       help='Path to directory containing FASTA files with seed sequences for database creation')
 
 def __selfmax(group, required=False):
     group.add_argument('-u', '--selfmax', type=int, required=required,
@@ -634,9 +642,13 @@ def get_main_parser():
 
     ### PARSER FOR RASR_MULTIPLE (Multi-dataset/Multi-gene workflow) ###
     with subparser(sub_parsers, 'rasr_multiple', 'RASR: multi-dataset and multi-gene workflow') as parser:
+        with mutex_group(parser, required=True) as grp:
+            __query_dir(grp)
+            __query(grp)
+        with mutex_group(parser, required=True) as grp:
+            __seed_dir(grp)
+            __seed(grp)
         with arg_group(parser, 'Required arguments') as grp:
-            __query(grp, required=True)
-            __seed(grp, required=True)
             __outgrp_db(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)

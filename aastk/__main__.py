@@ -351,9 +351,11 @@ def main():
 
         ### PARSER FOR RASR_MULTIPLE (Multi-dataset/Multi-gene workflow) ###
         elif args.subparser_name == 'rasr_multiple':
+            query_input = args.query_dir if args.query_dir is not None else args.query
+            seed_input = args.seed_dir if args.seed_dir is not None else args.seed
             rasr_multiple(
-                query=args.query,
-                gene_db=args.seed,
+                query=query_input,
+                seed_db=seed_input,
                 outgrp_db=args.outgrp_db,
                 output_dir=args.output,
                 sensitivity=args.sensitivity,
