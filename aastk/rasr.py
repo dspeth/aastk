@@ -84,7 +84,7 @@ def search(gene_db_out_path: str,
     # =======================================
     # DIAMOND blastx command construction
     # =======================================
-    min_score = 10
+    min_bitscore = 10
     cmd = ["diamond", "blastx",
            "-d", gene_db_out_path,
            "-q", query_fastq,
@@ -96,7 +96,7 @@ def search(gene_db_out_path: str,
            "--outfmt", str(6), *columns,
            "-b", str(block),
            "-c", str(chunk),
-           "--min-score", str(min_score),
+           "--min-score", str(min_bitscore),
            "--comp-based-stats", str(0),
            sensitivity_param]
 
@@ -138,6 +138,7 @@ def search(gene_db_out_path: str,
     
     blast_df = pd.read_csv(output_path, sep='\t', names=columns)
     derep_df = blast_df.sort_values('score', ascending=False).drop_duplicates(['qseqid'])
+
     derep_df.to_csv(output_path, sep='\t', index=False, header=False)
         
     logger.info(f"Successfully completed DIAMOND search. Results at {output_path}")
@@ -517,7 +518,7 @@ def rasr(query: str,
     Runs:
         aastk build
         aastk search    
-        aastk get_hit_seqs  # catch reads that hit gene db
+        aastk get_hit_seqs  # catch reads that hit gene db to use as query for outgroup search
         aastk search        # against_outgroup
         aastk bsr
         aastk rasr_plot
@@ -574,14 +575,21 @@ def rasr(query: str,
 
         search_output, column_info_path = search(db_path, query, threads, dataset_output_dir, sensitivity, block=block, chunk=chunk, force=force)
 
-        intermediate_results['search_output'] = search_output
+        # Filter search output by minimum score
+        search_output_filtered = f"{dataset_output_dir}/filtered_search_output.tsv"
+        min_score = 50
+        search_out = pd.read_csv(search_output, sep='\t', low_memory=False)
+        filtered_df = search_out[search_out['score'] >= min_score]
+        filtered_df.to_csv(search_output_filtered, sep='\t', index=False, header=False)
+
+        intermediate_results['search_output'] = search_output_filtered
         intermediate_results['column_info_path'] = column_info_path
 
         # ===============================
         # Read sequence extraction
         # ===============================
         logger.info("Extracting hit sequences from search results")
-        matched_fastq, id_file = get_hit_seqs(search_output, query, dataset_output_dir, key_column=key_column, force=force)
+        matched_fastq, id_file = get_hit_seqs(search_output_filtered, query, dataset_output_dir, key_column=key_column, force=force)
         
         intermediate_results['hit_seqs_path'] = matched_fastq
         intermediate_results['hit_ids_path'] = id_file
@@ -599,7 +607,7 @@ def rasr(query: str,
         # Score calculations
         # ===============================
         logger.info("Calculating BSR values")
-        bsr_output = bsr(search_output, outgrp_search_output, dataset_output_dir, column_info_path=column_info_path, force=force)
+        bsr_output = bsr(search_output_filtered, outgrp_search_output, dataset_output_dir, column_info_path=column_info_path, force=force)
         
         results['bsr_output'] = bsr_output
 
