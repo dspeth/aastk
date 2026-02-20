@@ -17,13 +17,13 @@ logger = logging.getLogger(__name__)
 # ===============================
 # Input normalization function
 # ===============================
-def list_inputs(gene_db_fasta, query_fastq):
+def list_inputs(seed_db_fasta, query_fastq):
     """
     Normalizes inputs to lists of files
     Accepts both individual files and directories
 
     Args:
-        gene_db_fasta (str): Path to FASTA file or directory of FASTA files
+        seed_db_fasta (str): Path to FASTA file or directory of FASTA files
         query_fastq (str): Path to FASTQ file or directory of FASTQ files
     
     Returns:
@@ -31,13 +31,13 @@ def list_inputs(gene_db_fasta, query_fastq):
         query_files (list): List of paths to FASTQ files
     """
     # Normalize gene database inputs
-    if Path(gene_db_fasta).is_dir(): 
+    if Path(seed_db_fasta).is_dir(): 
         db_files = []
         for ext in ["*.fasta", "*.fa", "*.faa"]: 
-            db_files.extend(Path(gene_db_fasta).glob(ext)) 
+            db_files.extend(Path(seed_db_fasta).glob(ext)) 
         db_files.sort()  # Sort files for consistent order
     else: 
-        db_files = [Path(gene_db_fasta)]
+        db_files = [Path(seed_db_fasta)]
     
     # Normalize query inputs 
     if Path(query_fastq).is_dir(): 
@@ -74,7 +74,7 @@ def merge_dbs(db_files: list,
         merged_fasta_path (str): Path to merged FASTA file.
         db_dict (dict): Dictionary mapping db names to their sequence IDs.
     """
-    merged_fasta_path = ensure_path(output_dir, "merged_gene_db.fasta", force=force)
+    merged_fasta_path = ensure_path(output_dir, "merged_seed_db.fasta", force=force)
     
     if Path(merged_fasta_path).exists() and not force:
         logger.info(f"Merged database already exists at {merged_fasta_path}, skipping merge.")
@@ -140,7 +140,7 @@ def merge_dbs(db_files: list,
 # ===============================
 # aastk search CLI FUNCTION
 # ===============================
-def search(gene_db_out_path: str,
+def search(seed_db_out_path: str,
             query_fastq: str,
             threads: int,
             output_dir: str,
@@ -153,7 +153,7 @@ def search(gene_db_out_path: str,
     Single database vs. single query
 
     Args:
-        gene_db_out_path (str): Path to DIAMOND protein database for the gene of interest
+        seed_db_out_path (str): Path to DIAMOND protein database for the gene of interest
         query_fastq (str): Path to sequencing read file, can be gzipped
         threads (int): Number of threads to use
         output_dir (str): Directory to save output files
@@ -170,7 +170,7 @@ def search(gene_db_out_path: str,
     check_dependency_availability("diamond")
 
     # automatically name files
-    db_filename = determine_dataset_name(gene_db_out_path, '.', 0, '_db')
+    db_filename = determine_dataset_name(seed_db_out_path, '.', 0, '_db')
 
     # ===============================
     # Output file path setup
@@ -198,7 +198,7 @@ def search(gene_db_out_path: str,
     # check for sensitivity, if None set to default --fast
     sensitivity_param = f"--{sensitivity}" if sensitivity else "--fast"
 
-    logger.info(f"Searching DIAMOND database {gene_db_out_path} with query {query_fastq}")
+    logger.info(f"Searching DIAMOND database {seed_db_out_path} with query {query_fastq}")
     logger.info(f"Output path: {output_path}")
     logger.info(f"Using parameters: sensitivity={sensitivity_param}, block={block}, chunk={chunk}")
 
@@ -207,7 +207,7 @@ def search(gene_db_out_path: str,
     # =======================================
     min_score = 10
     cmd = ["diamond", "blastx",
-           "-d", gene_db_out_path,
+           "-d", seed_db_out_path,
            "-q", query_fastq,
            "-p", str(threads),
            "-o", output_path,
@@ -547,7 +547,6 @@ def merge_hits(all_hit_seqs_paths: list,
     try:
         subprocess.run(cmd, check=True, capture_output=True, text=True)
         logger.info(f"Successfully merged and deduplicated {len(all_hit_seqs_paths)} FASTQ files into {merged_hits_file}")
-        loggger.info(f"The merged file contains {count_fastq_records(merged_hits_file):,} unique sequences")
     
     except subprocess.CalledProcessError as e:
         logger.error(f"seqkit rmdup failed: {e.stderr}")
@@ -803,7 +802,7 @@ def rasr_plot(bsr_file: str,
 # ===============================
 # aastk pasr_select CLI FUNCTION
 # ===============================
-def rasr_select(score_cutoff: float,
+def rasr_select(dbmin: float,
                 bsr_cutoff: float,
                 matched_fastq: str,
                 bsr_file: str,
@@ -813,7 +812,7 @@ def rasr_select(score_cutoff: float,
     Subsets RASR results based on BSR and database score thresholds.
 
     Args:
-        score_cutoff (float): Minimum database score threshold for selection
+        dbmin (float): Minimum database score threshold for selection
         bsr_cutoff (float): Minimum BSR threshold for selection
         matched_fastq (str): Path to FASTQ file containing sequences that matched the gene database (Search 1)
         bsr_file (str): Path to BSR results file containing qseqid, sseqid_db, score_db, sseqid_og, score_og, bsr
@@ -827,14 +826,14 @@ def rasr_select(score_cutoff: float,
     # Check if seqkit is available
     check_dependency_availability("seqkit")
 
-    logger.info(f"Selecting RASR hits with database score >= {score_cutoff} and BSR >= {bsr_cutoff}")
-
     # Handle None values from cli.py
     if bsr_cutoff is None:
         bsr_cutoff = 0.9
     if dbmin is None:
         dbmin = 110
-    
+
+    logger.info(f"Selecting RASR hits with database score >= {dbmin} and BSR >= {bsr_cutoff}")
+
     # ===============================
     # Output file path setup
     # ===============================
@@ -848,7 +847,7 @@ def rasr_select(score_cutoff: float,
     # Filter based on cutoffs and write selected IDs to file
     bsr_df = pd.read_csv(bsr_file, sep='\t', header=0)
 
-    selected_ids = bsr_df[(bsr_df['score_db'] >= score_cutoff) 
+    selected_ids = bsr_df[(bsr_df['score_db'] >= dbmin) 
                             & (bsr_df['BSR'] >= bsr_cutoff)]['qseqid'].unique()
 
     with open(id_file, 'w') as f:
@@ -880,7 +879,7 @@ def rasr_select(score_cutoff: float,
 # aastk rasr WORKFLOW
 # ===============================
 def rasr_multiple(query: str,
-            gene_db: str,
+            seed_db: str,
             outgrp_db: str,
             output_dir: str,
             sensitivity: str,
@@ -897,19 +896,20 @@ def rasr_multiple(query: str,
     RASR workflow:
     Runs:
         Once:
-            aastk list_inputs       # Create lists of input files for datasets and gene dbs
-            aastk merge_dbs         # Merge gene dbs in one uniq FASTA if multiple
-            aastk build             # Build diamond db of genes if not exists
+            aastk list_inputs           # Create lists of input files for datasets and gene dbs
+            aastk merge_dbs             # Merge gene dbs in one uniq FASTA if multiple
+            aastk build                 # Build diamond db of genes if not exists
 
         For each dataset:
-            aastk search            # Search merged database (Search 1) (DS1_hits.tsv)
-            aastk split             # Seperate Search 1 results per gene (DS1_GENE1.tsv, DS1_GENE2.tsv, etc)
-            aastk get_hit_seqs      # Extract hits for each gene (DS1_GENE1_matched.fastq, DS1_GENE2_matched.fastq, etc)
+            aastk search                # Search merged database (Search 1) (DS1_hits.tsv)
+            aastk search_filtering      # Filter Search 1 results to keep only best hit per query above score threshold (DS1_hits_filtered.tsv)
+            aastk split                 # Seperate Search 1 results per gene (DS1_GENE1.tsv, DS1_GENE2.tsv, etc)
+            aastk get_hit_seqs          # Extract hits for each gene (DS1_GENE1_matched.fastq, DS1_GENE2_matched.fastq, etc)
         
         Once:
-            aastk merge_hits        # Merge all extracted hits from all datasets, all genes (all_hits.fastq)
-            aastk search            # Search outgroup db with merged hits (Search 2) (og_allhits.tsv)
-            aastk split             # Seperate Search 2 results per dataset (og_DS1.tsv, og_DS2.tsv, etc)
+            aastk merge_hits            # Merge all extracted hits from all datasets, all genes (all_hits.fastq)
+            aastk search                # Search outgroup db with merged hits (Search 2) (og_allhits.tsv)
+            aastk split                 # Seperate Search 2 results per dataset (og_DS1.tsv, og_DS2.tsv, etc)
         
         For each dataset: 
             For each gene:
@@ -920,7 +920,7 @@ def rasr_multiple(query: str,
 
     Args:
         query (str): path to sequencing read file, can be gzipped
-        gene_db (str): path to gene of interest diamond database file
+        seed_db (str): path to gene of interest diamond database file
         outgrp_db (str): path to outgroup diamond database file
         output_dir (str): directory to save output files
         sensitivity (str): sensitivity setting for diamond search
@@ -942,7 +942,7 @@ def rasr_multiple(query: str,
     # ==========================
     logger.info("Normalizing inputs to lists")
 
-    db_files, query_files = list_inputs(gene_db, query)
+    db_files, query_files = list_inputs(seed_db, query)
     
     # ========================
     # Output directory setup
@@ -960,17 +960,17 @@ def rasr_multiple(query: str,
         # Gene of interest database merging
         # ==================================
         logger.info("Merging protein databases")
-        merged_gene_db_path, db_seqid_dict = merge_dbs(db_files, output_dir, force=force)
+        merged_seed_db_path, db_seqid_dict = merge_dbs(db_files, output_dir, force=force)
 
-        intermediate_results['merged_gene_db_fasta'] = merged_gene_db_path
+        intermediate_results['merged_seed_db_fasta'] = merged_seed_db_path
 
         # ===================================
         # Gene of interest database building
         # ===================================
         logger.info("Building diamond merged protein database")
-        db_path = pasr_build(merged_gene_db_path, threads, output_dir, force=force)
+        db_path = pasr_build(merged_seed_db_path, threads, output_dir, force=force)
 
-        intermediate_results['merged_gene_db_diamond'] = db_path
+        intermediate_results['merged_seed_db_diamond'] = db_path
 
         # ===================================
         # Track outputs per dataset and gene
