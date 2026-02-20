@@ -876,6 +876,37 @@ def rasr_select(dbmin: float,
 
 
 # ===============================
+# aastk build_execution_plan FUNCTION
+# ===============================
+def build_execution_plan(query_mode: str,
+                          seed_mode: str,
+                          query_files: list,
+                          db_files: list):
+
+    if query_mode not in {"file", "dir"}:
+        raise ValueError(f"Invalid query_mode: {query_mode}. Expected 'file' or 'dir'.")
+
+    if seed_mode not in {"file", "dir"}:
+        raise ValueError(f"Invalid seed_mode: {seed_mode}. Expected 'file' or 'dir'.")
+
+    seed_is_multi = len(db_files) > 1        # type=bool, True if there are multiple seed database files (only relevant if seed_mode is 'dir')
+    query_is_multi = len(query_files) > 1
+
+    return {
+        "query_mode": query_mode,                       # "file" if query is a single file, "dir" if query is a directory containing multiple files
+        "seed_mode": seed_mode,                         # "file" if seed_db is a single file, "dir" if seed_db is a directory containing multiple files
+        "seed_is_multi": seed_is_multi,                 # True if seed_mode is 'dir' and contains multiple files
+        "query_is_multi": query_is_multi,               # True if query_mode is 'dir' and contains multiple files
+        "do_seed_merge": seed_is_multi,                 # True if we need to merge multiple seed db files into one = if seed_is_multi is True
+        "do_db_split_after_search1": seed_is_multi,     # True if we need to split search 1 results by gene = if seed_is_multi is True
+        "do_merge_hits": None,                          # True if we need to merge hit sequences from search 1 across multiple datasets = if query_is_multi is True
+        "do_og_split_by_dataset": query_is_multi,       # True if we need to split search 2 results by dataset = if query_is_multi is True
+    }
+
+
+
+
+# ===============================
 # aastk rasr WORKFLOW
 # ===============================
 def rasr_multiple(query: str,
@@ -895,29 +926,65 @@ def rasr_multiple(query: str,
     """
     RASR workflow:
     Runs:
-        Once:
-            aastk list_inputs           # Create lists of input files for datasets and gene dbs
-            aastk merge_dbs             # Merge gene dbs in one uniq FASTA if multiple
-            aastk build                 # Build diamond db of genes if not exists
+        aastk list_inputs                                       # on query and seed_db to determine input files and execution mode
+        aastk build_execution_plan                              # to determine which steps to execute based on input files
 
-        For each dataset:
-            aastk search                # Search merged database (Search 1) (DS1_hits.tsv)
-            aastk search_filtering      # Filter Search 1 results to keep only best hit per query above score threshold (DS1_hits_filtered.tsv)
-            aastk split                 # Seperate Search 1 results per gene (DS1_GENE1.tsv, DS1_GENE2.tsv, etc)
-            aastk get_hit_seqs          # Extract hits for each gene (DS1_GENE1_matched.fastq, DS1_GENE2_matched.fastq, etc)
+        if query_dir is True and seed_dir is True:
+            - aastk merge_dbs                                   # merge multiple seed db files into one
+            - aastk pasr_build                                  # build diamond db from merged seed db fasta
+            for each query file:
+                - aastk search                                  # search merged gene db with query file
+                - aastk search_filtering                        # filter search results to keep only best hit per query above score threshold
+                - aastk split_search_outputs                    # split search results per tuple(dataset, gene) using mapping from merged seed db
+                - for each tuple(gene, split_search_output):
+                    aastk get_hit_seqs                          # extract hit sequences from query file based on split search output
+            - aastk merge_hits                                  # merge hit sequences from all datasets and genes into one
+            - aastk search                                      # search outgroup db with merged hit sequences
+            - aastk split_search_outputs                        # split outgroup search results by dataset using mapping from query files
+            - for each tuple(dataset, gene):
+                - aastk bsr                                     # calculate BSR using gene_search output and outgroup_search output
+                - aastk rasr_plot                               # create BSR scatter plot
+                - aastk rasr_select                             # subset hit sequences based on BSR and database score thresholds
         
-        Once:
-            aastk merge_hits            # Merge all extracted hits from all datasets, all genes (all_hits.fastq)
-            aastk search                # Search outgroup db with merged hits (Search 2) (og_allhits.tsv)
-            aastk split                 # Seperate Search 2 results per dataset (og_DS1.tsv, og_DS2.tsv, etc)
+        elif query_dir is True and seed_dir is False:
+            - aastk pasr_build                                  # build diamond db from single seed db fasta
+            for each query file:
+                - aastk search                                  # search gene db with query file
+                - aastk search_filtering                        # filter search results to keep only best hit per query above score threshold
+                - aastk get_hit_seqs                            # extract hit sequences from query file based on search output
+            - aastk merge_hits                                  # merge hit sequences from all datasets into one
+            - aastk search                                      # search outgroup db with merged hit sequences
+            - aastk split_search_outputs                        # split outgroup search results by dataset using mapping from query files
+            - for each dataset:
+                - aastk bsr                                     # calculate BSR using gene_search output and outgroup_search output
+                - aastk rasr_plot                               # create BSR scatter plot
+                - aastk rasr_select                             # subset hit sequences based on BSR and database score thresholds
         
-        For each dataset: 
-            For each gene:
-                aastk bsr               # Calculate BSR values from Search 1 and Search 2 for each gene (DS1_GENE1_bsr.tsv, DS1_GENE2_bsr.tsv, etc)
-                aastk rasr_plot         # Plot BSR values for each gene and dataset (DS1_GENE1_bsr_plot.png, DS1_GENE2_bsr_plot.png, etc)
-                aastk select            # Select hits above BSR and dbmin thresholds (DS1_GENE1_selected.tsv, DS1_GENE2_selected.tsv, etc)
-                
-
+        elif query_dir is False and seed_dir is True:
+            - aastk merge_dbs                                   # merge multiple seed db files into one
+            - aastk pasr_build                                  # build diamond db from merged seed db fasta
+            - aastk search                                      # search merged gene db with query file
+            - aastk search_filtering                            # filter search result to keep only best hit per query above score threshold
+            - aastk split_search_outputs                        # split search result per gene using mapping from merged seed db
+            for each tuple(gene, split_search_output):
+                - aastk get_hit_seqs                            # extract hit sequences from query file based on split search output
+            - aastk merge_hits                                  # merge hit sequences from all genes into one
+            - aastk search                                      # search outgroup db with merged hit sequences
+            for each tuple(gene, split_search_output):
+                - aastk bsr                                     # calculate BSR using gene_search output and outgroup_search output
+                - aastk rasr_plot                               # create BSR scatter plot
+                - aastk rasr_select                             # subset hit sequences based on BSR and database score thresholds
+    
+        elif query_dir is False and seed_dir is False:
+            - aastk pasr_build                                  # build diamond db from single seed_db fasta
+            - aastk search                                      # search gene db with query file
+            - aastk search_filtering                            # filter search results to keep only best hit per query above score threshold
+            - aastk get_hit_seqs                                # extract hit sequences from query file based on search output filtered
+            - aastk search                                      # search outgroup db with hit sequences
+            - aastk bsr                                   # calculate BSR using gene_search output and outgroup_search output
+            - aastk rasr_plot                             # create BSR scatter plot
+            - aastk rasr_select                           # subset hit sequences based on BSR and database score thresholds
+         
     Args:
         query (str): path to sequencing read file, can be gzipped
         seed_db (str): path to gene of interest diamond database file
