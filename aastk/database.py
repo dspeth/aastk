@@ -430,49 +430,8 @@ def parse_single_gff(gff_content: str) -> list:
     # Return complete data for database storage
     return reformat_data
 
-def parse_gff_for_update(gff_content: str) -> list:
-    """
-    Parses GFF content for UPDATE operations (seqID and annotation_ID only).
 
-    Args:
-        gff_content (str): GFF format file content as string
-
-    Returns:
-        list: List of tuples (annotation_ID, seqID)
-    """
-    update_data = []
-    lines = gff_content.strip().split('\n')
-
-    for line in lines:
-        clean_line = line.strip().split('\t')
-
-        if len(clean_line) != 9 or clean_line[2] != 'CDS':
-            continue
-
-        attributes = clean_line[8]
-
-        # parse attributes
-        attr_dict = {}
-        for attr in attributes.split(';'):
-            if '=' in attr:
-                key, value = attr.split('=', 1)
-                attr_dict[key] = value
-
-        seqID = attr_dict.get('ID', '')
-        annotation_ID = attr_dict.get('Name', '')
-
-        if not annotation_ID:
-            annotation_ID = 'NA'
-
-        if seqID and annotation_ID:
-            update_data.append((annotation_ID, seqID))
-
-    return update_data
-
-
-
-def process_gff_file(filepath: str,
-                     update_mode: bool = False):
+def process_gff_file(filepath: str):
     """
     Process a single GFF file (gzipped or plain) from disk and parse it.
 
@@ -493,10 +452,8 @@ def process_gff_file(filepath: str,
             with open(filepath, "r", encoding="utf-8") as f:
                 content = f.read()
 
-        if update_mode:
-            return parse_gff_for_update(content)
-        else:
-            return parse_single_gff(content)
+        return parse_single_gff(content)
+
     except Exception as e:
         logger.warning(f"Failed to process {filepath}: {e}")
         return []
@@ -824,8 +781,6 @@ def database_check(db_path: str,
                     f.write(f"{genome_id}\n")
 
 
-
-
 def database(cog_gff_tar_path: str,
           kegg_gff_tar_path: str = None,
           pfam_gff_tar_path: str = None,
@@ -877,7 +832,7 @@ def database(cog_gff_tar_path: str,
     logger.info(f"Found {len(cog_gff_files)} COG GFF files")
 
     for gff_file in tqdm(cog_gff_files, desc="Processing COG GFF"):
-        gff_data = process_gff_file(str(gff_file), update_mode=False)
+        gff_data = process_gff_file(str(gff_file))
         if gff_data:
             conn.executemany("""
                 INSERT INTO protein_data
@@ -933,15 +888,11 @@ def database(cog_gff_tar_path: str,
 
         for gff_file in tqdm(kegg_gff_files, desc="Updating KEGG IDs"):
             kegg_data = process_gff_file(str(gff_file))
-            update_kegg_data = process_gff_file(str(gff_file), update_mode=True)
-            if kegg_data and update_kegg_data:
-                update_dict = {seqid: annotation_id for annotation_id, seqid in update_kegg_data}
+            if kegg_data:
                 data = []
                 for record in kegg_data:
                     seqID, parent, aa_length, direction, annotation_ID, cugo = record
-                    update_annotation_ID = update_dict.get(seqID, annotation_ID)
-
-                    data.append((seqID, parent, aa_length, direction, annotation_ID, cugo, update_annotation_ID))
+                    data.append((seqID, parent, aa_length, direction, annotation_ID, cugo, annotation_ID))
 
                 conn.executemany("""
                                  INSERT INTO protein_data (seqID, parent_ID, aa_length, strand, KEGG_ID, cugo_number)
@@ -964,15 +915,12 @@ def database(cog_gff_tar_path: str,
 
         for gff_file in tqdm(pfam_gff_files, desc="Updating Pfam IDs"):
             pfam_data = process_gff_file(str(gff_file))
-            update_pfam_data = process_gff_file(str(gff_file), update_mode=True)
-            if pfam_data and update_pfam_data:
-                update_dict = {seqid: annotation_id for annotation_id, seqid in update_pfam_data}
+            if pfam_data:
                 data = []
                 for record in pfam_data:
                     seqID, parent, aa_length, direction, annotation_ID, cugo = record
-                    update_annotation_ID = update_dict.get(seqID, annotation_ID)
 
-                    data.append((seqID, parent, aa_length, direction, annotation_ID, cugo, update_annotation_ID))
+                    data.append((seqID, parent, aa_length, direction, annotation_ID, cugo, annotation_ID))
 
                 conn.executemany("""
                                  INSERT INTO protein_data (seqID, parent_ID, aa_length, strand, Pfam_ID, cugo_number)
