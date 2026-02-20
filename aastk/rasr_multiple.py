@@ -911,6 +911,8 @@ def build_execution_plan(query_mode: str,
 # ===============================
 def rasr_multiple(query: str,
             seed_db: str,
+            query_mode: str,
+            seed_mode: str,
             outgrp_db: str,
             output_dir: str,
             sensitivity: str,
@@ -929,7 +931,7 @@ def rasr_multiple(query: str,
         aastk list_inputs                                       # on query and seed_db to determine input files and execution mode
         aastk build_execution_plan                              # to determine which steps to execute based on input files
 
-        if query_dir is True and seed_dir is True:
+        if query_is_multi is True and seed_is_multi is True:
             - aastk merge_dbs                                   # merge multiple seed db files into one
             - aastk pasr_build                                  # build diamond db from merged seed db fasta
             for each query file:
@@ -946,7 +948,7 @@ def rasr_multiple(query: str,
                 - aastk rasr_plot                               # create BSR scatter plot
                 - aastk rasr_select                             # subset hit sequences based on BSR and database score thresholds
         
-        elif query_dir is True and seed_dir is False:
+        elif query_is_multi is True and seed_is_multi is False:
             - aastk pasr_build                                  # build diamond db from single seed db fasta
             for each query file:
                 - aastk search                                  # search gene db with query file
@@ -960,7 +962,7 @@ def rasr_multiple(query: str,
                 - aastk rasr_plot                               # create BSR scatter plot
                 - aastk rasr_select                             # subset hit sequences based on BSR and database score thresholds
         
-        elif query_dir is False and seed_dir is True:
+        elif query_is_multi is False and seed_is_multi is True:
             - aastk merge_dbs                                   # merge multiple seed db files into one
             - aastk pasr_build                                  # build diamond db from merged seed db fasta
             - aastk search                                      # search merged gene db with query file
@@ -975,7 +977,7 @@ def rasr_multiple(query: str,
                 - aastk rasr_plot                               # create BSR scatter plot
                 - aastk rasr_select                             # subset hit sequences based on BSR and database score thresholds
     
-        elif query_dir is False and seed_dir is False:
+        elif query_is_multi is False and seed_is_multi is False:
             - aastk pasr_build                                  # build diamond db from single seed_db fasta
             - aastk search                                      # search gene db with query file
             - aastk search_filtering                            # filter search results to keep only best hit per query above score threshold
@@ -984,10 +986,12 @@ def rasr_multiple(query: str,
             - aastk bsr                                   # calculate BSR using gene_search output and outgroup_search output
             - aastk rasr_plot                             # create BSR scatter plot
             - aastk rasr_select                           # subset hit sequences based on BSR and database score thresholds
-         
+
     Args:
         query (str): path to sequencing read file, can be gzipped
         seed_db (str): path to gene of interest diamond database file
+        query_mode (str): Input mode for query ("file" from --query, "dir" from --query_dir)
+        seed_mode (str): Input mode for seed database ("file" from --seed, "dir" from --seed_dir)
         outgrp_db (str): path to outgroup diamond database file
         output_dir (str): directory to save output files
         sensitivity (str): sensitivity setting for diamond search
@@ -1005,37 +1009,56 @@ def rasr_multiple(query: str,
         results (dict): dictionary containing paths to all output files
     """
     # ==========================
-    # Normalize inputs to lists
+    # List inputs and plan mode of execution
     # ==========================
-    logger.info("Normalizing inputs to lists")
+    logger.info("Listing input files for datasets and gene databases")
 
-    db_files, query_files = list_inputs(seed_db, query)
+    query_files = list_inputs(query, "fastq")
+    db_files = list_inputs(seed_db, "fasta")
     
+    if not db_files:
+        raise RuntimeError("No seed database files found")
+    if not query_files:
+        raise RuntimeError("No query files found")
+
+    plan = build_execution_plan(query_files, db_files)
     # ========================
     # Output directory setup
     # ========================
 
     logger.info(f"Running RASR workflow for {len(query_files)} dataset(s) and {len(db_files)} gene database(s)")
     logger.info(f"Output directory: {output_dir}")
+    query_mode = "dir" if plan['query_is_multi'] else "file"
+    seed_mode = "dir" if plan['seed_is_multi'] else "file"
+    logger.info(f"Execution mode: query={query_mode}, seed={seed_mode}")
 
-    # store all the output paths in dictionaries
     intermediate_results = {}
-    results_by_ds_gene = {} # {(dataset_name, gene_name): {result_info_dict}}
+    results_by_ds_gene = {}
+    db_seqid_dict = None
 
     try:
         # ==================================
         # Gene of interest database merging
         # ==================================
-        logger.info("Merging protein databases")
-        merged_seed_db_path, db_seqid_dict = merge_dbs(db_files, output_dir, force=force)
+        # done only if seed_is_multi is True
+        if plan['do_seed_merge']:
+            logger.info("Merging protein databases")
 
-        intermediate_results['merged_seed_db_fasta'] = merged_seed_db_path
+            merged_seed_db_path, db_seqid_dict = merge_dbs(db_files, output_dir, force=force)
+            db_input_for_build = merged_seed_db_path
+
+            intermediate_results['merged_seed_db_fasta'] = merged_seed_db_path
+
+        else:
+            logger.info("Single seed database mode: skipping merge step")
+
+            db_input_for_build = str(db_files[0])
 
         # ===================================
         # Gene of interest database building
         # ===================================
-        logger.info("Building diamond merged protein database")
-        db_path = pasr_build(merged_seed_db_path, threads, output_dir, force=force)
+        logger.info("Building DIAMOND protein database")
+        db_path = pasr_build(db_input_for_build, threads, output_dir, force=force)
 
         intermediate_results['merged_seed_db_diamond'] = db_path
 
@@ -1049,6 +1072,7 @@ def rasr_multiple(query: str,
         # Step 1: Search each dataset against gene database
         # ==================================================     
         logger.info("=== STEP 1: Searching gene database ===")
+
         dataset_output_dirs = set()
         for query_file in query_files:
             dataset_name = determine_dataset_name(query_file, '.', 0, '')
@@ -1075,21 +1099,24 @@ def rasr_multiple(query: str,
             # ==============================
             # Split search results per gene
             # ==============================
-            logger.info(f"Splitting search results per gene for {dataset_name}")
-            
-            db_split_outputs = split_search_outputs(
-                search_output,
-                mapping_dict=db_seqid_dict,
-                output_dir=dataset_output_dir,
-                split_column=1,
-                force=force
-            )
+            if plan['do_db_split_after_search1']:
+                logger.info(f"Splitting search results per gene for {dataset_name}")
 
-            for gene_name, split_output in list(db_split_outputs.items()):
-                gene_output_dir = ensure_path(dataset_output_dir, gene_name, force=force)
-                dest_path = ensure_path(gene_output_dir, Path(split_output).name, force=force)
-                Path(split_output).replace(dest_path)
-                db_split_outputs[gene_name] = dest_path
+                if db_seqid_dict is None:
+                    raise RuntimeError("mapping dict database:[seqid] is required for splitting search outputs when seed_is_multi is True but was not initialized")
+
+                db_split_outputs = split_search_outputs(search_output, mapping_dict=db_seqid_dict, output_dir=dataset_output_dir, split_column=1, force=force)
+
+                for gene_name, split_output in list(db_split_outputs.items()):
+                    gene_output_dir = ensure_path(dataset_output_dir, gene_name, force=force)
+                    dest_path = ensure_path(gene_output_dir, Path(split_output).name, force=force)
+                    Path(split_output).replace(dest_path)
+                    db_split_outputs[gene_name] = dest_path
+
+            else:
+                single_gene_name = determine_dataset_name(str(db_files[0]), '.', 0, '')
+                db_split_outputs = {single_gene_name: search_output}
+
 
             if 'db_split_outputs' not in intermediate_results:
                 intermediate_results['db_split_outputs'] = []
@@ -1137,11 +1164,16 @@ def rasr_multiple(query: str,
         # ============================================================================
         logger.info("=== STEP 2: Searching outgroup database ===")
 
-        logger.info("Merging hits from all datasets and genes")
-        merged_hits_file, infile_list = merge_hits(all_hit_seqs_paths, output_dir, threads, use_existing_merged=use_existing_merged, force=force)
+        plan['do_merge_hits'] = len(all_hit_seqs_paths) > 1
 
-        intermediate_results['merged_hits_file'] = merged_hits_file
-        intermediate_results['infile_list'] = infile_list
+        if plan['do_merge_hits']:
+            logger.info("Merging hits from all datasets and genes")
+            merged_hits_file, infile_list = merge_hits(all_hit_seqs_paths, output_dir, threads, use_existing_merged=use_existing_merged, force=force)
+            intermediate_results['merged_hits_file'] = merged_hits_file
+            intermediate_results['infile_list'] = infile_list
+        else:
+            logger.info("Single matched FASTQ detected: skipping merge_hits")
+            merged_hits_file = all_hit_seqs_paths[0]
 
         # =================== Search outgroup database with merged hits ===================
 
@@ -1153,12 +1185,20 @@ def rasr_multiple(query: str,
 
         # =================== Split outgroup search results per dataset ===================
 
-        logger.info("Splitting outgroup search results per dataset")
         og_split_outputs = {}
-        for dataset_name, query_ids in dataset_to_queries.items():
-            dataset_output_dir = ensure_path(output_dir, dataset_name, force=force)
-            dataset_og_split = split_search_outputs(og_search_output, mapping_dict={dataset_name: query_ids}, output_dir=dataset_output_dir, split_column=0, force=force)
-            og_split_outputs.update(dataset_og_split)
+        if plan['do_og_split_by_dataset']:
+            logger.info("Splitting outgroup search results per dataset")
+
+            for dataset_name, query_ids in dataset_to_queries.items():
+                dataset_output_dir = ensure_path(output_dir, dataset_name, force=force)
+                dataset_og_split = split_search_outputs(og_search_output, mapping_dict={dataset_name: query_ids}, output_dir=dataset_output_dir, split_column=0, force=force)
+                og_split_outputs.update(dataset_og_split)
+                
+        else:
+            logger.info("Single dataset mode: skipping outgroup split")
+
+            only_dataset = next(iter(dataset_to_queries.keys()))
+            og_split_outputs[only_dataset] = og_search_output
 
         intermediate_results['og_split_outputs'] = og_split_outputs
 
