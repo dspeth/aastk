@@ -1,9 +1,8 @@
 name: Publish Python 🐍 distribution 📦 to PyPI and TestPyPI
 
 on:
-  push:
-    tags:
-      - "v*.*.*"   # tag like v1.0.1
+  release:
+    types: [published]
 
 permissions:
   contents: read
