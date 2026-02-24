@@ -1,6 +1,5 @@
 # Amino acid sequence toolkit
 
-### NOTE: aastk is currently in active development, and not yet ready for broad public use. Please be patient
 ## AASTK synopsis
 The amino acid sequence toolkit (AASTK) is a suite of tools that enables construction and analyses of protein sequence datasets from the [GlobDB](https://globdb.org/) genomes. The GlobDB is the most comprehensive genomic resource of species-representative microbial genomes of Bacteria and Archaea, and contains the largest phylogenetic sequence diversity currently available in a single resource. AASTK is designed to leverage the GlobDB to create and analyze protein sequence datasets for evolutionary and functional studies.
 
@@ -18,19 +17,30 @@ Installation instructions, usage examples, and short descriptions of the tools i
 ## Installation
 
 ### Using conda (recommended)
+We recommend installing AASTK using conda, in a dedicated environment created for the software.
 ```bash
-git clone https://github.com/dspeth/aastk.git
-cd aastk
-conda env create -f environment.yml
+conda create aastk
 conda activate aastk
-pip install -e .
+conda install -c bioconda aastk
+```
+
+In addition to the software and dependencies, AASTK requires a SQL database for full functionality, and is best used with the GlobDB protein complement. A fastA file of the GlobDB proteins can be exported from the AASTK SQL database using `aastk export_fasta` so only a single download is required. 
+To set up the AASTK SQL database and GlobDB protein dataset, run the following commands:
+```bash
+wget https://fileshare.lisc.univie.ac.at/globdb/globdb_r226/globdb_r226_aastk.db.gz
+gunzip globdb_r226_aastk.db.gz
+aastk export_fasta -d globdb_r226_aastk.db -n 4 -o protein_fasta_dir
 ```
 
 ### Using pip
 tbd
 
+After installation of the AASTK software and dependencies, the AASTK SQL database and GlobDB protein fastA file can be set up as described under 'Using conda' above.
+
 ### From source 
 tbd
+
+After installation of the AASTK software and dependencies, the AASTK SQL database and GlobDB protein fastA file can be set up as described under 'Using conda' above.
 
 
 ## Brief descriptions of the tools in AASTK
@@ -116,3 +126,16 @@ tSNE plot showing 166,445 sequences of the mopB superfamily after early exaggera
 #### Example of final CASM plot
 ![Example of the final CASM plot, described in the legend below](https://globdb.org/sites/globdb.org/files/inline-images/GTDB_r202_plus_GEMOTU_molyb_align_tsne_final_clusters.png)
 Final tSNE plot showing 166,445 sequences of the mopB superfamily. Points are colored by cluster affiliation, but can also be colored by information from the AASTK SQL database, including taxonomy, environment or culture availability.
+
+
+## Citation
+There is no publication describing AASTK yet, so please cite this repository when you use AASTK. In addition, several parts of the software were developed independently and should be credited.
+
+If you use AASTK with the GlobDB protein dataset, please cite:  
+Speth et al. (2025) GlobDB: a comprehensive species-dereplicated microbial genome resource https://doi.org/10.1093/bioadv/vbaf280
+
+If you use `aastk pasr`, please cite:  
+Speth and Orphan (2018) Metabolic marker gene mining provides insight in global mcrA diversity and, coupled with targeted genome reconstruction, sheds further light on metabolic potential of the Methanomassiliicoccales https://doi.org/10.7717/peerj.5614
+
+The environmental data from `aastk meta` is derived from the MetaCoOc software. A manuscript is in preparation, but in the meantime please cite:   
+https://github.com/bcoltman/metacooc
