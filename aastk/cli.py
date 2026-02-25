@@ -683,6 +683,15 @@ def get_main_parser():
             __output(grp)
             __force(grp)
 
+    with subparser(sub_parsers, 'rasr_get_hit_seqs', 'Extract read sequences that have DIAMOND hits for RASR analysis') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __tabular(grp, required=True)
+            __query(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
+            __key_column(grp)
+            __force(grp)
+
     ### PARSER FOR RASR_MULTIPLE (Multi-dataset/Multi-gene workflow) ###
     with subparser(sub_parsers, 'rasr_multiple', 'RASR: multi-dataset and multi-gene workflow') as parser:
         with mutex_group(parser, required=True) as grp:

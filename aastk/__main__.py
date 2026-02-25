@@ -384,11 +384,20 @@ def main():
 
         elif args.subparser_name == 'rasr_select':
             rasr_select(
-                score_cutoff=args.dbmin,
+                dbmin=args.dbmin,
                 bsr_cutoff=args.bsr_cutoff,
                 matched_fastq=args.matched,
                 bsr_file=args.bsr,
                 output_dir=args.output,
+                force=args.force
+            )
+
+        elif args.subparser_name == 'rasr_get_hit_seqs':
+            rasr_get_hit_seqs(
+                blast_tab=args.tabular,
+                query_path=args.query,
+                output_dir=args.output,
+                key_column=args.key_column,
                 force=args.force
             )
 

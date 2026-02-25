@@ -148,9 +148,9 @@ def search(gene_db_out_path: str,
 
 
 # ===============================
-# aastk get_hit_seqs CLI FUNCTION
+# aastk rasr_get_hit_seqs CLI FUNCTION
 # ===============================
-def get_hit_seqs(blast_tab: str,
+def rasr_get_hit_seqs(blast_tab: str,
                         query_path: str,
                         output_dir: str,
                         key_column: int = 0,
@@ -431,7 +431,7 @@ def rasr_plot(bsr_file: str,
 # ===============================
 # aastk pasr_select CLI FUNCTION
 # ===============================
-def rasr_select(score_cutoff: float,
+def rasr_select(dbmin: float,
                 bsr_cutoff: float,
                 matched_fastq: str,
                 bsr_file: str,
@@ -441,7 +441,7 @@ def rasr_select(score_cutoff: float,
     Subsets RASR results based on BSR and database score thresholds.
 
     Args:
-        score_cutoff (float): Minimum database score threshold for selection
+        dbmin (float): Minimum database score threshold for selection
         bsr_cutoff (float): Minimum BSR threshold for selection
         matched_fastq (str): Path to FASTQ file containing sequences that hit the gene database
         bsr_file (str): Path to BSR results file
@@ -455,7 +455,7 @@ def rasr_select(score_cutoff: float,
     # Check if seqkit is available
     check_dependency_availability("seqkit")
 
-    logger.info(f"Selecting RASR hits with score >= {score_cutoff} and BSR >= {bsr_cutoff}")
+    logger.info(f"Selecting RASR hits with score >= {dbmin} and BSR >= {bsr_cutoff}")
 
     # ===============================
     # Output file path setup
@@ -470,7 +470,7 @@ def rasr_select(score_cutoff: float,
     # Filter based on cutoffs and write selected IDs to file
     bsr_df = pd.read_csv(bsr_file, sep='\t', header=0)
 
-    selected_ids = bsr_df[(bsr_df['score_db'] >= score_cutoff) 
+    selected_ids = bsr_df[(bsr_df['score_db'] >= dbmin) 
                             & (bsr_df['BSR'] >= bsr_cutoff)]['qseqid'].unique()
 
     with open(id_file, 'w') as f:
@@ -518,7 +518,7 @@ def rasr(query: str,
     Runs:
         aastk build
         aastk search    
-        aastk get_hit_seqs  # catch reads that hit gene db to use as query for outgroup search
+        aastk rasr_get_hit_seqs  # catch reads that hit gene db to use as query for outgroup search
         aastk search        # against_outgroup
         aastk bsr
         aastk rasr_plot
@@ -578,7 +578,9 @@ def rasr(query: str,
         # Filter search output by minimum score
         search_output_filtered = f"{dataset_output_dir}/filtered_search_output.tsv"
         min_score = 50
-        search_out = pd.read_csv(search_output, sep='\t', low_memory=False)
+        columns = ["qseqid", "sseqid", "pident", "qlen", "slen", "length", "mismatch", "gapopen", "qstart", "qend",
+               "sstart", "send", "evalue", "bitscore", "score"]
+        search_out = pd.read_csv(search_output, sep='\t', names=columns)
         filtered_df = search_out[search_out['score'] >= min_score]
         filtered_df.to_csv(search_output_filtered, sep='\t', index=False, header=False)
 
@@ -589,7 +591,7 @@ def rasr(query: str,
         # Read sequence extraction
         # ===============================
         logger.info("Extracting hit sequences from search results")
-        matched_fastq, id_file = get_hit_seqs(search_output_filtered, query, dataset_output_dir, key_column=key_column, force=force)
+        matched_fastq, id_file = rasr_get_hit_seqs(search_output_filtered, query, dataset_output_dir, key_column=key_column, force=force)
         
         intermediate_results['hit_seqs_path'] = matched_fastq
         intermediate_results['hit_ids_path'] = id_file
@@ -623,7 +625,7 @@ def rasr(query: str,
         # Final selection of RASR hits
         # ===============================
         logger.info("Selecting final RASR hits")
-        selected_fastq, selected_ids_file = rasr_select(score_cutoff=dbmin, bsr_cutoff=bsr_cutoff, matched_fastq=matched_fastq, bsr_file=bsr_output, output_dir=dataset_output_dir, force=force)
+        selected_fastq, selected_ids_file = rasr_select(dbmin=dbmin, bsr_cutoff=bsr_cutoff, matched_fastq=matched_fastq, bsr_file=bsr_output, output_dir=dataset_output_dir, force=force)
 
         results['selected_fastq'] = selected_fastq
         intermediate_results['selected_ids_file'] = selected_ids_file
