@@ -156,13 +156,17 @@ Final tSNE plot showing 166,445 sequences of the mopB superfamily. Points are co
 
 
 ## Citation <a name="citation"></a>
-There is no publication describing AASTK yet, so please cite this repository when you use AASTK. In addition, several parts of the software were developed independently and should be credited.
+There is no publication describing AASTK yet, so please cite this repository when you use AASTK.  
+  
+In addition, several parts of the software were developed independently and should be credited.
 
-If you use AASTK with the GlobDB protein dataset, please cite:  
-Speth et al. (2025) GlobDB: a comprehensive species-dereplicated microbial genome resource https://doi.org/10.1093/bioadv/vbaf280
+- If you use AASTK with the GlobDB protein dataset, please cite:  
+Speth et al. (2025) __GlobDB: a comprehensive species-dereplicated microbial genome resource__  
+https://doi.org/10.1093/bioadv/vbaf280
 
-If you use `aastk pasr`, please cite:  
-Speth and Orphan (2018) Metabolic marker gene mining provides insight in global mcrA diversity and, coupled with targeted genome reconstruction, sheds further light on metabolic potential of the Methanomassiliicoccales https://doi.org/10.7717/peerj.5614
+- If you use `aastk pasr`, please cite:  
+Speth and Orphan (2018) __Metabolic marker gene mining provides insight in global mcrA diversity and, coupled with targeted genome reconstruction, sheds further light on metabolic potential of the Methanomassiliicoccales__  
+https://doi.org/10.7717/peerj.5614
 
-The environmental data from `aastk meta` is derived from the MetaCoOc software. A manuscript is in preparation, but in the meantime please cite:   
+- The environmental data from `aastk meta` is derived from the MetaCoOc software. A manuscript is in preparation, but in the meantime please cite:   
 https://github.com/bcoltman/metacooc
