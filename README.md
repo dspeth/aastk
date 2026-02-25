@@ -33,13 +33,31 @@ aastk export_fasta -d globdb_r226_aastk.db -n 4 -o protein_fasta_dir
 ```
 
 ### Using pip
-tbd
+```bash
+pip install aastk
+```
+Dependencies:
+ - [Python](https://www.python.org/) >= 3.13
+ - [DIAMOND](https://github.com/bbuchfink/diamond)
+ - [SeqKit](https://github.com/shenwei356/seqkit)
 
+DIAMOND and SeqKit need to be available in your PATH.  
 After installation of the AASTK software and dependencies, the AASTK SQL database and GlobDB protein fastA file can be set up as described under 'Using conda' above.
 
 ### From source 
-tbd
+```bash
+wget https://github.com/dspeth/aastk/archive/refs/tags/v0.1.0.tar.gz
+tar -xzf v0.1.0.tar.gz
+cd aastk-0.1.0
+pip install .
+```
 
+Dependencies:
+ - [Python](https://www.python.org/) >= 3.13
+ - [DIAMOND](https://github.com/bbuchfink/diamond)
+ - [SeqKit](https://github.com/shenwei356/seqkit)
+
+DIAMOND and SeqKit need to be available in your PATH.  
 After installation of the AASTK software and dependencies, the AASTK SQL database and GlobDB protein fastA file can be set up as described under 'Using conda' above.
 
 
