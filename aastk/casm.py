@@ -962,7 +962,7 @@ def casm(fasta: str,
     )
 
     full_cluster_plot = casm_plot(
-        clust_path=early_filename,
+        clust_path=final_filename,
         output=output,
         metadata_protein=metadata_protein,
         db_path=db_path,
