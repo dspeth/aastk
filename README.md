@@ -1,5 +1,8 @@
 ![Conda Version](https://img.shields.io/conda/vn/bioconda/aastk?color=blue)
+![Conda - License](https://img.shields.io/conda/l/bioconda/aastk?color=blue)
 ![Conda Downloads](https://img.shields.io/conda/d/bioconda/aastk)
+![PyPI - Status](https://img.shields.io/pypi/status/aastk)
+
 
 
 # Amino acid sequence toolkit
