@@ -216,7 +216,7 @@ def __max_scores(group, required=False):
 
 def __metadata_protein(group, required=False):
     group.add_argument('--metadata_protein', type=str, required=required,
-                       help='Select metadata for plotting; run "aastk metadata_categories" to view available categories"')
+                       help='Select metadata for plotting; run "aastk list_metadata" to view available categories"')
 
 def __metadata_matrix(group, required=False):
     group.add_argument('--metadata_matrix', type=str, required=required,

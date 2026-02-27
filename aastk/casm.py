@@ -909,7 +909,7 @@ def casm(fasta: str,
     """
     if (metadata_protein is not None and metadata_protein not in BASE_COLUMNS[1:] + ANNOTATION_COLUMNS +
             TAXONOMY_COLUMNS + CULTURE_COLLECTION_COLUMNS + HIGH_LEVEL_ENV_COLUMNS + LOW_LEVEL_ENV_COLUMNS):
-        logger.error('Invalid metadata category. Please run "aastk metadata_categories" to display available options.')
+        logger.error('Invalid metadata category. Please run "aastk list_metadata" to view available options.')
         raise ValueError(f'Invalid metadata category: {metadata_protein}')
 
 
