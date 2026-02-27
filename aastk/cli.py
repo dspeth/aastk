@@ -255,7 +255,7 @@ def __query(group, required=False):
                        help='Path to DIAMOND query FASTA file')
 
 def __query_dir(group, required=False):
-    group.add_argument('-q', '--query_dir', type=str, required=required,
+    group.add_argument('--query_dir', type=str, required=required,
                        help='Path to directory containing query FASTA/FASTQ files')
 
 def __score_column(group, required=False):
@@ -267,7 +267,7 @@ def __seed(group, required=False):
                        help='Path to FASTA files containing seed sequences for database creation')
 
 def __seed_dir(group, required=False):
-    group.add_argument('-s', '--seed_dir', type=str, required=required,
+    group.add_argument('--seed_dir', type=str, required=required,
                        help='Path to directory containing FASTA files with seed sequences for database creation')
 
 def __sensitivity(group, required=False):
@@ -685,7 +685,7 @@ def get_main_parser():
 
     with subparser(sub_parsers, 'rasr_get_hit_seqs', 'Extract read sequences that have DIAMOND hits for RASR analysis') as parser:
         with arg_group(parser, 'Required arguments') as grp:
-            __tabular(grp, required=True)
+            __blast_output(grp, required=True)
             __query(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)

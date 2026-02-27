@@ -394,7 +394,7 @@ def main():
 
         elif args.subparser_name == 'rasr_get_hit_seqs':
             rasr_get_hit_seqs(
-                blast_tab=args.tabular,
+                blast_tab=args.blast_output,
                 query_path=args.query,
                 output_dir=args.output,
                 key_column=args.key_column,
