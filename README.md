@@ -28,7 +28,9 @@ AASTK currently consists of four tools:
 `cugo` - Assessing consensus genomic context of a protein dataset.  
 `meta` - Retrieving metadata such as taxonomy, environment, and annotations from the AASTK SQL database
 
-Installation instructions, usage examples, and short descriptions of the tools in AASTK can be found below. A more extended description can be found in the [documentation](https://globdb.org/aastk). A full description of all command line tools and arguments is available on command line reference pages for [PASR](https://globdb.org/aastk/pasr), [CASM](https://globdb.org/aastk/casm), [CUGO](https://globdb.org/aastk/cugo), and [Meta](https://globdb.org/aastk/meta), also accessible via the dropdown menu on the AASTK [documentation](https://globdb.org/aastk) page.
+Installation instructions, usage examples, and short descriptions of the tools in AASTK can be found below. A more extended description can be found in the [documentation](https://globdb.org/aastk). A full description of all command line tools and arguments is available on command line reference pages for [PASR](https://globdb.org/aastk/pasr), [CASM](https://globdb.org/aastk/casm), [CUGO](https://globdb.org/aastk/cugo), and [Meta](https://globdb.org/aastk/meta), also accessible via the dropdown menu on the AASTK [documentation](https://globdb.org/aastk) page.  
+<br />
+AASTK is actively developed and supported, so do not hesitate to submit an issue if you encounter a bug or if there's a feature you would be interested in.
 <br />
 <br />
 <br />
