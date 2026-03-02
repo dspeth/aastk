@@ -769,7 +769,7 @@ def matrix(fasta: str,
        subset_fasta = fasta_subsample(fasta, output, subset_size, force=force)
 
     logger.info("=== Phase 1: DIAMOND Alignment ===")
-    align_output = run_diamond_alignment(fasta, subset_fasta, subset_size, threads, CASM_BLAST_OUTPUT_COLUMNS, force=force)
+    align_output = run_diamond_alignment(fasta, subset_fasta, subset_size, threads, CASM_BLAST_OUTPUT_COLUMNS, output, force=force)
 
     logger.info("=== Phase 2: Matrix Construction ===")
     _, _, _, matrix_file, metadata_file = build_alignment_matrix_split(align_output, output, force)
