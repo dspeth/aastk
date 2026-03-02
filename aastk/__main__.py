@@ -153,7 +153,6 @@ def main():
                 dbmin=args.dbmin,
                 bsr=args.bsr_cutoff,
                 force=args.force,
-                create_yaml=args.create_yaml,
                 params=args.params
             )
 

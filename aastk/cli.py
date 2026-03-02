@@ -62,10 +62,6 @@ def __cluster_path(group, required=False):
     group.add_argument('-c', '--cluster_path', type=str, default=None, required=required,
                        help='Path to cluster TSV file')
 
-def __create_yaml(group, required=False):
-    group.add_argument('--create_yaml', action='store_true', required=required,
-                       help='Create metadata yaml file from command line parameters')
-
 def __cog_gff(group, required=False):
     group.add_argument('-c', '--cog_gff', type=str, required=required,
                        help='Path to (.tar.gz) GFF directory containing COG annotations')
@@ -410,7 +406,6 @@ def get_main_parser():
             __bsr(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
-            __create_yaml(grp)
             __max_score_min(grp)
             __max_score_max(grp)
             __dbmin(grp)

@@ -902,7 +902,6 @@ def pasr_select(yaml_path: str,
                 dbmin: int = None,
                 bsr: float = None,
                 force: bool = False,
-                create_yaml: bool = False,
                 params: bool = False):
     """
     Subsets matched sequences based on YAML thresholds or provided parameters.
@@ -917,7 +916,6 @@ def pasr_select(yaml_path: str,
         dbmin (int): Minimum database score threshold (mutually exclusive with bsr).
         bsr (float): Minimum BSR threshold (mutually exclusive with dbmin).
         force (bool): If true, existing files/directories in output path are overwritten.
-        create_yaml (bool): Create a YAML file with the provided parameters.
         params (bool): Use provided parameters instead of YAML file (mutually exclusive with yaml_path).
     """
     # check if seqkit is in path
@@ -961,8 +959,9 @@ def pasr_select(yaml_path: str,
         bsr_min = bsr
 
         # create YAML file if requested
-        if create_yaml:
-            logger.info("Creating YAML file with provided parameters")
+
+        logger.info("Creating YAML file with provided parameters")
+        if not yaml_path:
             created_yaml_path = pasr_metadata(
                 max_score_min=max_score_min,
                 max_score_max=max_score_max,
