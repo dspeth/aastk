@@ -686,7 +686,7 @@ def pasr_plot(bsr_file: str,
         axs['scatter'].set_xlabel('Calculated maximum score')
         axs['scatter'].set_ylabel('Alignment score to seed set')
         axs['scatter'].set_xlim(xlim)
-        axs['scatter'].set_ylim(bottom=0)
+        axs['scatter'].set_ylim(bottom=0, top=(1.1 * score_max))
 
         cb_ax = inset_axes(axs['scatter'], width="5%", height="30%", loc='upper left', borderpad=1)
         cbar = fig.colorbar(scatter, cax=cb_ax)
@@ -719,11 +719,10 @@ def pasr_plot(bsr_file: str,
             align='edge',
             color='black'
         )
-        axs['histy'].set_ylim(bottom=0)
+        axs['histy'].set_ylim(bottom=0, top=(1.1 * score_max))
         axs['histy'].set_xlabel('Counts')
         axs['histy'].set_xticks([0, round(max(y_hist)/2), round(max(y_hist))])
         axs['histy'].tick_params(labelleft=False)
-
 
         # ===============================
         # Threshold lines (update mode)
