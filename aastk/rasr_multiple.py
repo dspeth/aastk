@@ -160,6 +160,7 @@ def search(seed_db_out_path: str,
             threads: int,
             output_dir: str,
             sensitivity: str,
+            bit_score_cutoff: int,
             block: int = 6,
             chunk: int = 2,
             force: bool = False):
@@ -173,6 +174,7 @@ def search(seed_db_out_path: str,
         threads (int): Number of threads to use
         output_dir (str): Directory to save output files
         sensitivity (str): Sensitivity setting for DIAMOND search
+        bit_score_cutoff (int): Minimum bit score threshold for filtering search results
         block (int): Block size parameter for DIAMOND search
         chunk (int): Chunk size parameter for DIAMOND search
         force (bool): Whether to overwrite existing files
@@ -215,12 +217,11 @@ def search(seed_db_out_path: str,
 
     logger.info(f"Searching DIAMOND database {seed_db_out_path} with query {query_fastq}")
     logger.info(f"Output path: {output_path}")
-    logger.info(f"Using parameters: sensitivity={sensitivity_param}, block={block}, chunk={chunk}")
+    logger.info(f"Using parameters: sensitivity={sensitivity_param}, block={block}, chunk={chunk}, bit_score_cutoff={bit_score_cutoff}")
 
     # =======================================
     # DIAMOND blastx command construction
     # =======================================
-    min_score = 10
     cmd = ["diamond", "blastx",
            "-d", seed_db_out_path,
            "-q", query_fastq,
@@ -232,7 +233,7 @@ def search(seed_db_out_path: str,
            "--outfmt", str(6), *columns,
            "-b", str(block),
            "-c", str(chunk),
-           "--min-score", str(min_score),
+           "--min-score", str(bit_score_cutoff),
            "--comp-based-stats", str(0),
            sensitivity_param]
 
@@ -279,18 +280,18 @@ def search(seed_db_out_path: str,
 # search_filtering function
 # ===============================
 def search_filtering(search_output_path: str,
-                     min_score_threshold: int):
+                     aln_score_cutoff: int):
     """
     Filters DIAMOND search output, keeping only the highest scoring hit per query above a minimum score threshold.
 
     Args:
         search_output_path (str): Path to DIAMOND search output file
-        min_score_threshold (int): Minimum score threshold to keep hits
+        aln_score_cutoff (int): Minimum raw alignment score threshold to keep hits
 
     Returns:
         search_output_path (str): Path to filtered search output file
     """
-    logger.info(f"Filtering search results, keeping highest scoring hit per query (score >= {min_score_threshold})")
+    logger.info(f"Filtering search results, keeping highest scoring hit per query (score >= {aln_score_cutoff})")
     
     # Determine columns structure from the file content
     columns = ["qseqid", "sseqid", "pident", "qlen", "slen", "length", "mismatch", "gapopen", "qstart", "qend",
@@ -308,7 +309,7 @@ def search_filtering(search_output_path: str,
             score = float(fields[score_idx])
             
             # Only keep hits with score >= threshold
-            if score >= min_score_threshold:
+            if score >= aln_score_cutoff:
                 if qseqid not in best_hits or score > best_hits[qseqid][0]:
                     best_hits[qseqid] = (score, line)
     
@@ -940,6 +941,8 @@ def rasr_multiple(query: str,
             sensitivity: str,
             block: int,
             chunk: int,
+            bit_score_cutoff: int,
+            aln_score_cutoff: 50,
             threads: int = 1,
             force: bool = False,
             keep: bool = False,
@@ -1019,6 +1022,8 @@ def rasr_multiple(query: str,
         sensitivity (str): sensitivity setting for diamond search
         block (int): block size parameter for diamond search
         chunk (int): chunk size parameter for diamond search
+        bit_score_cutoff (int): minimum bit score threshold for filtering search results
+        aln_score_cutoff (int): minimum alignment score threshold for filtering search results
         threads (int): number of threads to use
         force (bool): whether to force overwrite existing files
         keep (bool): if True, keep intermediate files
@@ -1108,12 +1113,12 @@ def rasr_multiple(query: str,
             # Search gene database
             # ======================
             logger.info(f"Searching protein database")
-            search_output, column_info_path = search(db_path, str(query_file), threads, dataset_output_dir, sensitivity, block=block, chunk=chunk, force=force)
+            search_output, column_info_path = search(db_path, str(query_file), threads, dataset_output_dir, sensitivity, bit_score_cutoff=bit_score_cutoff, block=block, chunk=chunk, force=force)
             
             # =========================
             # Filter search results
             # =========================
-            search_output = search_filtering(search_output, min_score_threshold=50)
+            search_output = search_filtering(search_output, aln_score_cutoff=aln_score_cutoff)
 
             if 'search_output' not in intermediate_results:
                 intermediate_results['search_output'] = []
@@ -1201,7 +1206,7 @@ def rasr_multiple(query: str,
         # =================== Search outgroup database with merged hits ===================
 
         logger.info("Searching outgroup database with merged hits")
-        og_search_output, og_column_info_path = search(outgrp_db, merged_hits_file, threads, output_dir, sensitivity, block=block, chunk=chunk, force=force)
+        og_search_output, og_column_info_path = search(outgrp_db, merged_hits_file, threads, output_dir, sensitivity, bit_score_cutoff=bit_score_cutoff, block=block, chunk=chunk, force=force)
 
         intermediate_results['og_search_output'] = og_search_output
         intermediate_results['og_column_info_path'] = og_column_info_path

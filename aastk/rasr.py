@@ -24,6 +24,7 @@ def search(gene_db_out_path: str,
             threads: int,
             output_dir: str,
             sensitivity: str,
+            bit_score_cutoff: int,
             block: int = 6,
             chunk: int = 2,
             force: bool = False):
@@ -39,6 +40,7 @@ def search(gene_db_out_path: str,
         sensitivity (str): Sensitivity setting for DIAMOND search
         block (int): Block size parameter for DIAMOND search
         chunk (int): Chunk size parameter for DIAMOND search
+        bit_score_cutoff (int): Minimum bit score for inclusion in output
         force (bool): Whether to overwrite existing files
 
     Returns:
@@ -79,12 +81,11 @@ def search(gene_db_out_path: str,
 
     logger.info(f"Searching DIAMOND database {gene_db_out_path} with query {query_fastq}")
     logger.info(f"Output path: {output_path}")
-    logger.info(f"Using parameters: sensitivity={sensitivity_param}, block={block}, chunk={chunk}")
+    logger.info(f"Using parameters: sensitivity={sensitivity_param}, block={block}, chunk={chunk}, bit_score_cutoff={bit_score_cutoff}")
 
     # =======================================
     # DIAMOND blastx command construction
     # =======================================
-    min_bitscore = 10
     cmd = ["diamond", "blastx",
            "-d", gene_db_out_path,
            "-q", query_fastq,
@@ -96,7 +97,7 @@ def search(gene_db_out_path: str,
            "--outfmt", str(6), *columns,
            "-b", str(block),
            "-c", str(chunk),
-           "--min-score", str(min_bitscore),
+           "--min-score", str(bit_score_cutoff),
            "--comp-based-stats", str(0),
            sensitivity_param]
 
@@ -505,8 +506,10 @@ def rasr(query: str,
             outgrp_db: str,
             output_dir: str,
             sensitivity: str,
-            block: int,
-            chunk: int,
+            bit_score_cutoff: int,
+            aln_score_cutoff: int=50,
+            block: int = 2,
+            chunk: int = 4,
             threads: int = 1,
             force: bool = False,
             keep: bool = False,
@@ -530,6 +533,8 @@ def rasr(query: str,
         outgrp_db (str): path to outgroup diamond database file
         output_dir (str): directory to save output files
         sensitivity (str): sensitivity setting for diamond search
+        bit_score_cutoff (int): minimum bit score for inclusion in search results
+        aln_score_cutoff (int): minimum raw alignment score for inclusion in search results (default: 50)
         block (int): block size parameter for diamond search
         chunk (int): chunk size parameter for diamond search
         threads (int): number of threads to use
@@ -573,15 +578,17 @@ def rasr(query: str,
         # ===============================
         logger.info("Searching protein database")
 
-        search_output, column_info_path = search(db_path, query, threads, dataset_output_dir, sensitivity, block=block, chunk=chunk, force=force)
+        search_output, column_info_path = search(db_path, query, threads, dataset_output_dir, sensitivity, bit_score_cutoff=bit_score_cutoff, block=block, chunk=chunk, force=force)
 
         # Filter search output by minimum score
         search_output_filtered = f"{dataset_output_dir}/filtered_search_output.tsv"
-        min_score = 50
+
         columns = ["qseqid", "sseqid", "pident", "qlen", "slen", "length", "mismatch", "gapopen", "qstart", "qend",
                "sstart", "send", "evalue", "bitscore", "score"]
         search_out = pd.read_csv(search_output, sep='\t', names=columns)
-        filtered_df = search_out[search_out['score'] >= min_score]
+
+        filtered_df = search_out[search_out['score'] >= aln_score_cutoff]
+        
         filtered_df.to_csv(search_output_filtered, sep='\t', index=False, header=False)
 
         intermediate_results['search_output'] = search_output_filtered
@@ -600,7 +607,7 @@ def rasr(query: str,
         # Outgroup database search
         # ===============================
         logger.info("Searching outgroup database")
-        outgrp_search_output, outgrp_column_info_path = search(outgrp_db, matched_fastq, threads, dataset_output_dir, sensitivity, block=block, chunk=chunk, force=force)
+        outgrp_search_output, outgrp_column_info_path = search(outgrp_db, matched_fastq, threads, dataset_output_dir, sensitivity, bit_score_cutoff=bit_score_cutoff, block=block, chunk=chunk, force=force)
 
         intermediate_results['outgrp_search_output'] = outgrp_search_output
         intermediate_results['outgrp_column_info_path'] = outgrp_column_info_path

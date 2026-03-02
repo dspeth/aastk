@@ -367,6 +367,8 @@ def main():
                 output_dir=args.output,
                 threads=args.threads,
                 sensitivity=args.sensitivity,
+                bit_score_cutoff=args.bit_score_cutoff,
+                aln_score_cutoff=args.aln_score_cutoff,
                 block=args.block,
                 chunk=args.chunk,
                 keep=args.keep,

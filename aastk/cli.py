@@ -30,6 +30,10 @@ def __all_metadata(group, required=False):
     group.add_argument('--all_metadata', action='store_true', required=required,
                        help='Include all metadata in output file')
 
+def __aln_score_cutoff(group, required=False):
+    group.add_argument('--aln_score_cutoff', type=int, default=10, required=required,
+                       help='Raw alignment score cutoff on BLAST/DIAMOND output (default: 10)')
+
 def __annotation(group, required=False):
     group.add_argument('--annotation', type=str, default='COG_ID', required=required,
                        help='Annotation: COG_ID, KEGG_ID, Pfam_ID (default: COG_ID)')
@@ -37,6 +41,10 @@ def __annotation(group, required=False):
 def __bin_width(group, required=False):
     group.add_argument('-b', '--bin_width', type=int, default=50, required=required,
                        help='Bin width for amino acid sequence size plotting (default: 50)')
+
+def __bit_score_cutoff(group, required=False):
+    group.add_argument('--bit_score_cutoff', type=int, default=10, required=required,
+                       help='Bit score cutoff on BLAST/DIAMOND output (default: 10)')
 
 def __blast_output(group, required=False):
     group.add_argument('-b', '--blast_output', type=str, default=None, required=required,
@@ -256,7 +264,7 @@ def __query(group, required=False):
 
 def __query_dir(group, required=False):
     group.add_argument('--query_dir', type=str, required=required,
-                       help='Path to directory containing query FASTA/FASTQ files')
+                       help='Path to directory containing query FASTQ files')
 
 def __score_column(group, required=False):
     group.add_argument('-s', '--score_column', type=int, default=None, required=required,
@@ -659,6 +667,8 @@ def get_main_parser():
             __block(grp)
             __chunk(grp)
             __sensitivity(grp)
+            __bit_score_cutoff(grp)
+            __aln_score_cutoff(grp)
             __dbmin(grp)
             __bsr_cutoff(grp)
             __keep(grp)
