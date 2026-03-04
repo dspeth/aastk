@@ -942,7 +942,7 @@ def rasr_multiple(query: str,
             block: int,
             chunk: int,
             bit_score_cutoff: int,
-            aln_score_cutoff: 50,
+            aln_score_cutoff: int,
             threads: int = 1,
             force: bool = False,
             keep: bool = False,
@@ -1022,8 +1022,8 @@ def rasr_multiple(query: str,
         sensitivity (str): sensitivity setting for diamond search
         block (int): block size parameter for diamond search
         chunk (int): chunk size parameter for diamond search
-        bit_score_cutoff (int): minimum bit score threshold for filtering search results
-        aln_score_cutoff (int): minimum alignment score threshold for filtering search results
+        bit_score_cutoff (int): minimum bit score threshold for filtering search results (default: 50)
+        aln_score_cutoff (int): minimum alignment score threshold for filtering search results (default: 10)
         threads (int): number of threads to use
         force (bool): whether to force overwrite existing files
         keep (bool): if True, keep intermediate files

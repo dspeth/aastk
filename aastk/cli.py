@@ -31,7 +31,7 @@ def __all_metadata(group, required=False):
                        help='Include all metadata in output file')
 
 def __aln_score_cutoff(group, required=False):
-    group.add_argument('--aln_score_cutoff', type=int, default=10, required=required,
+    group.add_argument('--aln_score_cutoff', type=int, default=50, required=required,
                        help='Raw alignment score cutoff on BLAST/DIAMOND output (default: 10)')
 
 def __annotation(group, required=False):
@@ -718,6 +718,8 @@ def get_main_parser():
             __block(grp)
             __chunk(grp)
             __sensitivity(grp)
+            __bit_score_cutoff(grp)
+            __aln_score_cutoff(grp)
             __dbmin(grp)
             __bsr_cutoff(grp)
             __keep(grp)
