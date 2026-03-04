@@ -989,7 +989,7 @@ def rasr_select(dbmin: float,
     try:
         cmd = ["seqkit", "grep", "-f", id_file, matched_fastq, "-o", out_fastq]
 
-        subprocess.run(cmd, check=True)
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
         logger.info(f"Extracted selected sequences to {out_fastq}")
 
     
