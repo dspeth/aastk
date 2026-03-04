@@ -405,19 +405,16 @@ def main():
 
         ### PARSER FOR RASR_MULTIPLE (Multi-dataset/Multi-gene workflow) ###
         elif args.subparser_name == 'rasr_multiple':
-            query_input = args.query_dir if args.query_dir is not None else args.query
-            seed_input = args.seed_dir if args.seed_dir is not None else args.seed
-            query_mode = 'dir' if args.query_dir is not None else 'file'
-            seed_mode = 'dir' if args.seed_dir is not None else 'file'
-
             rasr_multiple(
-                query=query_input,
-                seed_db=seed_input,
-                query_mode=query_mode,
-                seed_mode=seed_mode,
+                query=args.query,
+                seed=args.seed,
+                query_dir=args.query_dir,
+                seed_dir=args.seed_dir,
                 outgrp_db=args.outgrp_db,
                 output_dir=args.output,
                 sensitivity=args.sensitivity,
+                bit_score_cutoff=args.bit_score_cutoff,
+                aln_score_cutoff=args.aln_score_cutoff,
                 block=args.block,
                 chunk=args.chunk,
                 threads=args.threads,

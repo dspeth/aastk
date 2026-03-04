@@ -15,57 +15,169 @@ logger = logging.getLogger(__name__)
 
 
 # ===============================
-# Input normalization function
+# aastk build_execution_plan FUNCTION
 # ===============================
-def list_inputs(input_to_list: str,
-                input_type: str,
-                input_mode: str):
+def build_execution_plan(query,
+                         query_dir,
+                         seed,
+                         seed_dir):
     """
-    Normalizes inputs to lists of files
-    Accepts both individual files and directories
+    Builds an execution plan for the RASR pipeline based on the provided input combinations of query and seed files.
 
     Args:
-        input_to_list (str): Path to input file or directory of input files
-        input_type (str): Type of input files ("seed" or "query")
+        query (str): Path to a single FASTQ file containing sequencing reads to search against the seed database.
+        query_dir (str): Path to a directory containing multiple FASTQ files to search against the seed database.
+        seed (str): Path to a single FASTA file containing reference sequences for the gene of interest to build the seed database.
+        seed_dir (str): Path to a directory containing multiple FASTA files, each representing reference sequences for a different gene of interest to build the seed database.
     
-        input_mode (str): Input mode for validation ("file" or "dir")
+    Returns:
+        execution_plan (dict): A dictionary containing the execution plan for the RASR pipeline,
+            including which steps to run based on the input combinations and the relevant information for each input type.
+    """
+    # ===============================================================
+    # Build query_info and seed_info dictionaries for downstream use
+    # ===============================================================
+    # Build query_info{"path": Path, "mode": "single" or "batch", "label": "query", "expected_type": "fastq"}
+    if (query is None) == (query_dir is None):
+        raise ValueError("Invalid input combination. Use exactly one of --query or --query_dir.")
+    
+    if query is not None:
+        query_path = Path(query)
+        if not query_path.exists():
+            raise FileNotFoundError(f"Query file does not exist: {query}")
+        if not query_path.is_file():
+            raise ValueError(f"Query path is not a file: {query}. --query expects a path to a single FASTQ file.")
+
+        query_info = {"path": query_path, "mode": "single", "label": "query", "expected_type": "fastq"}
+
+    else:
+        query_path = Path(query_dir)
+        if not query_path.exists():
+            raise FileNotFoundError(f"Query directory does not exist: {query_dir}")
+        if not query_path.is_dir():
+            raise ValueError(f"Query path is not a directory: {query_dir}. --query_dir expects a path to a directory containing FASTQ files.")
+
+        query_info = {"path": query_path, "mode": "batch", "label": "query", "expected_type": "fastq"}
+
+    # Build seed_info{"path": Path, "mode": "single" or "batch", "label": "seed", "expected_type": "fasta"}
+    if (seed is None) == (seed_dir is None):
+        raise ValueError("Invalid input combination. Use exactly one of --seed or --seed_dir.")
+    
+    if seed is not None:
+        seed_path = Path(seed)
+        if not seed_path.exists():
+            raise FileNotFoundError(f"Seed file does not exist: {seed}")
+        if not seed_path.is_file():
+            raise ValueError(f"Seed path is not a file: {seed}. --seed expects a path to a single FASTA file.")
+
+        seed_info = {"path": seed_path, "mode": "single", "label": "seed", "expected_type": "fasta"}
+
+    else:
+        seed_path = Path(seed_dir)
+        if not seed_path.exists():
+            raise FileNotFoundError(f"Seed directory does not exist: {seed_dir}")
+        if not seed_path.is_dir():
+            raise ValueError(f"Seed path is not a directory: {seed_dir}. --seed_dir expects a path to a directory containing FASTA files.")
+
+        seed_info = {"path": seed_path, "mode": "batch", "label": "seed", "expected_type": "fasta"}
+
+    # ===============================
+    # Build execution plan dict of steps to run based on input combinations
+    # ===============================
+    # The execution plan is a dictionary that specifies which steps of the pipeline to run based on the input combinations.
+
+    seed_is_multi = seed_info["mode"] == "batch"
+    query_is_multi = query_info["mode"] == "batch"
+
+    execution_plan = {
+        "query_info": query_info,
+        "seed_info": seed_info,
+        "steps": {
+            "merge_dbs": seed_is_multi,                # Only merge if multiple seed files
+            "build_db": True,                          # Always build database from seed files
+            "search_1": True,                          # Always run search
+            "filter_search": True,                     # Always run filtering
+            "parse_search_1_per_db": seed_is_multi,    # Only split if multiple seed files
+            "get_hit_seqs": True,                      # Always get hit sequences
+            "merge_search_hits": seed_is_multi,       # Only merge if multiple seed files
+            "search_2": True,                          # Always run outgroup search
+            "parse_search_2_per_query": query_is_multi,   # Only split if multiple query files
+            "bsr": True,                                  # Always calculate BSR
+            "rasr_plot": True,                            # Always create plot
+            "rasr_select": True                           # Always select hits based on BSR and db score cutoffs
+        }
+    }
+
+    # Log execution plan for debugging
+    logger.info("Build execution plan:")
+    logger.info(f"Query input: {query_info['path']} (mode: {query_info['mode']})")
+    logger.info(f"Seed input: {seed_info['path']} (mode: {seed_info['mode']})")
+
+    for step, state in execution_plan["steps"].items():
+        logger.info(f"  {step}: {'RUN' if state else 'SKIP'}")
+
+    return execution_plan
+
+
+
+
+# ===============================
+# aastk list_inputs FUNCTION
+# ===============================
+def list_inputs(input_info: dict):
+    """
+    Lists input files path(s) based on the provided input information dictionary.
+
+    Args:
+        input_info (dict): Dictionary containing "path", "mode" ("single" | "batch"), "label"("query" | "seed"), and "expected_type"("fastq" | "fasta") for the input
 
     Returns:
         list_of_paths (list): List of Path objects for input files
     """
-    if input_type == "seed":
-        valid_extensions = ["*.fasta", "*.fa", "*.faa"]
-    elif input_type == "query":
-        valid_extensions = ["*.fastq", "*.fastq.gz", "*.fq", "*.fq.gz"]
-    else :
-        logger.error(f"Unsupported input type: {input_type}")
-        raise ValueError(f"Unsupported input type: {input_type}")
+    # =========================
+    # Set up input's variables
+    # =========================
+    input_path = input_info["path"]
+    expected_type = input_info["expected_type"]
+    input_mode = input_info["mode"]
+    label = input_info["label"]
 
-    if input_mode not in {"file", "dir"}:
-        logger.error(f"Unsupported input mode: {input_mode}")
-        raise ValueError(f"Unsupported input mode: {input_mode}")
+    list_of_paths = []
 
-    input_path = Path(input_to_list)
+    # =================================
+    # List input file(s) based on mode
+    # =================================
+    if input_mode == "batch":
 
-    # Transform input into list of paths based on explicit mode
-    if input_mode == "dir":
-        if not input_path.is_dir():
-            raise ValueError(f"--query_dir and --seed_dir expects a directory path, got: {input_to_list} for {input_type} files")
+        for element in input_path.iterdir():
+            if not element.is_file():
+                continue
 
-        list_of_paths = []
-        for ext in valid_extensions:
-            list_of_paths.extend(input_path.glob(ext))
-        list_of_paths.sort()  # Sort files for consistent order
+            file_type = determine_file_type(element)
 
-    elif input_mode == "file":
-        if input_path.is_dir():
-            raise ValueError(f"--query and --seed expects a file path, got: {input_to_list} for {input_type} file")
-        if not input_path.exists():
-            raise FileNotFoundError(f"Input file not found: {input_to_list}")
-        list_of_paths = [input_path]
+            if file_type == expected_type:          # e.g. for query the expected_type is "fastq", only accept files that are FASTQ
+                list_of_paths.append(element)
+            else:
+                logger.warning(f"Skipping {element} because it is not a {expected_type.upper()} file.")
+                continue
 
+        list_of_paths.sort()
+    
+    elif input_mode == "single":
 
-    logger.info(f"Found {len(list_of_paths)} {input_type} file(s) at {input_to_list}")
+        file_type = determine_file_type(input_path)
+
+        if file_type != expected_type:
+            raise ValueError(f"{label} input file has invalid type: {input_path}. Expected a {expected_type.upper()} file.")
+
+        list_of_paths.append(input_path)
+
+    logger.info(f"Found {len(list_of_paths)} {file_type.upper()} file(s) at {input_path} for {label} input")
+
+    if label == "query" and input_mode == "batch" and len(list_of_paths) > 20:
+        logger.warning(f"Found {len(list_of_paths)} query files in batch mode at {str(input_path)}."
+            f"This may lead to long runtimes and high resource usage. Consider using single mode or reducing the number of files per batch.")
+
     return list_of_paths
 
 
@@ -892,50 +1004,12 @@ def rasr_select(dbmin: float,
 
 
 # ===============================
-# aastk build_execution_plan FUNCTION
-# ===============================
-def build_execution_plan(query_files: list,
-                          db_files: list,
-                          query_mode: str,
-                          seed_mode: str):
-
-    # Validate input modes by type and number of files
-    if query_mode == "file" and len(query_files) != 1:
-        raise ValueError(f"--query expects exactly one file, got {len(query_files)}")
-    if seed_mode == "file" and len(db_files) != 1:
-        raise ValueError(f"--seed expects exactly one file, got {len(db_files)}")
-
-    # Set upper limit on number of files
-    if seed_mode == "dir" and len(db_files) > 20:
-        logger.error(f"Too many seed database files provided ({len(db_files)}). Please provide 20 or fewer.")
-        raise ValueError(f"Too many seed database files provided ({len(db_files)}). Please provide 20 or fewer.\nOr consider running in single database mode (--seed) and iterateating over genes.")
-
-    if query_mode == "dir" and len(query_files) > 20:
-        logger.error(f"Too many query files provided ({len(query_files)}). Please provide 20 or fewer.")
-        raise ValueError(f"Too many query files provided ({len(query_files)}). Please provide 20 or fewer.\nOr consider running in single query mode (--query) and iterating over datasets.")
-
-    seed_is_multi = seed_mode == "dir"
-    query_is_multi = query_mode == "dir"
-
-    return {
-        "seed_is_multi": seed_is_multi,                 # True if seed_mode is 'dir' and contains multiple files
-        "query_is_multi": query_is_multi,               # True if query_mode is 'dir' and contains multiple files
-        "do_seed_merge": seed_is_multi,                 # True if we need to merge multiple seed db files into one = if seed_is_multi is True
-        "do_db_split_after_search1": seed_is_multi,     # True if we need to split search 1 results by gene = if seed_is_multi is True
-        "do_merge_hits": None,                          # True if we need to merge hit sequences from search 1 across multiple datasets = if query_is_multi is True
-        "do_og_split_by_dataset": query_is_multi,       # True if we need to split search 2 results by dataset = if query_is_multi is True
-    }
-
-
-
-
-# ===============================
 # aastk rasr WORKFLOW
 # ===============================
 def rasr_multiple(query: str,
-            seed_db: str,
-            query_mode: str,
-            seed_mode: str,
+            seed: str,
+            query_dir: str,
+            seed_dir: str,
             outgrp_db: str,
             output_dir: str,
             sensitivity: str,
@@ -953,7 +1027,7 @@ def rasr_multiple(query: str,
     """
     RASR workflow:
     Runs:
-        aastk list_inputs                                       # on query and seed_db to determine input files and execution mode
+        aastk list_inputs                                       # on query and seed to determine input files and execution mode
         aastk build_execution_plan                              # to determine which steps to execute based on input files
 
         if query_is_multi is True and seed_is_multi is True:
@@ -1014,9 +1088,9 @@ def rasr_multiple(query: str,
 
     Args:
         query (str): path to sequencing read file, can be gzipped
-        seed_db (str): path to gene of interest diamond database file
-        query_mode (str): Input mode for query ("file" from --query, "dir" from --query_dir)
-        seed_mode (str): Input mode for seed database ("file" from --seed, "dir" from --seed_dir)
+        seed (str): path to gene of interest diamond database file
+        query_dir (str): path to directory containing multiple sequencing read files for different datasets
+        seed_dir (str): path to directory containing multiple seed database files
         outgrp_db (str): path to outgroup diamond database file
         output_dir (str): directory to save output files
         sensitivity (str): sensitivity setting for diamond search
@@ -1035,20 +1109,28 @@ def rasr_multiple(query: str,
     Returns:
         results (dict): dictionary containing paths to all output files
     """
+
+    logger.info("Starting RASR workflow")
+    logger.info("=== STEP 0: Initialize workflow settings ===")
+
+    # =====================
+    # Build execution plan
+    # =====================
+    logger.info("Building execution plan based on input files and settings")
+    plan = build_execution_plan(query, query_dir, seed, seed_dir)
+
     # ==========================
     # List inputs and plan mode of execution
     # ==========================
     logger.info("Listing input files for datasets and gene databases")
 
-    query_files = list_inputs(query, "query", input_mode=query_mode)
-    db_files = list_inputs(seed_db, "seed", input_mode=seed_mode)
+    query_files = list_inputs(plan["query_info"])
+    db_files = list_inputs(plan["seed_info"])
     
     if not db_files:
-        raise RuntimeError("No seed database files found")
+        raise ValueError("No seed database files found")
     if not query_files:
-        raise RuntimeError("No query files found")
-
-    plan = build_execution_plan(query_files, db_files, query_mode=query_mode, seed_mode=seed_mode)
+        raise ValueError("No query files found")
     
     # ========================
     # Output directory setup
@@ -1056,9 +1138,7 @@ def rasr_multiple(query: str,
 
     logger.info(f"Running RASR workflow for {len(query_files)} dataset(s) and {len(db_files)} gene database(s)")
     logger.info(f"Output directory: {output_dir}")
-    query_mode = "dir" if plan['query_is_multi'] else "file"
-    seed_mode = "dir" if plan['seed_is_multi'] else "file"
-    logger.info(f"Execution mode: query={query_mode}, seed={seed_mode}")
+    logger.info(f"Execution mode: query={plan['query_info']['mode']}, seed={plan['seed_info']['mode']}")
 
     intermediate_results = {}
     results_by_ds_gene = {}
@@ -1069,7 +1149,7 @@ def rasr_multiple(query: str,
         # Gene of interest database merging
         # ==================================
         # done only if seed_is_multi is True
-        if plan['do_seed_merge']:
+        if plan['steps']['merge_dbs']:
             logger.info("Merging protein databases")
 
             merged_seed_db_path, db_seqid_dict = merge_dbs(db_files, output_dir, force=force)
@@ -1127,7 +1207,7 @@ def rasr_multiple(query: str,
             # ==============================
             # Split search results per gene
             # ==============================
-            if plan['do_db_split_after_search1']:
+            if plan['steps']['parse_search_1_per_db']:
                 logger.info(f"Splitting search results per gene for {dataset_name}")
 
                 if db_seqid_dict is None:
@@ -1192,9 +1272,9 @@ def rasr_multiple(query: str,
         # ============================================================================
         logger.info("=== STEP 2: Searching outgroup database ===")
 
-        plan['do_merge_hits'] = len(all_hit_seqs_paths) > 1
+        do_merge_hits = plan['steps']['merge_search_hits'] and len(all_hit_seqs_paths) > 1
 
-        if plan['do_merge_hits']:
+        if do_merge_hits:
             logger.info("Merging hits from all datasets and genes")
             merged_hits_file, infile_list = merge_hits(all_hit_seqs_paths, output_dir, threads, use_existing_merged=use_existing_merged, force=force)
             intermediate_results['merged_hits_file'] = merged_hits_file
@@ -1214,7 +1294,7 @@ def rasr_multiple(query: str,
         # =================== Split outgroup search results per dataset ===================
 
         og_split_outputs = {}
-        if plan['do_og_split_by_dataset']:
+        if plan['steps']['parse_search_2_per_query']:
             logger.info("Splitting outgroup search results per dataset")
 
             for dataset_name, query_ids in dataset_to_queries.items():
