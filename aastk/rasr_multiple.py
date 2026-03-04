@@ -321,19 +321,16 @@ def search(seed_db_out_path: str,
 
     logger.info(f"Saved column information to {column_info_path}")
 
-    # ===============================
-    # Parameter setup
-    # ===============================
-    # check for sensitivity, if None set to default --fast
-    sensitivity_param = f"--{sensitivity}" if sensitivity else "--fast"
-
+    # ==================
+    # Parameter logging
+    # ==================
     logger.info(f"Searching DIAMOND database {seed_db_out_path} with query {query_fastq}")
     logger.info(f"Output path: {output_path}")
-    logger.info(f"Using parameters: sensitivity={sensitivity_param}, block={block}, chunk={chunk}, bit_score_cutoff={bit_score_cutoff}")
+    logger.info(f"Using parameters: sensitivity={sensitivity if sensitivity else 'default'}, block={block}, chunk={chunk}, bit_score_cutoff={bit_score_cutoff}")
 
-    # =======================================
+    # ====================================
     # DIAMOND blastx command construction
-    # =======================================
+    # ====================================
     cmd = ["diamond", "blastx",
            "-d", seed_db_out_path,
            "-q", query_fastq,
@@ -346,9 +343,11 @@ def search(seed_db_out_path: str,
            "-b", str(block),
            "-c", str(chunk),
            "--min-score", str(bit_score_cutoff),
-           "--comp-based-stats", str(0),
-           sensitivity_param]
+           "--comp-based-stats", str(0)]
 
+    if sensitivity:
+        cmd.append(f"--{sensitivity}")
+        
     logger.debug(f"Running command: {' '.join(cmd)}")
 
     # =======================================
