@@ -1065,18 +1065,18 @@ def pasr_select(yaml_path: str,
         yaml_for_plot = None
 
     if yaml_for_plot:
-        pasr_plot(
-            bsr_file=bsr_table,
-            output_dir=output_dir,
-            yaml_path=yaml_for_plot,
-            force=force,
-            update=True
-        )
+        update_plot = pasr_plot(
+                                bsr_file=bsr_table,
+                                output_dir=output_dir,
+                                yaml_path=yaml_for_plot,
+                                force=force,
+                                update=True
+                                )
 
     if created_yaml_path:
-        return output_path, stats_path, created_yaml_path
+        return output_path, stats_path, created_yaml_path, update_plot
     else:
-        return output_path, stats_path
+        return output_path, stats_path, yaml_path, update_plot
 
 
 
@@ -1198,10 +1198,9 @@ def pasr(seed_fasta: str,
         # ===============================
         if update:
             logger.info("Running update for specified data")
-            subset_fasta, update_stats_path = pasr_select(yaml_path, matched_fasta, bsr_file, output_dir, force=force)
+            subset_fasta, update_stats_path, select_yaml, updated_plot = pasr_select(yaml_path, matched_fasta, bsr_file, output_dir, force=force)
             results['subset_fasta'] = subset_fasta
             results['update_stats_path'] = update_stats_path
-            updated_plot = pasr_plot(bsr_file, output_dir,  yaml_path, svg=svg, force=force, update=update)
             results['updated_plot'] = updated_plot
 
         logger.info("PASR workflow completed successfully")
