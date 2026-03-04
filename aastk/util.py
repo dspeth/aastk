@@ -4,6 +4,7 @@ from typing import Optional
 import shutil
 import logging
 import zlib
+import gzip
 import random
 import subprocess
 import sqlite3
@@ -49,7 +50,13 @@ def determine_file_type(file_path):
 	Raises:
 	- ValueError: If the file type cannot be determined.
 	"""
-	with open(file_path, 'r') as file:
+	file_path = Path(file_path)
+
+	with open(file_path, 'rb') as file:
+		is_gzipped = file.read(2) == b'\x1f\x8b'
+
+	opener = gzip.open if is_gzipped else open
+	with opener(file_path, 'rt') as file:
 		first_char = file.read(1)
 		if first_char == '>':
 			return "fasta"
