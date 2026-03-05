@@ -457,9 +457,11 @@ def get_main_parser():
             __force(grp)
 
     with subparser(sub_parsers, 'meta', 'Retrieve metadata from AASTK SQLite database') as parser:
+        with mutex_group(parser, required=True) as grp:
+            __fasta(grp)
+            __id_list(grp)
         with arg_group(parser, 'Required arguments') as grp:
             __db_path(grp, required=True)
-            __fasta(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __threads(grp)

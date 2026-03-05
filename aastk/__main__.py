@@ -202,6 +202,7 @@ def main():
             meta(
                 db_path=args.db_path,
                 fasta=args.fasta,
+                id_list=args.id_list,
                 output=args.output,
                 threads=args.threads,
                 include_annotation=args.include_annotation,

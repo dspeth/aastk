@@ -136,7 +136,7 @@ def context(fasta: str,
         with open(id_list, 'r') as f:
             protein_identifiers = [line.strip() for line in f]
     else:
-        raise ValueError('You must provide a FASTA file.')
+        raise ValueError('No valid input file found. Please specify path to protein FASTA file or sequence ID list.')
 
     BATCH_SIZE = 500
     target_rows = []
