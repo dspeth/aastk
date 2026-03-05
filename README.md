@@ -1,3 +1,4 @@
+[![install with bioconda](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg?style=flat)](http://bioconda.github.io/recipes/aastk/README.html)
 ![Conda Version](https://img.shields.io/conda/vn/bioconda/aastk?color=blue)
 ![Conda - License](https://img.shields.io/conda/l/bioconda/aastk?color=blue)
 ![Conda Downloads](https://img.shields.io/conda/d/bioconda/aastk)
