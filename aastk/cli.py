@@ -715,6 +715,7 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __threads(grp)
+            __key_column(grp)
             __block(grp)
             __chunk(grp)
             __sensitivity(grp)

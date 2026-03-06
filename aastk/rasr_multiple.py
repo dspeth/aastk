@@ -4,6 +4,7 @@ from .util import *
 from .pasr import build as pasr_build
 import subprocess
 import logging
+import sys
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -99,7 +100,7 @@ def build_execution_plan(query,
             "filter_search": True,                     # Always run filtering
             "parse_search_1_per_db": seed_is_multi,    # Only split if multiple seed files
             "get_hit_seqs": True,                      # Always get hit sequences
-            "merge_search_hits": seed_is_multi,       # Only merge if multiple seed files
+            "merge_search_hits": (seed_is_multi or query_is_multi),  # Merge when multiple hit files are expected
             "search_2": True,                          # Always run outgroup search
             "parse_search_2_per_query": query_is_multi,   # Only split if multiple query files
             "bsr": True,                                  # Always calculate BSR
@@ -312,7 +313,7 @@ def search(seed_db_out_path: str,
     # =======================================================
     # define the output columns of interest
     columns = ["qseqid", "sseqid", "pident", "qlen", "slen", "length", "mismatch", "gapopen", "qstart", "qend",
-               "sstart", "send", "evalue", "bitscore", "score"]
+               "sstart", "send", "evalue", "bitscore", "score", "qtitle"]
 
     # save column information to json file as to not hardcode the score column in the bsr function
     column_info = {col: idx for idx, col in enumerate(columns)}
@@ -491,6 +492,7 @@ def split_search_outputs(blast_out_path: str,
     # =================================================================
     line_counts = {}
     total_lines = 0
+    lines_with_insufficient_columns = 0
     unmatched_lines = 0
     
     try:
@@ -498,20 +500,23 @@ def split_search_outputs(blast_out_path: str,
             for line in infile:
                 total_lines += 1
                 fields = line.strip().split('\t')
-                
-                if len(fields) > split_column:
-                    split_value = fields[split_column]
-                    
-                    # Look up which group this belongs to
-                    if split_value in seq_to_group:
-                        group_name = seq_to_group[split_value]
-                        file_handles[group_name].write(line)
-                        line_counts[group_name] = line_counts.get(group_name, 0) + 1
-                    else:
-                        unmatched_lines += 1
-                
-                # if total_lines % 100000 == 0: 
-                #     logger.debug(f"Processed {total_lines:,} lines...")
+
+                if len(fields) <= split_column:
+                    lines_with_insufficient_columns += 1
+                    logger.warning(f"Line {total_lines} has insufficient columns for splitting: {line.strip()}")
+                    continue
+
+                split_value = fields[split_column]
+
+                if split_column == 15 and split_value.startswith('@'):
+                    split_value = split_value[1:]
+
+                if split_value in seq_to_group:
+                    group_name = seq_to_group[split_value]
+                    file_handles[group_name].write(line)
+                    line_counts[group_name] = line_counts.get(group_name, 0) + 1
+                else:
+                    unmatched_lines += 1
 
     except Exception as e:
         logger.error(f"Error while splitting BLAST output: {e}")
@@ -524,8 +529,9 @@ def split_search_outputs(blast_out_path: str,
         for file_handle in file_handles.values():
             file_handle.close()
     
-    logger.info(f"Total lines processed: {total_lines:,}")
-    logger.info(f"Unmatched lines: {unmatched_lines:,}")
+    logger.info(f"Total lines processed in blast output: {total_lines:,}")
+    logger.info(f"Total lines with insufficient columns: {lines_with_insufficient_columns:,}")
+    logger.info(f"Total lines with unmatched categories: {unmatched_lines:,}")
     
     for name, count in line_counts.items():
         if count > 0:
@@ -545,7 +551,7 @@ def split_search_outputs(blast_out_path: str,
 def get_hit_seqs(blast_tab: str,
                         query_path: str,
                         output_dir: str,
-                        key_column: int = 0,
+                        key_column: int,
                         force: bool = False):
     """
     Extracts read sequences that have hits in the DIAMOND BLAST tabular output.
@@ -554,13 +560,13 @@ def get_hit_seqs(blast_tab: str,
         blast_tab (str): Path to DIAMOND BLAST tabular output file
         query_path (str): Path to sequencing read file, can be gzipped
         output_dir (str): Directory to save output files
-        key_column (int): Column index for query sequence ID (default: 0)
+        key_column (int): Column index for query key (default: 0 = qseqid, 15 = qtitle)
         force (bool): Whether to overwrite existing files
 
     Returns:
         hit_seqs_path (str): Path to the extracted hit sequences in gzipped FASTQ format
         id_file (str): Path to text file containing extracted IDs
-        dataset_dict (dict): Dictionary with dataset name and list of query IDs 
+        dataset_dict (dict): Dictionary with dataset name and list of query keys
     """
     # Check if seqkit is available
     check_dependency_availability("seqkit")
@@ -574,30 +580,36 @@ def get_hit_seqs(blast_tab: str,
     # =========================================
     # Extract matching IDs from BLAST results
     # =========================================
-    logger.info(f"Extracting unique sequence IDs from {blast_tab}")
+    logger.info(f"Extracting unique sequence keys from {blast_tab}")
 
-    # Extract unique IDs from dereplicated BLAST results
-    unique_ids = extract_unique_keys(blast_tab, key_column)
+    # Extract unique keys from dereplicated BLAST results
+    unique_keys = extract_unique_keys(blast_tab, key_column)
+
+    if key_column == 15:
+        unique_keys = {(k[1:] if k.startswith('@') else k) for k in unique_keys}
 
     # Fill in dataset_dict (dataset_name:[matched_seq_ids]) for downstream use
     dataset_name = determine_dataset_name(query_path, '.', 0, '')
     dataset_dict = {}
-    dataset_dict[dataset_name] = list(unique_ids)
+    dataset_dict[dataset_name] = list(unique_keys)
 
     # ======================================================
-    # Write unique IDs to file for seqkit grep
+    # Write unique keys to file for seqkit grep
     # ======================================================
     id_file = ensure_path(output_dir, f"{protein_name}_matched_ids.txt", force=force)
     with open(id_file, 'w') as f:
-        for seq_id in unique_ids:
-            f.write(f"{seq_id}\n")
+        for key in unique_keys:
+            f.write(f"{key}\n")
     
-    logger.info(f"Extracted {len(unique_ids)} unique sequence IDs to {id_file}")
+    logger.info(f"Extracted {len(unique_keys)} unique sequence keys to {id_file}")
 
     # ======================================================
     # Extract and write matching sequences in gzipped FASTQ
     # ======================================================
     cmd = ["seqkit", "grep", "-f", id_file, query_path, "-o", out_fastq]
+
+    if key_column == 15:
+        cmd.insert(2, "-n")
 
     try:
         subprocess.run(cmd, check=True, capture_output=True, text=True)
@@ -607,9 +619,37 @@ def get_hit_seqs(blast_tab: str,
         logger.error(f"seqkit grep failed: {e.stderr}")
         raise RuntimeError(f"Failed to extract matching sequences: {e.stderr}") from e
     
-    logger.info(f"Successfully extracted {len(unique_ids)} hit sequences to {out_fastq}")
+    logger.info(f"Successfully extracted hit sequences to {out_fastq}")
 
     return out_fastq, id_file, dataset_dict
+
+
+
+
+def resolve_key_column(key_column, query_mode: str):
+    """
+    Resolve which BLAST output key column to use for hit extraction and outgroup split.
+
+    Logic:
+    - key_column None: qtitle=15 in batch query mode, else qseqid=0
+    - key_column explicit 0/15: respected
+    - key_column implicit default 0 in batch query mode: auto-switch to 15 unless --key_column/-k is explicitly present
+    """
+    key_column_explicit = ('--key_column' in sys.argv) or ('-k' in sys.argv)
+
+    if key_column not in (0, 15):
+        raise ValueError(f"Unsupported key_column={key_column} for RASR. Use 0 (qseqid) or 15 (qtitle).")
+
+    if query_mode == 'batch' and key_column == 0 and not key_column_explicit:
+        effective_key_column = 15
+        logger.info("No explicit --key_column provided in batch query mode; switching from qseqid (0) to qtitle (15).")
+    else:
+        effective_key_column = key_column
+
+    key_label = "qtitle" if effective_key_column == 15 else "qseqid"
+    logger.info(f"Using key column {effective_key_column} ({key_label}) for hit extraction and outgroup split")
+    
+    return effective_key_column
 
 
 
@@ -1019,92 +1059,51 @@ def rasr_multiple(query: str,
             threads: int = 1,
             force: bool = False,
             keep: bool = False,
-            key_column: int = 0,
+            key_column: int = None,
             bsr_cutoff: float = 0.9,
             dbmin: int = 110,
             use_existing_merged: bool = False):
     """
-    RASR workflow:
-    Runs:
-        aastk list_inputs                                       # on query and seed to determine input files and execution mode
-        aastk build_execution_plan                              # to determine which steps to execute based on input files
+    Run the RASR workflow.
 
-        if query_is_multi is True and seed_is_multi is True:
-            - aastk merge_dbs                                   # merge multiple seed db files into one
-            - aastk pasr_build                                  # build diamond db from merged seed db fasta
-            for each query file:
-                - aastk search                                  # search merged gene db with query file
-                - aastk search_filtering                        # filter search results to keep only best hit per query above score threshold
-                - aastk split_search_outputs                    # split search results per tuple(dataset, gene) using mapping from merged seed db
-                - for each tuple(gene, split_search_output):
-                    aastk get_hit_seqs                          # extract hit sequences from query file based on split search output
-            - aastk merge_hits                                  # merge hit sequences from all datasets and genes into one
-            - aastk search                                      # search outgroup db with merged hit sequences
-            - aastk split_search_outputs                        # split outgroup search results by dataset using mapping from query files
-            - for each tuple(dataset, gene):
-                - aastk bsr                                     # calculate BSR using gene_search output and outgroup_search output
-                - aastk rasr_plot                               # create BSR scatter plot
-                - aastk rasr_select                             # subset hit sequences based on BSR and database score thresholds
-        
-        elif query_is_multi is True and seed_is_multi is False:
-            - aastk pasr_build                                  # build diamond db from single seed db fasta
-            for each query file:
-                - aastk search                                  # search gene db with query file
-                - aastk search_filtering                        # filter search results to keep only best hit per query above score threshold
-                - aastk get_hit_seqs                            # extract hit sequences from query file based on search output
-            - aastk merge_hits                                  # merge hit sequences from all datasets into one
-            - aastk search                                      # search outgroup db with merged hit sequences
-            - aastk split_search_outputs                        # split outgroup search results by dataset using mapping from query files
-            - for each dataset:
-                - aastk bsr                                     # calculate BSR using gene_search output and outgroup_search output
-                - aastk rasr_plot                               # create BSR scatter plot
-                - aastk rasr_select                             # subset hit sequences based on BSR and database score thresholds
-        
-        elif query_is_multi is False and seed_is_multi is True:
-            - aastk merge_dbs                                   # merge multiple seed db files into one
-            - aastk pasr_build                                  # build diamond db from merged seed db fasta
-            - aastk search                                      # search merged gene db with query file
-            - aastk search_filtering                            # filter search result to keep only best hit per query above score threshold
-            - aastk split_search_outputs                        # split search result per gene using mapping from merged seed db
-            for each tuple(gene, split_search_output):
-                - aastk get_hit_seqs                            # extract hit sequences from query file based on split search output
-            - aastk merge_hits                                  # merge hit sequences from all genes into one
-            - aastk search                                      # search outgroup db with merged hit sequences
-            for each tuple(gene, split_search_output):
-                - aastk bsr                                     # calculate BSR using gene_search output and outgroup_search output
-                - aastk rasr_plot                               # create BSR scatter plot
-                - aastk rasr_select                             # subset hit sequences based on BSR and database score thresholds
-    
-        elif query_is_multi is False and seed_is_multi is False:
-            - aastk pasr_build                                  # build diamond db from single seed_db fasta
-            - aastk search                                      # search gene db with query file
-            - aastk search_filtering                            # filter search results to keep only best hit per query above score threshold
-            - aastk get_hit_seqs                                # extract hit sequences from query file based on search output filtered
-            - aastk search                                      # search outgroup db with hit sequences
-            - aastk bsr                                   # calculate BSR using gene_search output and outgroup_search output
-            - aastk rasr_plot                             # create BSR scatter plot
-            - aastk rasr_select                           # subset hit sequences based on BSR and database score thresholds
+    Pipeline overview:
+        1. Validate inputs and build execution plan.
+        2. Optionally merge seed FASTA files (batch seed mode).
+        3. Build DIAMOND seed database.
+        4. For each query dataset:
+            - search seed DB
+            - filter best hit per query (alignment score cutoff)
+            - optionally split hits per gene (batch seed mode)
+            - extract matched reads per dataset x gene
+        5. Optionally merge matched reads across datasets/genes. 
+        6. Search outgroup database with merged/single matched reads.
+        7. Optionally split outgroup hits per dataset (batch query mode).
+        8. For each dataset x gene pair:
+            - compute BSR
+            - generate BSR plot
+            - select reads passing dbmin + bsr_cutoff
 
     Args:
-        query (str): path to sequencing read file, can be gzipped
-        seed (str): path to gene of interest diamond database file
-        query_dir (str): path to directory containing multiple sequencing read files for different datasets
-        seed_dir (str): path to directory containing multiple seed database files
-        outgrp_db (str): path to outgroup diamond database file
-        output_dir (str): directory to save output files
-        sensitivity (str): sensitivity setting for diamond search
-        block (int): block size parameter for diamond search
-        chunk (int): chunk size parameter for diamond search
-        bit_score_cutoff (int): minimum bit score threshold for filtering search results (default: 50)
-        aln_score_cutoff (int): minimum alignment score threshold for filtering search results (default: 10)
-        threads (int): number of threads to use
-        force (bool): whether to force overwrite existing files
-        keep (bool): if True, keep intermediate files
-        key_column (int): column index in BLAST output for query ID
-        bsr_cutoff (float): minimum BSR threshold (default: 0.9)
-        dbmin (int): minimum database score threshold (default: 110)
-        use_existing_merged (bool): whether to reuse existing merged hits file if it exists and matches the input files
-    
+        query (str): Path to a single query FASTQ file (mutually exclusive with query_dir).
+        seed (str): Path to a single seed FASTA file (mutually exclusive with seed_dir).
+        query_dir (str): Path to a directory of query FASTQ files.
+        seed_dir (str): Path to a directory of seed FASTA files.
+        outgrp_db (str): Path to outgroup DIAMOND database.
+        output_dir (str): Directory for output files.
+        sensitivity (str): DIAMOND sensitivity preset (for example: fast, sensitive).
+        block (int): DIAMOND block size parameter.
+        chunk (int): DIAMOND chunk size parameter.
+        bit_score_cutoff (int): DIAMOND minimum score cutoff (default: 10).
+        aln_score_cutoff (int): Post-search alignment score cutoff (default: 50).
+        threads (int): Number of CPU threads.
+        force (bool): Overwrite existing files.
+        keep (bool): Keep intermediate files.
+        key_column (int): Query key column in BLAST output (0 or 15).
+            If None, auto-selects 15 in batch query mode and 0 otherwise.
+        bsr_cutoff (float): Minimum BSR threshold for final selection (default: 0.9).
+        dbmin (int): Minimum database score threshold for final selection (default: 110).
+        use_existing_merged (bool): Reuse existing merged matched FASTQ if present.
+
     Returns:
         results (dict): dictionary containing paths to all output files
     """
@@ -1132,12 +1131,14 @@ def rasr_multiple(query: str,
         raise ValueError("No query files found")
     
     # ========================
-    # Output directory setup
+    # Output directory and variables setup
     # ========================
 
     logger.info(f"Running RASR workflow for {len(query_files)} dataset(s) and {len(db_files)} gene database(s)")
     logger.info(f"Output directory: {output_dir}")
     logger.info(f"Execution mode: query={plan['query_info']['mode']}, seed={plan['seed_info']['mode']}")
+
+    effective_key_column = resolve_key_column(key_column, plan['query_info']['mode'])
 
     intermediate_results = {}
     results_by_ds_gene = {}
@@ -1233,13 +1234,13 @@ def rasr_multiple(query: str,
             # Extract hit sequences per gene
             # ===============================
             logger.info(f"Extracting hit sequences per gene for {dataset_name}")
-            
+
             for gene_name, split_output in db_split_outputs.items():
                 gene_output_dir = ensure_path(dataset_output_dir, gene_name, force=force) 
 
                 hit_seqs_path, id_file, dataset_dict = get_hit_seqs(split_output, str(query_file), 
                                                                         output_dir=gene_output_dir, 
-                                                                        key_column=key_column, 
+                                                                        key_column=effective_key_column,
                                                                         force=force)
 
                 all_hit_seqs_paths.append(str(hit_seqs_path))
@@ -1298,7 +1299,7 @@ def rasr_multiple(query: str,
 
             for dataset_name, query_ids in dataset_to_queries.items():
                 dataset_output_dir = ensure_path(output_dir, dataset_name, force=force)
-                dataset_og_split = split_search_outputs(og_search_output, mapping_dict={dataset_name: query_ids}, output_dir=dataset_output_dir, split_column=0, force=force)
+                dataset_og_split = split_search_outputs(og_search_output, mapping_dict={dataset_name: query_ids}, output_dir=dataset_output_dir, split_column=effective_key_column, force=force)
                 og_split_outputs.update(dataset_og_split)
                 
         else:
