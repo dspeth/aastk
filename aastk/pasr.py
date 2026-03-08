@@ -575,15 +575,15 @@ def bsr(blast_tab: str,
                     logger.warning(f"Line {line_num}: No max score found for '{key}'")
                     error_count += 1
 
-                max_score = max_scores[key]
-                if max_score <= 0:
-                    logger.warning(f"Line {line_num}: Max score is zero or negative for '{key}': {max_score}")
+                current_max_score = max_scores[key]
+                if current_max_score <= 0:
+                    logger.warning(f"Line {line_num}: Max score is zero or negative for '{key}': {current_max_score}")
                     error_count += 1
                     continue
 
                 # calculate the blast score ratio
-                bsr = raw_score / max_score
-                out.write(f"{parts[0]}\t{parts[1]}\t{pident:.2f}\t{qlen}\t{raw_score:.1f}\t{max_score:.1f}\t{bsr:.4f}\n")
+                bsr = raw_score / current_max_score
+                out.write(f"{parts[0]}\t{parts[1]}\t{pident:.2f}\t{qlen}\t{raw_score:.1f}\t{current_max_score:.1f}\t{bsr:.4f}\n")
                 processed_count += 1
 
             except (KeyError, ValueError, IndexError) as e:
