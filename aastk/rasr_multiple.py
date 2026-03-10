@@ -468,10 +468,12 @@ def split_search_output_by_mapping(blast_out_path: str,
     # ====================================================================
     # Build dictionary for seqid mapping during streaming of blast output
     # ====================================================================
-    seq_to_group = {}
+    dict_seqid_group_name = {}
     for group_name, seq_ids in mapping_dict.items():
         for seq_id in seq_ids:
-            seq_to_group[seq_id] = group_name
+            if seq_id not in dict_seqid_group_name:
+                dict_seqid_group_name[seq_id] = set()
+            dict_seqid_group_name[seq_id].add(group_name)
     
     db_search_name = determine_dataset_name(blast_out_path, '.', 0, '').rsplit('_hits', 1)[0]
     
@@ -508,12 +510,12 @@ def split_search_output_by_mapping(blast_out_path: str,
                     logger.warning(f"Line {total_lines} has insufficient columns for splitting: {line.strip()}")
                     continue
 
-                split_value = fields[split_column]
+                seq_key = fields[split_column]
 
-                if split_value in seq_to_group:
-                    group_name = seq_to_group[split_value]
-                    file_handles[group_name].write(line)
-                    line_counts[group_name] = line_counts.get(group_name, 0) + 1
+                if seq_key in dict_seqid_group_name.keys():
+                    for group_name in dict_seqid_group_name[seq_key]:
+                        file_handles[group_name].write(line)
+                        line_counts[group_name] = line_counts.get(group_name, 0) + 1
                 else:
                     unmatched_source_lines += 1
 
@@ -1309,10 +1311,14 @@ def rasr_multiple(query: str,
                 f"[SPLIT_2_START] datasets={len(dict_dataset_seqids)} key_column={effective_key_column}"
             )
 
-            for dataset_name, query_ids in dataset_to_queries.items():
+            og_split_outputs = split_search_output_by_mapping(og_search_output, mapping_dict=dict_dataset_seqids, output_dir=output_dir, split_column=effective_key_column, force=force)
+
+            # Move split outputs to dataset-specific subdirectories
+            for dataset_name, split_output in list(og_split_outputs.items()):
                 dataset_output_dir = ensure_path(output_dir, dataset_name, force=force)
-                dataset_og_split = split_search_outputs(og_search_output, mapping_dict={dataset_name: query_ids}, output_dir=dataset_output_dir, split_column=effective_key_column, force=force)
-                og_split_outputs.update(dataset_og_split)
+                dest_path = ensure_path(dataset_output_dir, Path(split_output).name, force=force)
+                Path(split_output).replace(dest_path)
+                og_split_outputs[dataset_name] = dest_path
                 
         else:
             logger.info("[SPLIT_2_SKIP] reason=single_dataset")
