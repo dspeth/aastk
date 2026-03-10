@@ -94,23 +94,22 @@ def build_execution_plan(query,
         "query_info": query_info,
         "seed_info": seed_info,
         "steps": {
-            "merge_dbs": seed_is_multi,                # Only merge if multiple seed files
+            "merge_seed_databases": seed_is_multi,                # Only merge if multiple seed files
             "build_db": True,                          # Always build database from seed files
             "search_1": True,                          # Always run search
             "filter_search": True,                     # Always run filtering
             "parse_search_1_per_db": seed_is_multi,    # Only split if multiple seed files
-            "get_hit_seqs": True,                      # Always get hit sequences
-            "merge_search_hits": (seed_is_multi or query_is_multi),  # Merge when multiple hit files are expected
+            "extract_hit_seqs": True,                      # Always get hit sequences
+            "merge_extracted_hit_seqs": (seed_is_multi or query_is_multi),  # Merge when multiple hit files are expected
             "search_2": True,                          # Always run outgroup search
             "parse_search_2_per_query": query_is_multi,   # Only split if multiple query files
             "bsr": True,                                  # Always calculate BSR
-            "rasr_plot": True,                            # Always create plot
+            "rasr_bsr_plot": True,                            # Always create plot
             "rasr_select": True                           # Always select hits based on BSR and db score cutoffs
         }
     }
 
     # Log execution plan for debugging
-    logger.info("Build execution plan:")
     logger.info(f"Query input: {query_info['path']} (mode: {query_info['mode']})")
     logger.info(f"Seed input: {seed_info['path']} (mode: {seed_info['mode']})")
 
@@ -156,7 +155,7 @@ def list_inputs(input_info: dict):
 
             file_type = determine_file_type(element)
 
-            if file_type == expected_type:          # e.g. for query the expected_type is "fastq", only accept files that are FASTQ
+            if file_type == expected_type:
                 list_of_paths.append(element)
             else:
                 logger.warning(f"Skipping {element} because it is not a {expected_type.upper()} file.")
@@ -173,21 +172,27 @@ def list_inputs(input_info: dict):
 
         list_of_paths.append(input_path)
 
-    logger.info(f"Found {len(list_of_paths)} {file_type.upper()} file(s) at {input_path} for {label} input")
+    logger.info(
+        f"[{label.upper()} INPUT] label={label} mode={input_mode} expected_type={expected_type} "
+        f"files={len(list_of_paths)} path={input_path}"
+    )
 
     if label == "query" and input_mode == "batch" and len(list_of_paths) > 20:
-        logger.warning(f"Found {len(list_of_paths)} query files in batch mode at {str(input_path)}."
-            f"This may lead to long runtimes and high resource usage. Consider using single mode or reducing the number of files per batch.")
+        logger.warning(
+            f"Found {len(list_of_paths)} query files in batch mode at {str(input_path)}. "
+            "This may lead to long runtimes and high resource usage. "
+            "Consider using single mode or reducing the number of files per batch."
+        )
 
     return list_of_paths
 
 
 
 
-# ===============================
-# Databases merging Function
-# ===============================
-def merge_dbs(db_files: list,
+# ==============================
+# merge_seed_databases function
+# ==============================
+def merge_seed_databases(db_files: list,
               output_dir: str,
               force: bool = False):
     """
@@ -205,7 +210,7 @@ def merge_dbs(db_files: list,
     merged_fasta_path = ensure_path(output_dir, "merged_seed_db.fasta", force=force)
     
     if Path(merged_fasta_path).exists() and not force:
-        logger.info(f"Merged database already exists at {merged_fasta_path}, skipping merge.")
+        logger.info(f"Merged database already exists at {merged_fasta_path}, using existing.")
         
         # Reconstruct db_dict by reading input files
         db_dict = {}
@@ -259,15 +264,15 @@ def merge_dbs(db_files: list,
                         db_dict[gene_name] = []
                     db_dict[gene_name].append(current_header)
     
-    logger.info(f"Merged database created at {merged_fasta_path}")
+    logger.info(f"[MERGE_DB_DONE] Merged database created at {merged_fasta_path}")
+    
     return str(merged_fasta_path), db_dict
 
 
 
-
-# ===============================
-# aastk search CLI FUNCTION
-# ===============================
+# ================
+# search function
+# ================
 def search(seed_db_out_path: str,
             query_fastq: str,
             threads: int,
@@ -320,14 +325,13 @@ def search(seed_db_out_path: str,
     with open(column_info_path, 'w') as f:
         json.dump(column_info, f, indent=2)
 
-    logger.info(f"Saved column information to {column_info_path}")
-
     # ==================
     # Parameter logging
     # ==================
-    logger.info(f"Searching DIAMOND database {seed_db_out_path} with query {query_fastq}")
-    logger.info(f"Output path: {output_path}")
-    logger.info(f"Using parameters: sensitivity={sensitivity if sensitivity else 'default'}, block={block}, chunk={chunk}, bit_score_cutoff={bit_score_cutoff}")
+    logger.info(
+        f"[SEARCH] db={seed_db_out_path} query={query_fastq} out={output_path} col_info={column_info_path} "
+        f"sensitivity={sensitivity if sensitivity else 'default'} block={block} chunk={chunk} min_score={bit_score_cutoff} max_target_seqs=1"
+    )
 
     # ====================================
     # DIAMOND blastx command construction
@@ -348,8 +352,6 @@ def search(seed_db_out_path: str,
 
     if sensitivity:
         cmd.append(f"--{sensitivity}")
-        
-    logger.debug(f"Running command: {' '.join(cmd)}")
 
     # =======================================
     # Execute DIAMOND blastx search
@@ -382,16 +384,15 @@ def search(seed_db_out_path: str,
         logger.error(f"DIAMOND output file not found at {output_path}")
         raise RuntimeError(f"DIAMOND search did not produce output at {output_path}")
         
-    logger.info(f"Successfully completed DIAMOND search. Results at {output_path}")
+    logger.info(f"[SEARCH_DONE] out={output_path}")
     return output_path, column_info_path
 
 
 
-
-# ===============================
+# ==========================
 # search_filtering function
-# ===============================
-def search_filtering(search_output_path: str,
+# ==========================
+def filter_best_hits_by_score(search_output_path: str,
                      aln_score_cutoff: int):
     """
     Filters DIAMOND search output, keeping only the highest scoring hit per query above a minimum score threshold.
@@ -403,7 +404,7 @@ def search_filtering(search_output_path: str,
     Returns:
         search_output_path (str): Path to filtered search output file
     """
-    logger.info(f"Filtering search results, keeping highest scoring hit per query (score >= {aln_score_cutoff})")
+    logger.info(f"[FILTER_START] Filtering search results keep_highest_score_per_query=True  aln_score_cutoff={aln_score_cutoff})")
     
     # Determine columns structure from the file content
     columns = ["qseqid", "sseqid", "pident", "qlen", "slen", "length", "mismatch", "gapopen", "qstart", "qend",
@@ -436,15 +437,15 @@ def search_filtering(search_output_path: str,
     # Replace original with filtered
     Path(temp_output).replace(search_output_path)
     
-    logger.info(f"Filtering complete. Retained {len(best_hits)} hits after filtering.")
+    logger.info(f"[FILTER_DONE] total_retained={len(best_hits)} out={search_output_path}")
     return search_output_path
 
 
 
-# =========================================
-# Split search outputs per gene or dataset
-# =========================================
-def split_search_outputs(blast_out_path: str,
+# =============================
+# parse_search_output function
+# =============================
+def split_search_output_by_mapping(blast_out_path: str,
                             mapping_dict: dict,
                             output_dir: str,
                             split_column: int,
@@ -474,9 +475,10 @@ def split_search_outputs(blast_out_path: str,
     
     db_search_name = determine_dataset_name(blast_out_path, '.', 0, '').rsplit('_hits', 1)[0]
     
-    logger.info(f"Processing BLAST output: {blast_out_path}")
-    logger.info(f"Splitting into {len(mapping_dict)} categories") # categories = genes or datasets depending on mapping_dict
-    logger.info(f"Built reverse lookup for {len(seq_to_group):,} sequence IDs")
+    logger.info(
+        f"[SPLIT_START] source={blast_out_path} categories={len(mapping_dict)} "
+        f"unique_keys_across_all_categories={len(dict_seqid_group_name):,} split_column={split_column}"
+    )
     
     # ========================================
     # Open file handles for each split output
@@ -493,7 +495,7 @@ def split_search_outputs(blast_out_path: str,
     line_counts = {}
     total_lines = 0
     lines_with_insufficient_columns = 0
-    unmatched_lines = 0
+    unmatched_source_lines = 0
     
     try:
         with open(blast_out_path, 'r') as infile:
@@ -508,15 +510,12 @@ def split_search_outputs(blast_out_path: str,
 
                 split_value = fields[split_column]
 
-                if split_column == 15 and split_value.startswith('@'):
-                    split_value = split_value[1:]
-
                 if split_value in seq_to_group:
                     group_name = seq_to_group[split_value]
                     file_handles[group_name].write(line)
                     line_counts[group_name] = line_counts.get(group_name, 0) + 1
                 else:
-                    unmatched_lines += 1
+                    unmatched_source_lines += 1
 
     except Exception as e:
         logger.error(f"Error while splitting BLAST output: {e}")
@@ -529,26 +528,26 @@ def split_search_outputs(blast_out_path: str,
         for file_handle in file_handles.values():
             file_handle.close()
     
-    logger.info(f"Total lines processed in blast output: {total_lines:,}")
-    logger.info(f"Total lines with insufficient columns: {lines_with_insufficient_columns:,}")
-    logger.info(f"Total lines with unmatched categories: {unmatched_lines:,}")
+    logger.info(
+        f"[SPLIT_DONE] source={blast_out_path} total_lines={total_lines:,} "
+        f"insufficient_cols={lines_with_insufficient_columns:,} "
+        f"source_lines_not_in_any_category={unmatched_source_lines:,}"
+    )
     
     for name, count in line_counts.items():
         if count > 0:
-            logger.info(f"Wrote {count:,} lines for '{name}' to {split_outputs[name]}")
+            logger.info(f"[SPLIT_GROUP] group={name} hits={count:,} out={split_outputs[name]}")
         else:
-            logger.info(f"No hits found for '{name}'")
+            logger.info(f"[SPLIT_GROUP] group={name} hits=0")
     
     return split_outputs
 
 
 
-
-
-# ================================
-# aastk get_hit_seqs CLI FUNCTION
-# ================================
-def get_hit_seqs(blast_tab: str,
+# ====================================
+# aastk extract_hit_seqs CLI FUNCTION
+# ====================================
+def extract_matched_reads(blast_tab: str,
                         query_path: str,
                         output_dir: str,
                         key_column: int,
@@ -580,13 +579,10 @@ def get_hit_seqs(blast_tab: str,
     # =========================================
     # Extract matching IDs from BLAST results
     # =========================================
-    logger.info(f"Extracting unique sequence keys from {blast_tab}")
+    logger.info(f"[HIT_EXTRACT_START] source={blast_tab} key_column={key_column}")
 
     # Extract unique keys from dereplicated BLAST results
     unique_keys = extract_unique_keys(blast_tab, key_column)
-
-    if key_column == 15:
-        unique_keys = {(k[1:] if k.startswith('@') else k) for k in unique_keys}
 
     # Fill in dataset_dict (dataset_name:[matched_seq_ids]) for downstream use
     dataset_name = determine_dataset_name(query_path, '.', 0, '')
@@ -600,8 +596,6 @@ def get_hit_seqs(blast_tab: str,
     with open(id_file, 'w') as f:
         for key in unique_keys:
             f.write(f"{key}\n")
-    
-    logger.info(f"Extracted {len(unique_keys)} unique sequence keys to {id_file}")
 
     # ======================================================
     # Extract and write matching sequences in gzipped FASTQ
@@ -613,19 +607,21 @@ def get_hit_seqs(blast_tab: str,
 
     try:
         subprocess.run(cmd, check=True, capture_output=True, text=True)
-        logger.info(f"Extracted matching sequences to {out_fastq}")
     
     except subprocess.CalledProcessError as e:
         logger.error(f"seqkit grep failed: {e.stderr}")
         raise RuntimeError(f"Failed to extract matching sequences: {e.stderr}") from e
     
-    logger.info(f"Successfully extracted hit sequences to {out_fastq}")
+    logger.info(
+        f"[HIT_EXTRACT_DONE] keys={len(unique_keys)} source={blast_tab} ids={id_file} out={out_fastq}"
+    )
 
     return out_fastq, id_file, dataset_dict
 
 
-
-
+# =============================
+# resolve_key_column function
+# =============================
 def resolve_key_column(key_column, query_mode: str):
     """
     Resolve which BLAST output key column to use for hit extraction and outgroup split.
@@ -637,27 +633,33 @@ def resolve_key_column(key_column, query_mode: str):
     """
     key_column_explicit = ('--key_column' in sys.argv) or ('-k' in sys.argv)
 
-    if key_column not in (0, 15):
+    if key_column is None:
+        effective_key_column = 15 if query_mode == 'batch' else 0
+        reason = f"key_column_is_None_auto_default_batch" if query_mode == 'batch' else "key_column_is_None_auto_default_single"
+    elif key_column in (0, 15):
+        effective_key_column = key_column
+        reason = "provided"
+    else:
         raise ValueError(f"Unsupported key_column={key_column} for RASR. Use 0 (qseqid) or 15 (qtitle).")
 
     if query_mode == 'batch' and key_column == 0 and not key_column_explicit:
         effective_key_column = 15
-        logger.info("No explicit --key_column provided in batch query mode; switching from qseqid (0) to qtitle (15).")
-    else:
-        effective_key_column = key_column
+        reason = 'key_column_implicit_zero_switched_to_qtitle_for_batch_query_mode'
 
     key_label = "qtitle" if effective_key_column == 15 else "qseqid"
-    logger.info(f"Using key column {effective_key_column} ({key_label}) for hit extraction and outgroup split")
+    logger.info(
+        f"[KEY_COLUMN] input={key_column} explicit={key_column_explicit} query_mode={query_mode} "
+        f"effective={effective_key_column} ({key_label}) reason={reason}"
+    )
     
     return effective_key_column
 
 
 
-
 # ================================
-# aastk merge_hits CLI FUNCTION
+# merge_extracted_hit_seqs function
 # ================================
-def merge_hits(all_hit_seqs_paths: list,
+def merge_matched_reads(all_hit_seqs_paths: list,
                 output_dir: str,
                 threads: int,
                 use_existing_merged: bool = False,
@@ -725,9 +727,9 @@ def merge_hits(all_hit_seqs_paths: list,
 
 
 # ===============================
-# aastk bsr CLI FUNCTION
+# bsr function
 # ===============================
-def bsr(db_search_tab: str,
+def compute_bsr(seed_search_tab: str,
         og_search_tab: str,
         column_info_path: str,
         output_dir: str,
@@ -736,7 +738,7 @@ def bsr(db_search_tab: str,
     Computes BSR (Blast Score Ratio) using protein BLAST tab file and outgroup BLAST tab file.
 
     Args:
-        db_search_tab (str): Path to BLAST output file from Search 1 (gene db)
+        seed_search_tab (str): Path to BLAST output file from Search 1 (seed db)
         og_search_tab (str): Path to BLAST output file from Search 2 (outgroup db)
         column_info_path (str): Path to JSON file containing column index information for BLAST output
         output_dir (str): Directory to save BSR output file
@@ -748,12 +750,12 @@ def bsr(db_search_tab: str,
     # ==================
     # Output file setup
     # ==================
-    protein_name = determine_dataset_name(db_search_tab, '.', 0, '_hits')
+    protein_name = determine_dataset_name(seed_search_tab, '.', 0, '_hits')
     bsr_file = ensure_path(output_dir, f"{protein_name}_bsr.tsv", force=force)
 
-    logger.info(f"Computing blast score ratio (BSR) for {protein_name}")
-    logger.info(f"Using gene blast tab file: {db_search_tab}")
-    logger.info(f"Using outgroup blast tab file: {og_search_tab}")
+    logger.info(
+        f"[BSR_COMPUTE_START] target={protein_name} seed_hits={seed_search_tab} og_hits={og_search_tab}"
+    )
     
     # ==========================================================
     # Load column info if provided and retrieve columns indexes
@@ -765,19 +767,20 @@ def bsr(db_search_tab: str,
                 
                 # Get all required column indexes from .json file
                 qseqid_col = column_info.get('qseqid', 0)
+                qtitle_col = column_info.get('qtitle', 15)
                 sseqid_col = column_info.get('sseqid', 1)
                 pident_col = column_info.get('pident', 2)
                 length_col = column_info.get('length', 5)
                 score_column = column_info.get('score', 14)
                 
-                logger.info(f"Loaded column indexes from {column_info_path}")
-                logger.debug(f"Column indexes: qseqid={qseqid_col}, sseqid={sseqid_col}, "
+                logger.info(f"[BSR_COLUMN_INFO] Column indexes: qseqid={qseqid_col}, qtitle={qtitle_col}, sseqid={sseqid_col}, "
                            f"pident={pident_col}, length={length_col}, score={score_column}")
 
         except Exception as e:
             logger.warning(f"Failed to load column info from {column_info_path}: {e}")
             # Fall back to default indexes
             qseqid_col = 0
+            qtitle_col = 15
             sseqid_col = 1
             pident_col = 2
             length_col = 5
@@ -785,45 +788,47 @@ def bsr(db_search_tab: str,
     else:
         # Use default column indexes if no .json file provided
         qseqid_col = 0
+        qtitle_col = 15
         sseqid_col = 1
         pident_col = 2
         length_col = 5
         score_column = 14
-        logger.info(f"Using default column indexes (no column_info file provided)")
+        logger.info("[BSR_COLUMN_INFO] Using default column indexes (no column_info file provided)"
+                   f" qseqid={qseqid_col}, qtitle={qtitle_col}, sseqid={sseqid_col}, "
+                   f"pident={pident_col}, length={length_col}, score={score_column}")
 
     # =====================================
     # Load BLAST outputs and calculate BSR
     # =====================================
     # Read outgroup results into dict
-    logger.info("Loading database search results into memory...")
-    db_data = {}  # {qseqid: (sseqid_db, pident_db, length_db, score_db)}
+    db_data = {}  # {qseqid: (qtitle, sseqid_db, pident_db, length_db, score_db)}
+    total_seed_count = 0
     
-    with open(db_search_tab, 'r') as f:
+    with open(seed_search_tab, 'r') as f:
         for line in f:
+            total_seed_count += 1
             fields = line.strip().split('\t')
             qseqid = fields[qseqid_col]
+            qtitle = fields[qtitle_col]
             sseqid_db = fields[sseqid_col]
             pident_db = float(fields[pident_col])
             length_db = float(fields[length_col])
             score_db = float(fields[score_column])
-            db_data[qseqid] = (sseqid_db, pident_db, length_db, score_db)
-    
-    logger.info(f"Loaded {len(db_data):,} database hits")
+            db_data[qseqid] = (qtitle, sseqid_db, pident_db, length_db, score_db)
     
     # Stream through outgroup results and calculate BSR
-    logger.info("Streaming through outgroup search results and calculating BSR...")
     matched_count = 0
-    total_count = 0
+    total_og_count = 0
     
     with open(bsr_file, 'w') as out_f:
         # Write header
-        out_f.write('qseqid\tsseqid_db\tpident_db\tlength_db\tscore_db\tsseqid_og\tpident_og\tlength_og\tscore_og\tBSR\n')
+        out_f.write('qseqid\tqtitle\tsseqid_db\tpident_db\tlength_db\tscore_db\tsseqid_og\tpident_og\tlength_og\tscore_og\tBSR\n')
         
         with open(og_search_tab, 'r') as og_f:
             for line in og_f:
                 fields = line.strip().split('\t')
                 qseqid = fields[qseqid_col]
-                total_count += 1
+                total_og_count += 1
                 
                 # Only process if we have database data for this query
                 if qseqid in db_data:
@@ -832,17 +837,18 @@ def bsr(db_search_tab: str,
                     length_og = float(fields[length_col])
                     score_og = float(fields[score_column])
                     
-                    sseqid_db, pident_db, length_db, score_db = db_data[qseqid]
+                    qtitle, sseqid_db, pident_db, length_db, score_db = db_data[qseqid]
                     
                     # Calculate BSR
                     bsr_value = score_db / score_og if score_og > 0 else 0.0
                     
                     # Write result
-                    out_f.write(f"{qseqid}\t{sseqid_db}\t{pident_db}\t{length_db}\t{score_db}\t{sseqid_og}\t{pident_og}\t{length_og}\t{score_og}\t{bsr_value}\n")
+                    out_f.write(f"{qseqid}\t{qtitle}\t{sseqid_db}\t{pident_db}\t{length_db}\t{score_db}\t{sseqid_og}\t{pident_og}\t{length_og}\t{score_og}\t{bsr_value}\n")
                     matched_count += 1
     
-    logger.info(f"BSR calculated for {matched_count:,} out of {total_count:,} outgroup hits")
-    logger.info(f"BSR results written to {bsr_file}")
+    logger.info(
+        f"[BSR_COMPUTE_DONE] target={protein_name} matched={matched_count:,} total_seed={total_seed_count:,} total_og={total_og_count:,} out={bsr_file}"
+    )
     
     return bsr_file
 
@@ -850,9 +856,9 @@ def bsr(db_search_tab: str,
 
 
 # ===============================
-# aastk rasr_plot CLI FUNCTION
+# aastk rasr_bsr_plot CLI FUNCTION
 # ===============================
-def rasr_plot(bsr_file: str,
+def plot_bsr(bsr_file: str,
                 output_dir: str,
                 bsr_cutoff: float = 0.9,
                 dbmin: int = 110,
@@ -882,7 +888,7 @@ def rasr_plot(bsr_file: str,
     # ===============================
     out_graph = ensure_path(output_dir, f'{protein_name}_bsr.png', force=force)
 
-    logger.info(f"Creating BSR scatter plot for {protein_name}")
+    logger.info(f"[BSR_PLOT_START] Creating BSR scatter plot for {protein_name}")
 
     try:
         # ===============================
@@ -955,7 +961,7 @@ def rasr_plot(bsr_file: str,
         # ===============================
         fig.savefig(out_graph, dpi=300)
         plt.close(fig)
-        logger.info(f"BSR scatter plot saved to {out_graph}")
+        logger.info(f"[BSR_PLOT_DONE] BSR scatter plot saved to {out_graph}")
 
         return out_graph
 
@@ -969,7 +975,7 @@ def rasr_plot(bsr_file: str,
 # ===============================
 # aastk pasr_select CLI FUNCTION
 # ===============================
-def rasr_select(dbmin: float,
+def select_reads_by_bsr(dbmin: float,
                 bsr_cutoff: float,
                 matched_fastq: str,
                 bsr_file: str,
@@ -999,7 +1005,7 @@ def rasr_select(dbmin: float,
     if dbmin is None:
         dbmin = 110
 
-    logger.info(f"Selecting RASR hits with database score >= {dbmin} and BSR >= {bsr_cutoff}")
+    logger.info(f"[SELECT_START] Selecting RASR hits with database score >= {dbmin} and BSR >= {bsr_cutoff}")
 
     # ===============================
     # Output file path setup
@@ -1014,14 +1020,14 @@ def rasr_select(dbmin: float,
     # Filter based on cutoffs and write selected IDs to file
     bsr_df = pd.read_csv(bsr_file, sep='\t', header=0)
 
-    selected_ids = bsr_df[(bsr_df['score_db'] >= dbmin) 
-                            & (bsr_df['BSR'] >= bsr_cutoff)]['qseqid'].unique()
+    selected_ids = bsr_df[(bsr_df['score_db'] >= dbmin)
+                            & (bsr_df['BSR'] >= bsr_cutoff)]['qseqid'].dropna().astype(str).unique()
 
     with open(id_file, 'w') as f:
         for seq_id in selected_ids:
             f.write(f"{seq_id}\n")
 
-    logger.info(f"Selected {len(selected_ids)} sequences. IDs written to {id_file}")
+    logger.info(f"[SELECT_DONE] total_ids={len(selected_ids)} ids_out={id_file}")
 
     # ===============================
     # Extract selected sequences
@@ -1030,7 +1036,7 @@ def rasr_select(dbmin: float,
         cmd = ["seqkit", "grep", "-f", id_file, matched_fastq, "-o", out_fastq]
 
         subprocess.run(cmd, check=True, capture_output=True, text=True)
-        logger.info(f"Extracted selected sequences to {out_fastq}")
+        logger.info(f"[SELECT_DONE] fastq_out={out_fastq}")
 
     
     except Exception as e:
@@ -1105,22 +1111,23 @@ def rasr_multiple(query: str,
         use_existing_merged (bool): Reuse existing merged matched FASTQ if present.
 
     Returns:
-        results (dict): dictionary containing paths to all output files
+        dict: Mapping {(dataset_name, gene_name): result_info} where result_info includes
+            key output file paths (search output, matched reads, BSR table, plot, selected reads).
     """
 
-    logger.info("Starting RASR workflow")
-    logger.info("=== STEP 0: Initialize workflow settings ===")
+    logger.info("[RUN_START] workflow=rasr")
+    logger.info("[INITILISATION_START] validating inputs, building execution plan and diamond seed database")
 
     # =====================
     # Build execution plan
     # =====================
-    logger.info("Building execution plan based on input files and settings")
+    logger.info("[PLAN_START] builder=build_execution_plan")
     plan = build_execution_plan(query, query_dir, seed, seed_dir)
-
-    # ==========================
+    
+    # =======================================
     # List inputs and plan mode of execution
-    # ==========================
-    logger.info("Listing input files for datasets and gene databases")
+    # =======================================
+    logger.info("[LISTING_INPUTS_START]")
 
     query_files = list_inputs(plan["query_info"])
     db_files = list_inputs(plan["seed_info"])
@@ -1130,13 +1137,13 @@ def rasr_multiple(query: str,
     if not query_files:
         raise ValueError("No query files found")
     
-    # ========================
+    # =====================================
     # Output directory and variables setup
-    # ========================
-
-    logger.info(f"Running RASR workflow for {len(query_files)} dataset(s) and {len(db_files)} gene database(s)")
-    logger.info(f"Output directory: {output_dir}")
-    logger.info(f"Execution mode: query={plan['query_info']['mode']}, seed={plan['seed_info']['mode']}")
+    # =====================================
+    logger.info(
+        f"[RUN_CONFIG] query_datasets={len(query_files)} seed_dbs={len(db_files)} "
+        f"query_mode={plan['query_info']['mode']} seed_mode={plan['seed_info']['mode']} out={output_dir}"
+    )
 
     effective_key_column = resolve_key_column(key_column, plan['query_info']['mode'])
 
@@ -1148,25 +1155,27 @@ def rasr_multiple(query: str,
         # ==================================
         # Gene of interest database merging
         # ==================================
-        # done only if seed_is_multi is True
-        if plan['steps']['merge_dbs']:
-            logger.info("Merging protein databases")
+        if plan['steps']['merge_seed_databases']:
+            logger.info(f"[MERGE_SEED_DBS_START] seed_files={len(db_files)}")
 
-            merged_seed_db_path, db_seqid_dict = merge_dbs(db_files, output_dir, force=force)
+            merged_seed_db_path, db_seqid_dict = merge_seed_databases(db_files, output_dir, force=force)
             db_input_for_build = merged_seed_db_path
 
             intermediate_results['merged_seed_db_fasta'] = merged_seed_db_path
 
         else:
-            logger.info("Single seed database mode: skipping merge step")
+            logger.info("[MERGE_SEED_DBS_SKIP] reason=single seed input")
 
             db_input_for_build = str(db_files[0])
 
         # ===================================
         # Gene of interest database building
         # ===================================
-        logger.info("Building DIAMOND protein database")
+        logger.info(f"[BUILD_DMND_DB_START] source={db_input_for_build}")
+
         db_path = pasr_build(db_input_for_build, threads, output_dir, force=force)
+
+        logger.info(f"[BUILD_DMND_DB_DONE] out={db_path}")
 
         intermediate_results['merged_seed_db_diamond'] = db_path
 
@@ -1174,12 +1183,12 @@ def rasr_multiple(query: str,
         # Track outputs per dataset and gene
         # ===================================
         all_hit_seqs_paths = []  # Accumulate all _matched.fastq.gz file paths across datasets and genes
-        dataset_to_queries = {}  # {dataset_name: [qseqids]}
+        dict_dataset_seqids = {}  # {dataset_name: [qseqids]}
 
         # ==================================================
         # Step 1: Search each dataset against gene database
         # ==================================================     
-        logger.info("=== STEP 1: Searching gene database ===")
+        logger.info(f"[STEP_1_START] search_seed_db datasets={len(query_files)} genes={len(db_files)}")
 
         dataset_output_dirs = set()
         for query_file in query_files:
@@ -1187,18 +1196,18 @@ def rasr_multiple(query: str,
             dataset_output_dir = ensure_path(output_dir, dataset_name, force=force)
             dataset_output_dirs.add(dataset_output_dir)
             
-            logger.info(f"Processing dataset: {dataset_name}")
+            logger.info(f"[DATASET_START] workflow_step=1 dataset={dataset_name}")
 
             # ======================
             # Search gene database
             # ======================
-            logger.info(f"Searching protein database")
+            logger.info(f"[SEARCH_1_START] dataset={dataset_name} query={query_file} db={db_path}")
             search_output, column_info_path = search(db_path, str(query_file), threads, dataset_output_dir, sensitivity, bit_score_cutoff=bit_score_cutoff, block=block, chunk=chunk, force=force)
             
             # =========================
             # Filter search results
             # =========================
-            search_output = search_filtering(search_output, aln_score_cutoff=aln_score_cutoff)
+            search_output = filter_best_hits_by_score(search_output, aln_score_cutoff=aln_score_cutoff)
 
             if 'search_output' not in intermediate_results:
                 intermediate_results['search_output'] = []
@@ -1208,13 +1217,12 @@ def rasr_multiple(query: str,
             # Split search results per gene
             # ==============================
             if plan['steps']['parse_search_1_per_db']:
-                logger.info(f"Splitting search results per gene for {dataset_name}")
-
                 if db_seqid_dict is None:
                     raise RuntimeError("mapping dict database:[seqid] is required for splitting search outputs when seed_is_multi is True but was not initialized")
 
-                db_split_outputs = split_search_outputs(search_output, mapping_dict=db_seqid_dict, output_dir=dataset_output_dir, split_column=1, force=force)
+                db_split_outputs = split_search_output_by_mapping(search_output, mapping_dict=db_seqid_dict, output_dir=dataset_output_dir, split_column=1, force=force)
 
+                # Move split outputs to gene-specific subdirectories
                 for gene_name, split_output in list(db_split_outputs.items()):
                     gene_output_dir = ensure_path(dataset_output_dir, gene_name, force=force)
                     dest_path = ensure_path(gene_output_dir, Path(split_output).name, force=force)
@@ -1233,12 +1241,10 @@ def rasr_multiple(query: str,
             # ===============================
             # Extract hit sequences per gene
             # ===============================
-            logger.info(f"Extracting hit sequences per gene for {dataset_name}")
-
             for gene_name, split_output in db_split_outputs.items():
                 gene_output_dir = ensure_path(dataset_output_dir, gene_name, force=force) 
 
-                hit_seqs_path, id_file, dataset_dict = get_hit_seqs(split_output, str(query_file), 
+                hit_seqs_path, id_file, dataset_dict = extract_matched_reads(split_output, str(query_file), 
                                                                         output_dir=gene_output_dir, 
                                                                         key_column=effective_key_column,
                                                                         force=force)
@@ -1255,9 +1261,11 @@ def rasr_multiple(query: str,
                 }
                 
                 # Accumulate dataset matched queries for later outgroup splitting
-                if dataset_name not in dataset_to_queries:
-                    dataset_to_queries[dataset_name] = []
-                dataset_to_queries[dataset_name].extend(dataset_dict[dataset_name])
+                if dataset_name not in dict_dataset_seqids:
+                    dict_dataset_seqids[dataset_name] = []
+                dict_dataset_seqids[dataset_name].extend(dataset_dict[dataset_name])
+
+            logger.info(f"[DATASET_DONE] step=1 dataset={dataset_name} genes_processed={len(db_split_outputs)}")
 
         if len(dataset_output_dirs) != len(query_files):
             raise RuntimeError(
@@ -1265,27 +1273,29 @@ def rasr_multiple(query: str,
                 f"{len(dataset_output_dirs)} dirs for {len(query_files)} datasets"
             )
 
+        logger.info(f"[STEP_1_DONE] datasets_processed={len(dataset_output_dirs)}")
+
         intermediate_results['column_info_path'] = column_info_path
 
         # ============================================================================
         # Step 2: Merge hits from all datasets and genes and search outgroup database
         # ============================================================================
-        logger.info("=== STEP 2: Searching outgroup database ===")
+        logger.info("[STEP_2_START] search_outgroup")
 
-        do_merge_hits = plan['steps']['merge_search_hits'] and len(all_hit_seqs_paths) > 1
+        do_merge_hits = plan['steps']['merge_extracted_hit_seqs'] and len(all_hit_seqs_paths) > 1
 
         if do_merge_hits:
-            logger.info("Merging hits from all datasets and genes")
-            merged_hits_file, infile_list = merge_hits(all_hit_seqs_paths, output_dir, threads, use_existing_merged=use_existing_merged, force=force)
+            logger.info(f"[HIT_MERGE_START] files={len(all_hit_seqs_paths)}")
+            merged_hits_file, infile_list = merge_matched_reads(all_hit_seqs_paths, output_dir, threads, use_existing_merged=use_existing_merged, force=force)
             intermediate_results['merged_hits_file'] = merged_hits_file
             intermediate_results['infile_list'] = infile_list
         else:
-            logger.info("Single matched FASTQ detected: skipping merge_hits")
+            logger.info("[HIT_MERGE_SKIP] reason=single_input_fastq")
             merged_hits_file = all_hit_seqs_paths[0]
 
         # =================== Search outgroup database with merged hits ===================
 
-        logger.info("Searching outgroup database with merged hits")
+        logger.info(f"[SEARCH_2_START] query={merged_hits_file}")
         og_search_output, og_column_info_path = search(outgrp_db, merged_hits_file, threads, output_dir, sensitivity, bit_score_cutoff=bit_score_cutoff, block=block, chunk=chunk, force=force)
 
         intermediate_results['og_search_output'] = og_search_output
@@ -1295,7 +1305,9 @@ def rasr_multiple(query: str,
 
         og_split_outputs = {}
         if plan['steps']['parse_search_2_per_query']:
-            logger.info("Splitting outgroup search results per dataset")
+            logger.info(
+                f"[SPLIT_2_START] datasets={len(dict_dataset_seqids)} key_column={effective_key_column}"
+            )
 
             for dataset_name, query_ids in dataset_to_queries.items():
                 dataset_output_dir = ensure_path(output_dir, dataset_name, force=force)
@@ -1303,17 +1315,18 @@ def rasr_multiple(query: str,
                 og_split_outputs.update(dataset_og_split)
                 
         else:
-            logger.info("Single dataset mode: skipping outgroup split")
+            logger.info("[SPLIT_2_SKIP] reason=single_dataset")
 
-            only_dataset = next(iter(dataset_to_queries.keys()))
+            only_dataset = next(iter(dict_dataset_seqids.keys()))
             og_split_outputs[only_dataset] = og_search_output
 
         intermediate_results['og_split_outputs'] = og_split_outputs
+        logger.info(f"[STEP_2_DONE] outgroup_splits={len(og_split_outputs)}")
 
         # ================================================================
         # Step 3: Calculate BSR and generate plots for each dataset x gene
         # ================================================================
-        logger.info("=== STEP 3: Calculating BSR and generating visualizations ===")
+        logger.info(f"[STEP_3_START] pairs={len(results_by_ds_gene)}")
 
         for (dataset_name, gene_name), result_info in results_by_ds_gene.items():
             
@@ -1322,33 +1335,30 @@ def rasr_multiple(query: str,
             og_split_output = og_split_outputs.get(dataset_name)
             
             if db_split_output and og_split_output:
-                logger.info(f"Processing {dataset_name} x {gene_name}")
+                logger.info(f"[PAIR_START] dataset={dataset_name} gene={gene_name}")
 
                 # =================== Calculate BSR values ===================
-                logger.info(f"Calculate BSR values")
-                bsr_output = bsr(db_split_output, og_split_output, column_info_path, output_dir=gene_output_dir, force=force)
+                bsr_output = compute_bsr(db_split_output, og_split_output, column_info_path, output_dir=gene_output_dir, force=force)
 
                 result_info['bsr_output'] = bsr_output
 
                 # =================== Plot BSR values ===================
-
-                logger.info(f"Plotting BSR values")
-                plot_output = rasr_plot(bsr_output, output_dir=gene_output_dir, bsr_cutoff=bsr_cutoff, dbmin=dbmin, force=force)
+                plot_output = plot_bsr(bsr_output, output_dir=gene_output_dir, bsr_cutoff=bsr_cutoff, dbmin=dbmin, force=force)
 
                 result_info['bsr_plot'] = plot_output
           
                 # =================== Select hits above BSR and dbmin thresholds ===================
-
-                logger.info(f"Selecting hits above thresholds")
-                hit_seqs_path = Path(gene_output_dir) / f"{determine_dataset_name(db_split_output, '.', 0, '_hits')}_matched.fastq.gz"
-                selected_fastq, selected_ids_file = rasr_select(dbmin, bsr_cutoff, str(hit_seqs_path), bsr_output, output_dir=gene_output_dir, force=force)
+                hit_seqs_path = result_info['matched_fastq_path']
+                selected_fastq, selected_ids_file = select_reads_by_bsr(dbmin, bsr_cutoff, str(hit_seqs_path), bsr_output, output_dir=gene_output_dir, force=force)
 
                 result_info['selected_fastq'] = selected_fastq
                 result_info['selected_ids_file'] = selected_ids_file
+                logger.info(f"[PAIR_DONE] dataset={dataset_name} gene={gene_name} selected_ids={selected_ids_file}")
             else:
-                logger.warning(f"Missing split outputs for {dataset_name} x {gene_name}, skipping BSR calculation")
-        
-        logger.info("RASR workflow completed successfully")
+                logger.warning(f"[PAIR_SKIP] dataset={dataset_name} gene={gene_name} reason=missing_split_outputs")
+
+        logger.info("[STEP_3_DONE] pair_processing_complete=true")
+        logger.info("[RUN_DONE] workflow=rasr_multiple status=success")
         return results_by_ds_gene
 
     except Exception as e:
@@ -1369,3 +1379,4 @@ def rasr_multiple(query: str,
                         logger.debug(f"Deleted {filepath}")
                 except Exception as e:
                     logger.warning(f"Failed to delete {filepath}: {e}")
+                    
