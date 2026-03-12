@@ -210,8 +210,8 @@ def __max_scores(group, required=False):
     group.add_argument('-m', '--max_scores', type=str, required=required,
                        help='Path to file containing max scores')
 
-def __metadata_protein(group, required=False):
-    group.add_argument('--metadata_protein', type=str, required=required,
+def __metadata(group, required=False):
+    group.add_argument('--metadata', type=str, required=required,
                        help='Select metadata for plotting; run "aastk list_metadata" to view available categories"')
 
 def __metadata_matrix(group, required=False):
@@ -582,7 +582,7 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __db_path(grp)
-            __metadata_protein(grp)
+            __metadata(grp)
             __show(grp)
             __svg(grp)
             __force(grp)
@@ -600,7 +600,7 @@ def get_main_parser():
             __perplexity(grp)
             __iterations(grp)
             __exaggeration(grp)
-            __metadata_protein(grp)
+            __metadata(grp)
             __force(grp)
             __keep(grp)
             __show(grp)

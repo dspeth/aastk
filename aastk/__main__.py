@@ -310,7 +310,7 @@ def main():
             casm_plot(
                 clust_path=args.cluster_path,
                 output=args.output,
-                metadata_protein=args.metadata_protein,
+                metadata=args.metadata,
                 db_path=args.db_path,
                 force=args.force,
                 svg=args.svg,
@@ -328,7 +328,7 @@ def main():
                 perplexity=args.perplexity,
                 iterations=args.iterations,
                 exaggeration=args.exaggeration,
-                metadata_protein=args.metadata_protein,
+                metadata=args.metadata,
                 keep=args.keep,
                 force=args.force,
                 svg=args.svg,
