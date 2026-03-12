@@ -624,7 +624,7 @@ def plot_clusters(tsv_file: str,
         if len(unique_vals) <= 60:
             plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=10)
         else:
-            logger.info("Cluster number exceeds 60, omitting legend.")
+            logger.info("Category number exceeds 60, omitting legend.")
 
     plt.tight_layout()
 
