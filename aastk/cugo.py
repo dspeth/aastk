@@ -304,8 +304,8 @@ def plot_top_annotations_per_position(
     all_xticks, all_xlabels = [], []
 
     if ax is None:
-        figsize = (max(8, len(positions) * 0.8), 7)
-        fig, ax = plt.subplots(figsize=figsize)
+        width = max(8, int((flank_upper - flank_lower + 1) * top_n * 0.6))
+        fig, ax = plt.subplots(figsize=(width, 16/3))
 
     for pos_idx, pos in enumerate(positions):
         for rank in range(top_n):
@@ -374,6 +374,7 @@ def plot_size_per_position(context_path: str,
                            flank_lower: int,
                            flank_upper: int,
                            title: str = 'Density of amino acid length per position',
+                           top_n: int = 3,
                            save: bool = False,
                            ax: Optional[plt.Axes] = None,
                            pos_boundaries: Optional[list] = None,
@@ -413,7 +414,8 @@ def plot_size_per_position(context_path: str,
 
     # Create figure if no axes provided
     if ax is None:
-        fig, ax = plt.subplots()
+        width = max(8, int((flank_upper - flank_lower + 1) * top_n * 0.6))
+        fig, ax = plt.subplots(figsize=(width, 16/3))
 
     # Set up colormap and normalization
     cmap = get_cmap('Blues')
@@ -465,6 +467,7 @@ def plot_tmh_per_position(context_path: str,
                           flank_lower: int,
                           flank_upper: int,
                           title: str = 'Density of transmembrane helix count per position',
+                          top_n: int = 3,
                           save: bool = False,
                           ax: Optional[plt.Axes] = None,
                           pos_boundaries: Optional[list] = None,
@@ -503,7 +506,8 @@ def plot_tmh_per_position(context_path: str,
 
     # Create figure if no axes provided
     if ax is None:
-        fig, ax = plt.subplots()
+        width = max(8, int((flank_upper - flank_lower + 1) * top_n * 0.6))
+        fig, ax = plt.subplots(figsize=(width, 16/3))
 
     # Set up colormap and normalization
     cmap = get_cmap('Reds')
@@ -614,7 +618,7 @@ def cugo_plot(context_path: str,
             size_plot_path = ensure_path(output, f'{dataset_name}_size_only.png', force=force)
 
         norm_size, cmap_size = plot_size_per_position(context_path=context_path, flank_lower=flank_lower,
-                                                      flank_upper=flank_upper, save=True, bin_width=bin_width,
+                                                      flank_upper=flank_upper, top_n=top_n, save=True, bin_width=bin_width,
                                                       plot_path=size_plot_path, y_range=y_range)
         logger.info(f"Plot saved to {size_plot_path}")
 
@@ -627,7 +631,7 @@ def cugo_plot(context_path: str,
             tmh_plot_path = ensure_path(output, f'{dataset_name}_tmh_only.png', force=force)
 
         norm_tmh, cmap_tmh = plot_tmh_per_position(context_path=context_path, flank_lower=flank_lower,
-                                                   flank_upper=flank_upper, save=True, y_range=tmh_y_range,
+                                                   flank_upper=flank_upper, top_n=top_n, save=True, y_range=tmh_y_range,
                                                    plot_path=tmh_plot_path)
         logger.info(f"Plot saved to {tmh_plot_path}")
 
