@@ -235,6 +235,7 @@ def main():
                 output=args.output,
                 cugo=args.cugo,
                 size=args.size,
+                tmh=args.tmh,
                 all_plots=args.all_plots,
                 bin_width=args.bin_width,
                 y_range=args.y_range,

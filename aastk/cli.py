@@ -295,6 +295,10 @@ def __threads(group, required=False):
     group.add_argument('-n', '--threads', type=int, default=1, required=required,
                        help='Number of threads (default: 1)')
 
+def __tmh(group, required=False):
+    group.add_argument('--tmh', action='store_true', required=required,
+                       help='Generate transmembrane helices plot')
+
 def __tmhmm_dir(group, required=False):
     group.add_argument('-t', '--tmhmm_dir', type=str, required=required,
                        help='Directory containing tmhmm files')
@@ -499,6 +503,7 @@ def get_main_parser():
             __top_n(grp)
             __cugo(grp)
             __size(grp)
+            __tmh(grp)
             __all_plots(grp)
             __bin_width(grp)
             __y_range(grp)
