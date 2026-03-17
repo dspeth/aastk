@@ -593,6 +593,9 @@ def cugo_plot(context_path: str,
     if annotation not in ANNOTATION_COLUMNS:
         raise ValueError(f'Invalid annotation. Please select one of the following annotations: {",".join(annotation_columns)}')
 
+    if not all or cugo or size or tmh:
+        raise ValueError(f'No output plot format chosen please select: --all, --cugo, --size, --tmh')
+
     dataset_name = determine_dataset_name(context_path, '.', 0, '_context')
 
     # generate annotation-only plot
