@@ -156,7 +156,10 @@ def context(fasta: str,
     context_ranges = defaultdict(set)
 
     for seqID, parent_ID, aa_length, strand, annotation_id, CUGO_number, no_TMH in target_rows:
-        target_contexts[seqID] = (parent_ID, CUGO_number, strand)
+        if CUGO_number is None:
+            continue
+        else:
+            target_contexts[seqID] = (parent_ID, CUGO_number, strand)
         for i in range(CUGO_number - cugo_range, CUGO_number + cugo_range + 1):
             context_ranges[parent_ID].add(i)
 
