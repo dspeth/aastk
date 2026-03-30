@@ -376,7 +376,7 @@ def fetch_protein_metadata(db_path: str,
     valid_genome_cols = TAXONOMY_COLUMNS + CULTURE_COLLECTION_COLUMNS + LOW_LEVEL_ENV_COLUMNS + HIGH_LEVEL_ENV_COLUMNS
 
     if column not in valid_protein_cols and column not in valid_genome_cols:
-        logger.warning(f"No valid protein metadata columns requested")
+        logger.warning(f"No valid metadata columns requested")
         return pd.DataFrame({'seqID': protein_ids})
 
     conn = sqlite3.connect(db_path)
@@ -422,7 +422,7 @@ def extend_embedding_with_metadata(df: pd.DataFrame,
         return df
 
     if protein_col is not None:
-        logger.info(f"Fetching protein metadata: {protein_col}")
+        logger.info(f"Fetching metadata: {protein_col}")
         protein_metadata = fetch_protein_metadata(db_path, df['seqID'].tolist(), protein_col)
         df = pd.merge(df, protein_metadata, on='seqID', how='left')
 
@@ -433,7 +433,7 @@ def extend_embedding_with_metadata(df: pd.DataFrame,
 def plot_clusters(tsv_file: str,
                   output: str,
                   db_path: str = None,
-                  metadata_protein: str = None,
+                  metadata: str = None,
                   svg: bool = False,
                   force: bool = False,
                   show_cluster_numbers: bool = False
@@ -470,12 +470,12 @@ def plot_clusters(tsv_file: str,
 
     color_column = None
     if db_path:
-        if metadata_protein:
-            logger.info(f"Fetching metadata column '{metadata_protein}' for coloring")
-            df = extend_embedding_with_metadata(df, db_path, protein_col=metadata_protein)
-            color_column = metadata_protein
+        if metadata:
+            logger.info(f"Fetching metadata column '{metadata}' for coloring")
+            df = extend_embedding_with_metadata(df, db_path, protein_col=metadata)
+            color_column = metadata
 
-    if metadata_protein  and not db_path:
+    if metadata  and not db_path:
         logger.info("Metadata selected but path to SQLite DB not provided, coloring by cluster")
         color_column = 'cluster'
     elif color_column is None or color_column not in df.columns:
@@ -487,7 +487,7 @@ def plot_clusters(tsv_file: str,
     # ========================
     plt.figure(figsize=(14, 10))
 
-    if metadata_protein == 'culture_collection' and 'culture_collection' in df.columns:
+    if metadata == 'culture_collection' and 'culture_collection' in df.columns:
         overlay_mask = df['culture_collection'] == 1
         non_overlay_mask = ~overlay_mask
 
@@ -624,7 +624,7 @@ def plot_clusters(tsv_file: str,
         if len(unique_vals) <= 60:
             plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=10)
         else:
-            logger.info("Cluster number exceeds 60, omitting legend.")
+            logger.info("Category number exceeds 60, omitting legend.")
 
     plt.tight_layout()
 
@@ -769,7 +769,7 @@ def matrix(fasta: str,
        subset_fasta = fasta_subsample(fasta, output, subset_size, force=force)
 
     logger.info("=== Phase 1: DIAMOND Alignment ===")
-    align_output = run_diamond_alignment(fasta, subset_fasta, subset_size, threads, CASM_BLAST_OUTPUT_COLUMNS, force=force)
+    align_output = run_diamond_alignment(fasta, subset_fasta, subset_size, threads, CASM_BLAST_OUTPUT_COLUMNS, output, force=force)
 
     logger.info("=== Phase 2: Matrix Construction ===")
     _, _, _, matrix_file, metadata_file = build_alignment_matrix_split(align_output, output, force)
@@ -832,7 +832,7 @@ def cluster(matrix_path: str,
 
 def casm_plot(clust_path: str,
               output: str,
-              metadata_protein: str,
+              metadata: str,
               db_path: str,
               svg: bool = False,
               force: bool = False,
@@ -859,7 +859,7 @@ def casm_plot(clust_path: str,
     # Generate plots
     cluster_plot = plot_clusters(clust_path,
                                  output=output,
-                                 metadata_protein=metadata_protein,
+                                 metadata=metadata,
                                  db_path=db_path,
                                  force=force,
                                  svg=svg,
@@ -879,7 +879,7 @@ def casm(fasta: str,
          perplexity: int = 50,
          iterations: int = 500,
          exaggeration: int = 6,
-         metadata_protein: str = None,
+         metadata: str = None,
          keep: bool = False,
          svg: bool = False,
          force: bool = False,
@@ -898,7 +898,7 @@ def casm(fasta: str,
         perplexity (int): t-SNE perplexity parameter
         iterations (int): Number of optimization iterations
         exaggeration (int): Early exaggeration parameter
-        metadata_protein (str): Path to protein metadata file
+        metadata (str): Path to protein metadata file
         keep (bool): Keep intermediate files
         svg (bool): Generate plot in SVG format
         force (bool): Force overwrite existing files
@@ -907,10 +907,10 @@ def casm(fasta: str,
     Returns:
         sum_dict: Dictionary containing paths to all generated files
     """
-    if (metadata_protein is not None and metadata_protein not in BASE_COLUMNS[1:] + ANNOTATION_COLUMNS +
+    if (metadata is not None and metadata not in BASE_COLUMNS[1:] + ANNOTATION_COLUMNS +
             TAXONOMY_COLUMNS + CULTURE_COLLECTION_COLUMNS + HIGH_LEVEL_ENV_COLUMNS + LOW_LEVEL_ENV_COLUMNS):
-        logger.error('Invalid metadata category. Please run "aastk metadata_categories" to display available options.')
-        raise ValueError(f'Invalid metadata category: {metadata_protein}')
+        logger.error('Invalid metadata category. Please run "aastk list_metadata" to view available options.')
+        raise ValueError(f'Invalid metadata category: {metadata}')
 
 
     logger.info("=== Starting Complete CASM Analysis ===")
@@ -954,7 +954,7 @@ def casm(fasta: str,
     early_cluster_plot = casm_plot(
         clust_path=early_filename,
         output=output,
-        metadata_protein=metadata_protein,
+        metadata=metadata,
         db_path=db_path,
         svg=svg,
         force=force,
@@ -962,9 +962,9 @@ def casm(fasta: str,
     )
 
     full_cluster_plot = casm_plot(
-        clust_path=early_filename,
+        clust_path=final_filename,
         output=output,
-        metadata_protein=metadata_protein,
+        metadata=metadata,
         db_path=db_path,
         svg=svg,
         force=force,

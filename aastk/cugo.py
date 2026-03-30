@@ -136,7 +136,7 @@ def context(fasta: str,
         with open(id_list, 'r') as f:
             protein_identifiers = [line.strip() for line in f]
     else:
-        raise ValueError('You must provide a FASTA file.')
+        raise ValueError('No valid input file found. Please specify path to protein FASTA file or sequence ID list.')
 
     BATCH_SIZE = 500
     target_rows = []
@@ -156,7 +156,10 @@ def context(fasta: str,
     context_ranges = defaultdict(set)
 
     for seqID, parent_ID, aa_length, strand, annotation_id, CUGO_number, no_TMH in target_rows:
-        target_contexts[seqID] = (parent_ID, CUGO_number, strand)
+        if CUGO_number is None:
+            continue
+        else:
+            target_contexts[seqID] = (parent_ID, CUGO_number, strand)
         for i in range(CUGO_number - cugo_range, CUGO_number + cugo_range + 1):
             context_ranges[parent_ID].add(i)
 
@@ -301,8 +304,8 @@ def plot_top_annotations_per_position(
     all_xticks, all_xlabels = [], []
 
     if ax is None:
-        figsize = (max(8, len(positions) * 0.8), 7)
-        fig, ax = plt.subplots(figsize=figsize)
+        width = max(8, int((flank_upper - flank_lower + 1) * top_n * 0.6))
+        fig, ax = plt.subplots(figsize=(width, 16/3))
 
     for pos_idx, pos in enumerate(positions):
         for rank in range(top_n):
@@ -371,6 +374,7 @@ def plot_size_per_position(context_path: str,
                            flank_lower: int,
                            flank_upper: int,
                            title: str = 'Density of amino acid length per position',
+                           top_n: int = 3,
                            save: bool = False,
                            ax: Optional[plt.Axes] = None,
                            pos_boundaries: Optional[list] = None,
@@ -410,7 +414,8 @@ def plot_size_per_position(context_path: str,
 
     # Create figure if no axes provided
     if ax is None:
-        fig, ax = plt.subplots()
+        width = max(8, int((flank_upper - flank_lower + 1) * top_n * 0.6))
+        fig, ax = plt.subplots(figsize=(width, 16/3))
 
     # Set up colormap and normalization
     cmap = get_cmap('Blues')
@@ -462,6 +467,7 @@ def plot_tmh_per_position(context_path: str,
                           flank_lower: int,
                           flank_upper: int,
                           title: str = 'Density of transmembrane helix count per position',
+                          top_n: int = 3,
                           save: bool = False,
                           ax: Optional[plt.Axes] = None,
                           pos_boundaries: Optional[list] = None,
@@ -500,7 +506,8 @@ def plot_tmh_per_position(context_path: str,
 
     # Create figure if no axes provided
     if ax is None:
-        fig, ax = plt.subplots()
+        width = max(8, int((flank_upper - flank_lower + 1) * top_n * 0.6))
+        fig, ax = plt.subplots(figsize=(width, 16/3))
 
     # Set up colormap and normalization
     cmap = get_cmap('Reds')
@@ -586,6 +593,9 @@ def cugo_plot(context_path: str,
     if annotation not in ANNOTATION_COLUMNS:
         raise ValueError(f'Invalid annotation. Please select one of the following annotations: {",".join(annotation_columns)}')
 
+    if not (all_plots or cugo or size or tmh):
+        raise ValueError(f'No output plot format chosen please select: --all, --cugo, --size, --tmh')
+
     dataset_name = determine_dataset_name(context_path, '.', 0, '_context')
 
     # generate annotation-only plot
@@ -611,7 +621,7 @@ def cugo_plot(context_path: str,
             size_plot_path = ensure_path(output, f'{dataset_name}_size_only.png', force=force)
 
         norm_size, cmap_size = plot_size_per_position(context_path=context_path, flank_lower=flank_lower,
-                                                      flank_upper=flank_upper, save=True, bin_width=bin_width,
+                                                      flank_upper=flank_upper, top_n=top_n, save=True, bin_width=bin_width,
                                                       plot_path=size_plot_path, y_range=y_range)
         logger.info(f"Plot saved to {size_plot_path}")
 
@@ -624,7 +634,7 @@ def cugo_plot(context_path: str,
             tmh_plot_path = ensure_path(output, f'{dataset_name}_tmh_only.png', force=force)
 
         norm_tmh, cmap_tmh = plot_tmh_per_position(context_path=context_path, flank_lower=flank_lower,
-                                                   flank_upper=flank_upper, save=True, y_range=tmh_y_range,
+                                                   flank_upper=flank_upper, top_n=top_n, save=True, y_range=tmh_y_range,
                                                    plot_path=tmh_plot_path)
         logger.info(f"Plot saved to {tmh_plot_path}")
 

@@ -575,15 +575,15 @@ def bsr(blast_tab: str,
                     logger.warning(f"Line {line_num}: No max score found for '{key}'")
                     error_count += 1
 
-                max_score = max_scores[key]
-                if max_score <= 0:
-                    logger.warning(f"Line {line_num}: Max score is zero or negative for '{key}': {max_score}")
+                current_max_score = max_scores[key]
+                if current_max_score <= 0:
+                    logger.warning(f"Line {line_num}: Max score is zero or negative for '{key}': {current_max_score}")
                     error_count += 1
                     continue
 
                 # calculate the blast score ratio
-                bsr = raw_score / max_score
-                out.write(f"{parts[0]}\t{parts[1]}\t{pident:.2f}\t{qlen}\t{raw_score:.1f}\t{max_score:.1f}\t{bsr:.4f}\n")
+                bsr = raw_score / current_max_score
+                out.write(f"{parts[0]}\t{parts[1]}\t{pident:.2f}\t{qlen}\t{raw_score:.1f}\t{current_max_score:.1f}\t{bsr:.4f}\n")
                 processed_count += 1
 
             except (KeyError, ValueError, IndexError) as e:
@@ -686,7 +686,7 @@ def pasr_plot(bsr_file: str,
         axs['scatter'].set_xlabel('Calculated maximum score')
         axs['scatter'].set_ylabel('Alignment score to seed set')
         axs['scatter'].set_xlim(xlim)
-        axs['scatter'].set_ylim(bottom=0)
+        axs['scatter'].set_ylim(bottom=0, top=(1.1 * score_max))
 
         cb_ax = inset_axes(axs['scatter'], width="5%", height="30%", loc='upper left', borderpad=1)
         cbar = fig.colorbar(scatter, cax=cb_ax)
@@ -719,11 +719,10 @@ def pasr_plot(bsr_file: str,
             align='edge',
             color='black'
         )
-        axs['histy'].set_ylim(bottom=0)
+        axs['histy'].set_ylim(bottom=0, top=(1.1 * score_max))
         axs['histy'].set_xlabel('Counts')
         axs['histy'].set_xticks([0, round(max(y_hist)/2), round(max(y_hist))])
         axs['histy'].tick_params(labelleft=False)
-
 
         # ===============================
         # Threshold lines (update mode)
@@ -902,7 +901,6 @@ def pasr_select(yaml_path: str,
                 dbmin: int = None,
                 bsr: float = None,
                 force: bool = False,
-                create_yaml: bool = False,
                 params: bool = False):
     """
     Subsets matched sequences based on YAML thresholds or provided parameters.
@@ -917,7 +915,6 @@ def pasr_select(yaml_path: str,
         dbmin (int): Minimum database score threshold (mutually exclusive with bsr).
         bsr (float): Minimum BSR threshold (mutually exclusive with dbmin).
         force (bool): If true, existing files/directories in output path are overwritten.
-        create_yaml (bool): Create a YAML file with the provided parameters.
         params (bool): Use provided parameters instead of YAML file (mutually exclusive with yaml_path).
     """
     # check if seqkit is in path
@@ -961,8 +958,9 @@ def pasr_select(yaml_path: str,
         bsr_min = bsr
 
         # create YAML file if requested
-        if create_yaml:
-            logger.info("Creating YAML file with provided parameters")
+
+        logger.info("Creating YAML file with provided parameters")
+        if not yaml_path:
             created_yaml_path = pasr_metadata(
                 max_score_min=max_score_min,
                 max_score_max=max_score_max,
@@ -1067,18 +1065,18 @@ def pasr_select(yaml_path: str,
         yaml_for_plot = None
 
     if yaml_for_plot:
-        pasr_plot(
-            bsr_file=bsr_table,
-            output_dir=output_dir,
-            yaml_path=yaml_for_plot,
-            force=force,
-            update=True
-        )
+        update_plot = pasr_plot(
+                                bsr_file=bsr_table,
+                                output_dir=output_dir,
+                                yaml_path=yaml_for_plot,
+                                force=force,
+                                update=True
+                                )
 
     if created_yaml_path:
-        return output_path, stats_path, created_yaml_path
+        return output_path, stats_path, created_yaml_path, update_plot
     else:
-        return output_path, stats_path
+        return output_path, stats_path, yaml_path, update_plot
 
 
 
@@ -1200,10 +1198,9 @@ def pasr(seed_fasta: str,
         # ===============================
         if update:
             logger.info("Running update for specified data")
-            subset_fasta, update_stats_path = pasr_select(yaml_path, matched_fasta, bsr_file, output_dir, force=force)
+            subset_fasta, update_stats_path, select_yaml, updated_plot = pasr_select(yaml_path, matched_fasta, bsr_file, output_dir, force=force)
             results['subset_fasta'] = subset_fasta
             results['update_stats_path'] = update_stats_path
-            updated_plot = pasr_plot(bsr_file, output_dir,  yaml_path, svg=svg, force=force, update=update)
             results['updated_plot'] = updated_plot
 
         logger.info("PASR workflow completed successfully")

@@ -62,10 +62,6 @@ def __cluster_path(group, required=False):
     group.add_argument('-c', '--cluster_path', type=str, default=None, required=required,
                        help='Path to cluster TSV file')
 
-def __create_yaml(group, required=False):
-    group.add_argument('--create_yaml', action='store_true', required=required,
-                       help='Create metadata yaml file from command line parameters')
-
 def __cog_gff(group, required=False):
     group.add_argument('-c', '--cog_gff', type=str, required=required,
                        help='Path to (.tar.gz) GFF directory containing COG annotations')
@@ -214,9 +210,9 @@ def __max_scores(group, required=False):
     group.add_argument('-m', '--max_scores', type=str, required=required,
                        help='Path to file containing max scores')
 
-def __metadata_protein(group, required=False):
-    group.add_argument('--metadata_protein', type=str, required=required,
-                       help='Select metadata for plotting; run "aastk metadata_categories" to view available categories"')
+def __metadata(group, required=False):
+    group.add_argument('--metadata', type=str, required=required,
+                       help='Select metadata for plotting; run "aastk list_metadata" to view available categories"')
 
 def __metadata_matrix(group, required=False):
     group.add_argument('--metadata_matrix', type=str, required=required,
@@ -298,6 +294,10 @@ def __taxonomy_path(group, required=False):
 def __threads(group, required=False):
     group.add_argument('-n', '--threads', type=int, default=1, required=required,
                        help='Number of threads (default: 1)')
+
+def __tmh(group, required=False):
+    group.add_argument('--tmh', action='store_true', required=required,
+                       help='Generate transmembrane helices plot')
 
 def __tmhmm_dir(group, required=False):
     group.add_argument('-t', '--tmhmm_dir', type=str, required=required,
@@ -410,7 +410,6 @@ def get_main_parser():
             __bsr(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
-            __create_yaml(grp)
             __max_score_min(grp)
             __max_score_max(grp)
             __dbmin(grp)
@@ -462,9 +461,11 @@ def get_main_parser():
             __force(grp)
 
     with subparser(sub_parsers, 'meta', 'Retrieve metadata from AASTK SQLite database') as parser:
+        with mutex_group(parser, required=True) as grp:
+            __fasta(grp)
+            __id_list(grp)
         with arg_group(parser, 'Required arguments') as grp:
             __db_path(grp, required=True)
-            __fasta(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __threads(grp)
@@ -502,6 +503,7 @@ def get_main_parser():
             __top_n(grp)
             __cugo(grp)
             __size(grp)
+            __tmh(grp)
             __all_plots(grp)
             __bin_width(grp)
             __y_range(grp)
@@ -585,7 +587,7 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __db_path(grp)
-            __metadata_protein(grp)
+            __metadata(grp)
             __show(grp)
             __svg(grp)
             __force(grp)
@@ -603,7 +605,7 @@ def get_main_parser():
             __perplexity(grp)
             __iterations(grp)
             __exaggeration(grp)
-            __metadata_protein(grp)
+            __metadata(grp)
             __force(grp)
             __keep(grp)
             __show(grp)
