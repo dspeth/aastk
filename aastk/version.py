@@ -1,4 +1,4 @@
-__version__ = '0.1.0'
+__version__ = '0.1.1'
 __author__ = 'Marcel Rennig and Daan Speth'
 __author_email__ = ['daan.speth@univie.ac.at', 'marcel.rennig@univie.ac.at']
 __copyright__ = 'Copyright 2024'
