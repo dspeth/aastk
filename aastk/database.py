@@ -1075,6 +1075,7 @@ def process_batch(db_path: str,
 
 def meta(db_path: str,
          fasta: str,
+         id_list: str,
          output: str,
          threads: int = 1,
          include_annotation: bool = False,
@@ -1094,9 +1095,18 @@ def meta(db_path: str,
             f'{dataset_name}_metadata.tsv',
             force=force
         )
+    elif id_list:
+        with open(id_list, 'r') as f:
+            seq_ids = [line.strip() for line in f]
+        dataset_name = determine_dataset_name(id_list, '.', 0)
+        output_path = ensure_path(
+            output,
+            f'{dataset_name}_metadata.tsv',
+            force=force
+        )
     else:
         logger.error(
-            "No valid input file found. Please specify path to protein FASTA"
+            "No valid input file found. Please specify path to protein FASTA file OR sequence ID list (one ID per line)."
         )
         return
 
