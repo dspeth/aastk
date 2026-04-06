@@ -4,7 +4,6 @@ from .util import *
 from .pasr import build as pasr_build
 import subprocess
 import logging
-import sys
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -330,7 +329,7 @@ def search(seed_db_out_path: str,
     # ==================
     logger.info(
         f"[SEARCH] db={seed_db_out_path} query={query_fastq} out={output_path} col_info={column_info_path} "
-        f"sensitivity={sensitivity if sensitivity else 'default'} block={block} chunk={chunk} min_score={bit_score_cutoff} max_target_seqs=1"
+        f"sensitivity={sensitivity if sensitivity else 'default'} block={block} chunk={chunk} min_score={bit_score_cutoff} max_target_seqs=25 algo=0"
     )
 
     # ====================================
@@ -341,14 +340,15 @@ def search(seed_db_out_path: str,
            "-q", query_fastq,
            "-p", str(threads),
            "-o", output_path,
-           "--max-target-seqs", str(1),
+           "--max-target-seqs", str(25),
            "--matrix", "blosum45",
            "--masking", str(0),
            "--outfmt", str(6), *columns,
            "-b", str(block),
            "-c", str(chunk),
            "--min-score", str(bit_score_cutoff),
-           "--comp-based-stats", str(0)]
+           "--comp-based-stats", str(0),
+           "--algo", str(0)]
 
     if sensitivity:
         cmd.append(f"--{sensitivity}")
@@ -404,27 +404,29 @@ def filter_best_hits_by_score(search_output_path: str,
     Returns:
         search_output_path (str): Path to filtered search output file
     """
-    logger.info(f"[FILTER_START] Filtering search results keep_highest_score_per_query=True  aln_score_cutoff={aln_score_cutoff})")
+    logger.info(f"[FILTER_START] Filtering search results keep_highest_score_per_query=True  aln_score_cutoff={aln_score_cutoff}")
     
     # Determine columns structure from the file content
     columns = ["qseqid", "sseqid", "pident", "qlen", "slen", "length", "mismatch", "gapopen", "qstart", "qend",
-               "sstart", "send", "evalue", "bitscore", "score"]
+               "sstart", "send", "evalue", "bitscore", "score","qtitle"]
     
     best_hits = {}  # {qseqid: (score, full_row)}
     score_idx = columns.index('score')
     qseqid_idx = columns.index('qseqid')
+    qtitle_idx = columns.index('qtitle')
     
     # Stream through file to find best hits
     with open(search_output_path, 'r') as f:
         for line in f:
             fields = line.strip().split('\t')
             qseqid = fields[qseqid_idx]
+            qtitle = fields[qtitle_idx]
             score = float(fields[score_idx])
             
             # Only keep hits with score >= threshold
             if score >= aln_score_cutoff:
-                if qseqid not in best_hits or score > best_hits[qseqid][0]:
-                    best_hits[qseqid] = (score, line)
+                if qtitle not in best_hits or score > best_hits[qtitle][0]:
+                    best_hits[qtitle] = (score, line)
     
     # ===========================
     # Write filtered results
@@ -552,7 +554,7 @@ def split_search_output_by_mapping(blast_out_path: str,
 def extract_matched_reads(blast_tab: str,
                         query_path: str,
                         output_dir: str,
-                        key_column: int,
+                        query_key_column: int=15,
                         force: bool = False):
     """
     Extracts read sequences that have hits in the DIAMOND BLAST tabular output.
@@ -561,7 +563,7 @@ def extract_matched_reads(blast_tab: str,
         blast_tab (str): Path to DIAMOND BLAST tabular output file
         query_path (str): Path to sequencing read file, can be gzipped
         output_dir (str): Directory to save output files
-        key_column (int): Column index for query key (default: 0 = qseqid, 15 = qtitle)
+        query_key_column (int): Column index for query key (default: 15 = qtitle)
         force (bool): Whether to overwrite existing files
 
     Returns:
@@ -581,10 +583,10 @@ def extract_matched_reads(blast_tab: str,
     # =========================================
     # Extract matching IDs from BLAST results
     # =========================================
-    logger.info(f"[HIT_EXTRACT_START] source={blast_tab} key_column={key_column}")
+    logger.info(f"[HIT_EXTRACT_START] source={blast_tab} query_key_column={query_key_column}")
 
     # Extract unique keys from dereplicated BLAST results
-    unique_keys = extract_unique_keys(blast_tab, key_column)
+    unique_keys = extract_unique_keys(blast_tab, query_key_column)
 
     # Fill in dataset_dict (dataset_name:[matched_seq_ids]) for downstream use
     dataset_name = determine_dataset_name(query_path, '.', 0, '')
@@ -602,10 +604,7 @@ def extract_matched_reads(blast_tab: str,
     # ======================================================
     # Extract and write matching sequences in gzipped FASTQ
     # ======================================================
-    cmd = ["seqkit", "grep", "-f", id_file, query_path, "-o", out_fastq]
-
-    if key_column == 15:
-        cmd.insert(2, "-n")
+    cmd = ["seqkit", "grep", "-n", "-f", id_file, query_path, "-o", out_fastq]
 
     try:
         subprocess.run(cmd, check=True, capture_output=True, text=True)
@@ -621,41 +620,6 @@ def extract_matched_reads(blast_tab: str,
     return out_fastq, id_file, dataset_dict
 
 
-# =============================
-# resolve_key_column function
-# =============================
-def resolve_key_column(key_column, query_mode: str):
-    """
-    Resolve which BLAST output key column to use for hit extraction and outgroup split.
-
-    Logic:
-    - key_column None: qtitle=15 in batch query mode, else qseqid=0
-    - key_column explicit 0/15: respected
-    - key_column implicit default 0 in batch query mode: auto-switch to 15 unless --key_column/-k is explicitly present
-    """
-    key_column_explicit = ('--key_column' in sys.argv) or ('-k' in sys.argv)
-
-    if key_column is None:
-        effective_key_column = 15 if query_mode == 'batch' else 0
-        reason = f"key_column_is_None_auto_default_batch" if query_mode == 'batch' else "key_column_is_None_auto_default_single"
-    elif key_column in (0, 15):
-        effective_key_column = key_column
-        reason = "provided"
-    else:
-        raise ValueError(f"Unsupported key_column={key_column} for RASR. Use 0 (qseqid) or 15 (qtitle).")
-
-    if query_mode == 'batch' and key_column == 0 and not key_column_explicit:
-        effective_key_column = 15
-        reason = 'key_column_implicit_zero_switched_to_qtitle_for_batch_query_mode'
-
-    key_label = "qtitle" if effective_key_column == 15 else "qseqid"
-    logger.info(
-        f"[KEY_COLUMN] input={key_column} explicit={key_column_explicit} query_mode={query_mode} "
-        f"effective={effective_key_column} ({key_label}) reason={reason}"
-    )
-    
-    return effective_key_column
-
 
 
 # ================================
@@ -663,17 +627,15 @@ def resolve_key_column(key_column, query_mode: str):
 # ================================
 def merge_matched_reads(all_hit_seqs_paths: list,
                 output_dir: str,
-                threads: int,
-                use_existing_merged: bool = False,
                 force: bool = False):
     """
     Merges multiple FASTQ files containing hit sequences into a single FASTQ file.
+    Deduplication is done by read name (not by sequence) to preserve dataset-specific
+    IDs when different datasets contain identical read sequences.
 
     Args:
         all_hit_seqs_paths (list): List of paths to FASTQ files containing hit sequences
         output_dir (str): Directory to save merged FASTQ file
-        use_existing_merged (bool): Whether to reuse existing merged file if it exists and matches the input files
-        threads (int): Number of threads to use for merging
         force (bool): Whether to overwrite existing files
 
     Returns:
@@ -694,30 +656,17 @@ def merge_matched_reads(all_hit_seqs_paths: list,
     # =========================================================
     with open(infile_list, 'w') as f:
         f.write('\n'.join(all_hit_seqs_paths))
-
-    if Path(merged_hits_file).exists() and not force:
-        if use_existing_merged:
-            logger.warning(
-                f"Using existing merged hits file at {merged_hits_file}. "
-                "Ensure it matches the current infile list."
-            )
-            return merged_hits_file, infile_list
-        logger.error(
-            f"Merged hits file already exists at {merged_hits_file}. "
-            "Set use_existing_merged=True to reuse it, or force=True to rebuild."
-        )
-        raise FileExistsError(f"Stale merged hits file detected: {merged_hits_file}")
         
     # =======================================================
     # Merge and deduplicate all matched sequences (search 1)
     # =======================================================
-    logger.info(f"Merging and deduplicating {len(all_hit_seqs_paths)} hit FASTQ files")
-    
-    cmd = ["seqkit", "rmdup", "-s", "-o", merged_hits_file, *all_hit_seqs_paths]
+    logger.info(f"Merging {len(all_hit_seqs_paths)} hit FASTQ files with name-based deduplication")
+
+    cmd = ["seqkit", "rmdup", "-n", "-o", merged_hits_file, *all_hit_seqs_paths]
 
     try:
         subprocess.run(cmd, check=True, capture_output=True, text=True)
-        logger.info(f"Successfully merged and deduplicated {len(all_hit_seqs_paths)} FASTQ files into {merged_hits_file}")
+        logger.info(f"Successfully merged and name-deduplicated {len(all_hit_seqs_paths)} FASTQ files into {merged_hits_file}")
     
     except subprocess.CalledProcessError as e:
         logger.error(f"seqkit rmdup failed: {e.stderr}")
@@ -1067,10 +1016,8 @@ def rasr_multiple(query: str,
             threads: int = 1,
             force: bool = False,
             keep: bool = False,
-            key_column: int = None,
             bsr_cutoff: float = 0.9,
-            dbmin: int = 110,
-            use_existing_merged: bool = False):
+            dbmin: int = 110):
     """
     Run the RASR workflow.
 
@@ -1106,11 +1053,8 @@ def rasr_multiple(query: str,
         threads (int): Number of CPU threads.
         force (bool): Overwrite existing files.
         keep (bool): Keep intermediate files.
-        key_column (int): Query key column in BLAST output (0 or 15).
-            If None, auto-selects 15 in batch query mode and 0 otherwise.
         bsr_cutoff (float): Minimum BSR threshold for final selection (default: 0.9).
         dbmin (int): Minimum database score threshold for final selection (default: 110).
-        use_existing_merged (bool): Reuse existing merged matched FASTQ if present.
 
     Returns:
         dict: Mapping {(dataset_name, gene_name): result_info} where result_info includes
@@ -1146,8 +1090,6 @@ def rasr_multiple(query: str,
         f"[RUN_CONFIG] query_datasets={len(query_files)} seed_dbs={len(db_files)} "
         f"query_mode={plan['query_info']['mode']} seed_mode={plan['seed_info']['mode']} out={output_dir}"
     )
-
-    effective_key_column = resolve_key_column(key_column, plan['query_info']['mode'])
 
     intermediate_results = {}
     results_by_ds_gene = {}
@@ -1247,8 +1189,7 @@ def rasr_multiple(query: str,
                 gene_output_dir = ensure_path(dataset_output_dir, gene_name, force=force) 
 
                 hit_seqs_path, id_file, dataset_dict = extract_matched_reads(split_output, str(query_file), 
-                                                                        output_dir=gene_output_dir, 
-                                                                        key_column=effective_key_column,
+                                                                        output_dir=gene_output_dir,
                                                                         force=force)
 
                 all_hit_seqs_paths.append(str(hit_seqs_path))
@@ -1288,7 +1229,7 @@ def rasr_multiple(query: str,
 
         if do_merge_hits:
             logger.info(f"[HIT_MERGE_START] files={len(all_hit_seqs_paths)}")
-            merged_hits_file, infile_list = merge_matched_reads(all_hit_seqs_paths, output_dir, threads, use_existing_merged=use_existing_merged, force=force)
+            merged_hits_file, infile_list = merge_matched_reads(all_hit_seqs_paths, output_dir, force=force)
             intermediate_results['merged_hits_file'] = merged_hits_file
             intermediate_results['infile_list'] = infile_list
         else:
@@ -1303,15 +1244,19 @@ def rasr_multiple(query: str,
         intermediate_results['og_search_output'] = og_search_output
         intermediate_results['og_column_info_path'] = og_column_info_path
 
+        # =================== Filter outgroup search results ===================
+
+        og_search_output_filtered = filter_best_hits_by_score(og_search_output, aln_score_cutoff=aln_score_cutoff)
+
+        intermediate_results['og_search_output_filtered'] = og_search_output_filtered
+
         # =================== Split outgroup search results per dataset ===================
 
         og_split_outputs = {}
         if plan['steps']['parse_search_2_per_query']:
-            logger.info(
-                f"[SPLIT_2_START] datasets={len(dict_dataset_seqids)} key_column={effective_key_column}"
-            )
+            logger.info(f"[SPLIT_2_START] datasets={len(dict_dataset_seqids)} split_column=15")
 
-            og_split_outputs = split_search_output_by_mapping(og_search_output, mapping_dict=dict_dataset_seqids, output_dir=output_dir, split_column=effective_key_column, force=force)
+            og_split_outputs = split_search_output_by_mapping(og_search_output_filtered, mapping_dict=dict_dataset_seqids, output_dir=output_dir, split_column=15, force=force)
 
             # Move split outputs to dataset-specific subdirectories
             for dataset_name, split_output in list(og_split_outputs.items()):
@@ -1324,7 +1269,7 @@ def rasr_multiple(query: str,
             logger.info("[SPLIT_2_SKIP] reason=single_dataset")
 
             only_dataset = next(iter(dict_dataset_seqids.keys()))
-            og_split_outputs[only_dataset] = og_search_output
+            og_split_outputs[only_dataset] = og_search_output_filtered
 
         intermediate_results['og_split_outputs'] = og_split_outputs
         logger.info(f"[STEP_2_DONE] outgroup_splits={len(og_split_outputs)}")

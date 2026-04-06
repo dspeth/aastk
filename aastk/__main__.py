@@ -421,8 +421,7 @@ def main():
                 keep=args.keep,
                 force=args.force,
                 bsr_cutoff=args.bsr_cutoff,
-                dbmin=args.dbmin,
-                use_existing_merged=args.use_existing_merged
+                dbmin=args.dbmin
             )
 
 

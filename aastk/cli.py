@@ -339,10 +339,6 @@ def __update(group, required=False):
     group.add_argument('--update', action='store_true', required=required,
                        help='Update subset of data using metadata yaml file')
 
-def __use_existing_merged(group, required=False):
-    group.add_argument('--use_existing_merged', action='store_true', required=required,
-                       help='Reuse existing merged hits file if it exists (default: raise error if exists)')
-
 def __yaml(group, required=False):
     group.add_argument('-y', '--yaml', type=str, required=required,
                        help='Path to metadata yaml file')
@@ -715,7 +711,6 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __threads(grp)
-            __key_column(grp)
             __block(grp)
             __chunk(grp)
             __sensitivity(grp)
@@ -725,6 +720,5 @@ def get_main_parser():
             __bsr_cutoff(grp)
             __keep(grp)
             __force(grp)
-            __use_existing_merged(grp)
 
     return main_parser    
