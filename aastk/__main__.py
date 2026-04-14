@@ -10,7 +10,6 @@ from aastk.database import *
 from aastk.rasr import *
 from aastk.version import __version__, __copyright__, __author__
 import sys
-from aastk.rasr_multiple import *
 
 def print_help():
     print('''\
@@ -362,19 +361,23 @@ def main():
         elif args.subparser_name == 'rasr':
             rasr(
                 query=args.query,
-                gene_db_fasta=args.seed,
+                seed=args.seed,
+                query_dir=args.query_dir,
+                seed_dir=args.seed_dir,
                 outgrp_db=args.outgrp_db,
                 output_dir=args.output,
-                threads=args.threads,
                 sensitivity=args.sensitivity,
                 bit_score_cutoff=args.bit_score_cutoff,
                 aln_score_cutoff=args.aln_score_cutoff,
                 block=args.block,
                 chunk=args.chunk,
+                threads=args.threads,
                 keep=args.keep,
-                force=args.force
+                force=args.force,
+                bsr_cutoff=args.bsr_cutoff,
+                dbmin=args.dbmin
             )
-        
+
         elif args.subparser_name == 'rasr_plot':
             rasr_plot(
                 bsr_file=args.bsr,
@@ -392,36 +395,6 @@ def main():
                 bsr_file=args.bsr,
                 output_dir=args.output,
                 force=args.force
-            )
-
-        elif args.subparser_name == 'rasr_get_hit_seqs':
-            rasr_get_hit_seqs(
-                blast_tab=args.blast_output,
-                query_path=args.query,
-                output_dir=args.output,
-                key_column=args.key_column,
-                force=args.force
-            )
-
-        ### PARSER FOR RASR_MULTIPLE (Multi-dataset/Multi-gene workflow) ###
-        elif args.subparser_name == 'rasr_multiple':
-            rasr_multiple(
-                query=args.query,
-                seed=args.seed,
-                query_dir=args.query_dir,
-                seed_dir=args.seed_dir,
-                outgrp_db=args.outgrp_db,
-                output_dir=args.output,
-                sensitivity=args.sensitivity,
-                bit_score_cutoff=args.bit_score_cutoff,
-                aln_score_cutoff=args.aln_score_cutoff,
-                block=args.block,
-                chunk=args.chunk,
-                threads=args.threads,
-                keep=args.keep,
-                force=args.force,
-                bsr_cutoff=args.bsr_cutoff,
-                dbmin=args.dbmin
             )
 
 

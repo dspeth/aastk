@@ -653,9 +653,13 @@ def get_main_parser():
 
     ### PARSER FOR RASR FUNCTIONALITIES AND WORKFLOW ###
     with subparser(sub_parsers, 'rasr', 'RASR: read alignment score ratio') as parser:
+        with mutex_group(parser, required=True) as grp:
+            __query_dir(grp)
+            __query(grp)
+        with mutex_group(parser, required=True) as grp:
+            __seed_dir(grp)
+            __seed(grp)
         with arg_group(parser, 'Required arguments') as grp:
-            __query(grp, required=True)
-            __seed(grp, required=True)
             __outgrp_db(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
@@ -687,38 +691,6 @@ def get_main_parser():
             __bsr_cutoff(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
-            __force(grp)
-
-    with subparser(sub_parsers, 'rasr_get_hit_seqs', 'Extract read sequences that have DIAMOND hits for RASR analysis') as parser:
-        with arg_group(parser, 'Required arguments') as grp:
-            __blast_output(grp, required=True)
-            __query(grp, required=True)
-        with arg_group(parser, 'Optional') as grp:
-            __output(grp)
-            __key_column(grp)
-            __force(grp)
-
-    ### PARSER FOR RASR_MULTIPLE (Multi-dataset/Multi-gene workflow) ###
-    with subparser(sub_parsers, 'rasr_multiple', 'RASR: multi-dataset and multi-gene workflow') as parser:
-        with mutex_group(parser, required=True) as grp:
-            __query_dir(grp)
-            __query(grp)
-        with mutex_group(parser, required=True) as grp:
-            __seed_dir(grp)
-            __seed(grp)
-        with arg_group(parser, 'Required arguments') as grp:
-            __outgrp_db(grp, required=True)
-        with arg_group(parser, 'Optional') as grp:
-            __output(grp)
-            __threads(grp)
-            __block(grp)
-            __chunk(grp)
-            __sensitivity(grp)
-            __bit_score_cutoff(grp)
-            __aln_score_cutoff(grp)
-            __dbmin(grp)
-            __bsr_cutoff(grp)
-            __keep(grp)
             __force(grp)
 
     return main_parser    
