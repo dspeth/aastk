@@ -7,6 +7,7 @@ from aastk.pasr import *
 from aastk.cugo import *
 from aastk.casm import *
 from aastk.database import *
+from aastk.annotate import *
 from aastk.version import __version__, __copyright__, __author__
 import sys
 
@@ -353,6 +354,16 @@ def main():
                 db_path=args.db_path,
                 output=args.output,
                 threads=args.threads,
+                force=args.force
+            )
+        elif args.subparser_name == 'annotate':
+            annotate(
+                query_protein=args.query_protein,
+                query_genome=args.query_genome,
+                db_fasta=args.db_fasta,
+                yaml=args.yaml,
+                output=args.output,
+                keep=args.keep,
                 force=args.force
             )
 
