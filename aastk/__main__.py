@@ -358,9 +358,9 @@ def main():
             )
         elif args.subparser_name == 'annotate':
             annotate(
-                query_protein=args.query_protein,
-                query_genome=args.query_genome,
-                db_fasta=args.db_fasta,
+                query=args.query,
+                genome=args.genome,
+                db_path=args.db_path,
                 yaml=args.yaml,
                 output=args.output,
                 keep=args.keep,

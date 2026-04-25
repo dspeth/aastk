@@ -98,10 +98,6 @@ def __dbmin(group, required=False):
     group.add_argument('-d', '--dbmin', type=int, default=None, required=required,
                        help='Lower database score cutoff for inclusion in updated dataset')
 
-def __db_fasta(group, required=False):
-    group.add_argument('-d', '--db_fasta', type=str, required=required,
-                       help='Path to FASTA file containing the reference protein database')
-
 def __db_path(group, required=False):
     group.add_argument('-d', '--db_path', type=str, default='temp_genome_data.db', required=required,
                        help='Path to SQLite database')
@@ -133,6 +129,10 @@ def __flank_lower(group, required=False):
 def __flank_upper(group, required=False):
     group.add_argument('-u', '--flank_upper', type=int, required=required,
                        help='End of flanking window (inclusive)')
+
+def __genome(group, required=False):
+    group.add_argument('--genome', type=str, default=None, required=required,
+                       help='Path to query genome FASTA file')
 
 def __globdb_version(group, required=False):
     group.add_argument('-g', '--globdb_version', type=str, required=required,
@@ -253,14 +253,6 @@ def __protein_ids(group, required=False):
 def __query(group, required=False):
     group.add_argument('-q', '--query', type=str, default=None, required=required,
                        help='Path to DIAMOND query FASTA file')
-
-def __query_genome(group, required=False):
-    group.add_argument('-qg', '--query_genome', type=str, default=None, required=required,
-                       help='Path to query genome FASTA file')
-
-def __query_protein(group, required=False):
-    group.add_argument('-qp', '--query_protein', type=str, default=None, required=required,
-                       help='Path to query protein FASTA file')
 
 def __score_column(group, required=False):
     group.add_argument('-s', '--score_column', type=int, default=None, required=required,
@@ -645,10 +637,10 @@ def get_main_parser():
 
     with subparser(sub_parsers, 'annotate', 'annotate query proteins/genomes against a known reference family') as parser:
         with mutex_group(parser, required=True) as grp:
-            __query_protein(grp)
-            __query_genome(grp)
+            __query(grp)
+            __genome(grp)
         with arg_group(parser, 'Required arguments') as grp:
-            __db_fasta(grp, required=True)
+            __db_path(grp, required=True)
             __yaml(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
