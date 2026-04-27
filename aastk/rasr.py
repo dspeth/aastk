@@ -329,8 +329,9 @@ def search(seed_db_out_path: str,
     # Parameter logging
     # ==================
     logger.info(
-        f"[SEARCH] db={seed_db_out_path} query={query_fastq} out={output_path} col_info={column_info_path} \n",
-        f"sensitivity={sensitivity if sensitivity else 'default'} block={block} chunk={chunk} min_score={bit_score_cutoff} max_target_seqs={max_target_seqs} algo=0"
+        f"[SEARCH] db={seed_db_out_path} query={query_fastq} out={output_path} col_info={column_info_path} "
+        f"sensitivity={sensitivity if sensitivity else 'default'} block={block} chunk={chunk} "
+        f"min_score={bit_score_cutoff} max_target_seqs={max_target_seqs} algo=0"
     )
 
     # ====================================
@@ -866,8 +867,10 @@ def rasr_plot(bsr_file: str,
         x_pad = max(x_range * 0.05, 10)
         y_pad = max(y_range * 0.05, 10)
 
-        xlim = (max(0, x_min - x_pad), x_max + x_pad)
-        ylim = (max(0, y_min - y_pad), y_max + y_pad)
+        shared_min = max(0, min(x_min - x_pad, y_min - y_pad))
+        shared_max = max(x_max + x_pad, y_max + y_pad)
+        xlim = (shared_min, shared_max)
+        ylim = (shared_min, shared_max)
 
         # ===============================
         # Layout
@@ -893,6 +896,7 @@ def rasr_plot(bsr_file: str,
         ax.set_title(f'BSR Plot for {protein_name}')
         ax.set_xlim(xlim)
         ax.set_ylim(ylim)
+        ax.set_aspect('equal', adjustable='box')
 
         # Add cutoff lines
         if dbmin is not None and dbmin > 0:
