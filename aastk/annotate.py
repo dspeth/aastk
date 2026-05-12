@@ -1,7 +1,5 @@
-# to do: uniform header for the copy_protein_query and call_genes_with_pyrodigal output FASTAs
-# to do: use gff file to save pyrodigal information to keep a clean header in FASTA file
-# to do: check filetype (.faa(.gz) or .fa(.gz)) and throw error message if it doesn't fit
-# to do: complete workflow only works for protein input so far (maybe fixing pyrodigal output FASTA header will fix that anyways)
+# to do: change final output file, so it's based on actual query/pyrodigal FASTA (instead of BSR file)
+# to do: plotting like in pasr
 
 from .util import *
 from .pasr import *
@@ -16,7 +14,7 @@ import pyrodigal
 logger = logging.getLogger(__name__)
 
 ##### functions to be added to util.py #####
-def read_fasta_content(fasta: str):
+def stream_fasta(fasta: str):
     """
     reads a fasta file entry by entry and returns one header-sequence pair at a time to save memory
     (generator function: "yield" returns values one by one)
@@ -52,12 +50,69 @@ def read_fasta_content(fasta: str):
     if header is not None:
         yield header, "".join(sequence_parts)
 
+def clean_fasta_header(header: str):
+    """
+    keeps the first part of the FASTA header up until the first whitespace
+    """
+    return header.split()[0]
+
+def file_has_allowed_extension(
+    path: str,
+    allowed_extensions: tuple[str, ...]):
+    """
+    returns a boolean whether the file type fits any of the given extensions or not
+    """
+    return str(path).endswith(allowed_extensions)
+
+
 ##### end of util.py functions #####
+
+def check_fasta_protein(path: str):
+    if not file_has_allowed_extension(path, (".faa", ".faa.gz")):
+        logger.warning("Protein query input does not have the expected file extension (.faa or .faa.gz)")
+
+    for header, sequence in stream_fasta(path):
+        # only checks the first record
+        if not header:
+            raise ValueError("Protein FASTA contains an empty header")
+
+        allowed_characters = set("ABCDEFGHIKLMNPQRSTVWYZJUX*-")
+
+        invalid_characters = set(sequence.upper()) - allowed_characters
+
+        if invalid_characters:
+            raise ValueError("Protein FASTA contains invalid characters")
+
+        return
+
+    raise ValueError("Protein FASTA contains no sequences")
+
+def check_fasta_genome(path: str):
+    if not file_has_allowed_extension(path, (".fa", ".fa.gz", ".fna", ".fna.gz")):
+        logger.warning("Protein query input does not have the expected file extension (.fa, .fa.gz, .fna or .fna.gz)")
+
+    for header, sequence in stream_fasta(path):
+        # only checks the first record
+        if not header:
+            raise ValueError("Genome FASTA contains an empty header")
+
+        allowed_characters = set("ACGTUIRYKMSWBDHVN-")
+
+        invalid_characters = set(sequence.upper()) - allowed_characters
+
+        if invalid_characters:
+            raise ValueError("Genome FASTA contains invalid characters")
+
+        return
+
+    raise ValueError("Genome FASTA contains no sequences")
 
 def copy_protein_query(query: str, output: str, force: bool = False):
     """
-    creates a clean, unzipped protein fasta file
+    creates a clean, unzipped protein fasta file with a cleaned up header
     """
+
+    check_fasta_protein(query)
 
     query_name = determine_dataset_name(query, ".", 0)
     output_path = ensure_path(output, f"{query_name}_query.faa", force=force)
@@ -67,8 +122,9 @@ def copy_protein_query(query: str, output: str, force: bool = False):
     sequence_count = 0
 
     with open(output_path, "w") as out:
-        for header, sequence in read_fasta_content(query):
-            out.write(f">{header}\n{sequence}\n")
+        for header, sequence in stream_fasta(query):
+            clean_header = clean_fasta_header(header)
+            out.write(f">{clean_header}\n{sequence}\n")
             sequence_count += 1
 
     logger.info(f"Wrote {sequence_count} protein sequences to {output_path}")
@@ -79,21 +135,23 @@ def call_genes_with_pyrodigal(genome: str, output: str, force: bool = False):
     """
     uses pyrodigal to do gene calling and predict amino acid sequences for the input genome/contig
     """
+    check_fasta_genome(genome)
+
     genome_name = determine_dataset_name(genome, ".", 0)
     output_path = ensure_path(output, f"{genome_name}_genes.faa", force=force)
+    gff_path = ensure_path(output, f"{genome_name}_genes_info.gff", force=force)
 
     logger.info(f"Calling genes with Pyrodigal for the input: {genome}")
 
-    # creating the pyrodigal gene caller
-    # meta means no model is trained on the input first (useful for metagenomes/contigs) -> useable as default? entscheidungsfindung?
     gene_finder = pyrodigal.GeneFinder(meta=True)
 
     contig_count = 0
     protein_count = 0
 
-    with open(output_path, "w") as out:
-        for contig_id, sequence in read_fasta_content(genome):
+    with open(output_path, "w") as out_faa, open(gff_path, "w") as out_gff:
+        for contig_header, sequence in stream_fasta(genome):
             contig_count += 1
+            contig_id = clean_fasta_header(contig_header)
 
             # pyrodigal analyzes the current sequence and predicts genes
             genes = gene_finder.find_genes(sequence)
@@ -106,17 +164,31 @@ def call_genes_with_pyrodigal(genome: str, output: str, force: bool = False):
 
                 protein_id = f"{contig_id}___{gene_id}"
 
-                out.write(
-                    f">{protein_id} "
-                    f"begin={gene.begin} "
-                    f"end={gene.end} "
-                    f"strand={gene.strand}\n"
+                out_faa.write(f">{protein_id}\n")
+                out_faa.write(f"{protein}\n")
+
+                if gene.strand == 1:
+                    strand = "+"
+                else:
+                    strand = "-"
+
+                out_gff.write(
+                    f"{contig_id}\t"
+                    f"pyrodigal\t"
+                    f"CDS\t"
+                    f"{gene.begin}\t"
+                    f"{gene.end}\t"
+                    f".\t"
+                    f"{strand}\t"
+                    f".\t"
+                    f".\t"
                 )
-                out.write(f"{protein}\n")
 
                 protein_count += 1
 
     logger.info(f"Predicted {protein_count} protein sequence(s) (out of {contig_count} nucleotide sequence(s))")
+    logger.info(f"Saved gene calling results to {output_path}")
+    logger.info(f"Saved additional gene calling information to {gff_path}")
 
     return output_path
 
@@ -126,49 +198,49 @@ def load_yaml_cutoffs(yaml_path: str):
 
     return {
         "bsr_cutoff": float(params["bsr"]),
-        "selfmin": float(params["selfmin"]),
-        "selfmax": float(params["selfmax"]),
+        "max_score_min": int(params["selfmin"]),
+        "max_score_max": int(params["selfmax"]),
         "protein_name": params.get("protein_name"),
     }
 
 def classify_by_yaml_cutoffs(
-        max_score: float,
-        hit_score: float,
+        max_score: int,
+        hit_score: int,
         bsr_cutoff: float,
-        selfmin: float,
-        selfmax: float):
+        max_score_min: int,
+        max_score_max: int):
 
     """
     classify hits based off of the cut-offs in the yaml file
     possible classifications: too_short, correct_length, too_long, below_cutoff
     """
 
-    halfway = selfmin + ((selfmax - selfmin) / 2)
+    halfway = max_score_min + ((max_score_max - max_score_min) / 2)
 
     bsr_line_value = bsr_cutoff * max_score
     halfway_line_value = bsr_cutoff * halfway
 
-    if max_score < selfmin:
+    if max_score < max_score_min:
         if hit_score >= bsr_line_value:
             return "too_short"
         return "below_cutoff"
 
-    if selfmin <= max_score <= halfway:
+    if max_score_min <= max_score <= halfway:
         if hit_score >= bsr_line_value:
             return "correct_length"
         return "below_cutoff"
 
-    if halfway < max_score <= selfmax:
+    if halfway < max_score <= max_score_max:
         if hit_score >= halfway_line_value:
             return "correct_length"
         return "below_cutoff"
 
-    if max_score > selfmax:
+    if max_score > max_score_max:
         if hit_score >= halfway_line_value:
             return "too_long"
         return "below_cutoff"
 
-    return "below_cutoff"
+    raise RuntimeError("Classification of hits failed: max_score is out of bounds")
 
 def classify_hits(
         bsr_path: str,
@@ -185,8 +257,8 @@ def classify_hits(
             max_score=row["max_score"],
             hit_score=row["score"],
             bsr_cutoff=cutoffs["bsr_cutoff"],
-            selfmin=cutoffs["selfmin"],
-            selfmax=cutoffs["selfmax"]
+            max_score_min=cutoffs["max_score_min"],
+            max_score_max=cutoffs["max_score_max"]
         ),
         axis=1
     )
