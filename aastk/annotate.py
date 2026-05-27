@@ -1,4 +1,5 @@
-# for directory input: handle multiple hits in classification_output?
+# does workflow only provide BEST hit?
+# ADJUST ANNOTATE FUNCTION
 
 from .util import *
 from .pasr import *
@@ -491,6 +492,114 @@ def annotate_plot(
 
     return output_path
 
+def marker_name_from_file(path: str):
+    path = Path(path)
+
+    if path.suffix == ".gz":
+        return Path(path.stem).stem
+
+    return Path(path).stem
+
+def collect_db_fastas(db_path: str):
+    """
+    collect all fasta files from db_path
+    input can be a single file or a directory
+    """
+    path = Path(db_path)
+
+    if path.is_file():
+        check_fasta_protein(str(path))
+        return [path]
+
+    if path.is_dir():
+        fasta_files = []
+
+        for file in sorted(path.iterdir()):
+            if not file.is_file():
+                continue
+
+            try:
+                check_fasta_protein(str(file))
+                fasta_files.append(file)
+
+            except ValueError:
+                logger.warning(f"Skipping non-protein FASTA file in database directory: {file}")
+
+        if not fasta_files:
+            raise ValueError(f"No valid FASTA files found in database directory: {db_path}")
+
+        return fasta_files
+
+    raise ValueError(f"Database path does not exist: {db_path}")
+
+def collect_yaml_files(yaml_path: str):
+    """
+    collects all yaml files from yaml_path in a directory
+    input can be a single file or a directory
+    """
+
+    path = Path(yaml_path)
+
+    if path.is_file():
+        load_yaml_cutoffs(str(path))
+
+        marker_name = marker_name_from_file(str(path))
+        return {marker_name: str(path)}
+
+    if path.is_dir():
+        yaml_files = {}
+
+        for file in sorted(path.iterdir()):
+            if not file.is_file():
+                continue
+
+            try:
+                load_yaml_cutoffs(str(file))
+
+                marker_name = marker_name_from_file(str(file))
+                yaml_files[marker_name] = str(file)
+
+            except (ValueError, KeyError, TypeError, yaml_lib.YAMLError):
+                logger.warning(f"Skipping invalid YAML file in yaml directory: {file}")
+
+        if not yaml_files:
+            raise ValueError(f"No valid YAML files found in yaml directory: {yaml_path}")
+
+        return yaml_files
+
+    raise ValueError(f"YAML path does not exist: {yaml_path}")
+
+def check_db_yaml_matching(db_markers: set[str], yaml_markers: set[str]):
+    """
+    checks if every db marker has a matching yaml file
+    """
+
+    missing_yamls = db_markers - yaml_markers
+
+    if missing_yamls:
+
+        missing_yamls_print = ", ".join(sorted(missing_yamls))
+
+        raise ValueError(
+            f"Missing YAML file(s) for: {missing_yamls_print}"
+        )
+
+def concatenate_db_input():
+    """
+    concatenates all db input files into a single fasta (necessary for DIAMOND search)
+    """
+
+def classification_output_new():
+    """
+    classifies hits based off of marker-specific YAML cutoffs
+    creates one output file that includes hits and non-hits
+    """
+
+def annotate_plot_new():
+    """
+    """
+
+# ADJUST THIS
 def annotate(
         db_path: str,
         yaml: str,
