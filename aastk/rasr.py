@@ -981,6 +981,28 @@ def rasr_select(dbmin: float,
 
 
 
+# ================================================
+# helper functions for intermediate files cleanup
+# ================================================
+def collect_paths_for_cleanup(value):
+    if isinstance(value, str) and Path(value).exists():
+        return [value]
+    elif isinstance(value, list):
+        paths = []
+        for item in value:
+            paths.extend(collect_paths_for_cleanup(item))
+        return paths
+    elif isinstance(value, dict):
+        paths = []
+        for item in value.values():
+            paths.extend(collect_paths_for_cleanup(item))
+        return paths
+    else:
+        return []
+
+
+
+
 # ===============================
 # aastk rasr WORKFLOW
 # ===============================
@@ -1100,10 +1122,11 @@ def rasr(query: str,
         logger.info(f"[BUILD_DMND_DB_START] source={db_input_for_build}")
 
         db_path = pasr_build(db_input_for_build, threads, output_dir, force=force)
+        db_dmnd_path = f"{db_path}.dmnd"
 
         logger.info(f"[BUILD_DMND_DB_DONE] out={db_path}")
 
-        intermediate_results['merged_seed_db_diamond'] = db_path
+        intermediate_results['merged_seed_db_diamond'] = db_dmnd_path
 
         # ===================================
         # Track outputs per dataset and gene
@@ -1300,6 +1323,7 @@ def rasr(query: str,
         return results_by_ds_gene
 
     except Exception as e:
+        keep = True
         logger.error(f"Error during RASR workflow: {e}")
         raise RuntimeError(f"RASR workflow failed: {e}") from e            
 
@@ -1309,12 +1333,13 @@ def rasr(query: str,
     finally:
         if not keep and intermediate_results:
             logger.info("Cleaning up intermediate files")
-            for key, filepath in intermediate_results.items():
-                try:
-                    file_path = Path(filepath)
-                    if file_path.exists():
-                        file_path.unlink()
-                        logger.debug(f"Deleted {filepath}")
-                except Exception as e:
-                    logger.warning(f"Failed to delete {filepath}: {e}")
+            for key, raw_value in intermediate_results.items():
+                for filepath in collect_paths_for_cleanup(raw_value):
+                    try:
+                        file_path = Path(filepath)
+                        if file_path.exists():
+                            file_path.unlink()
+                            logger.debug(f"Deleted {filepath}")
+                    except Exception as e:
+                        logger.warning(f"Failed to delete {filepath}: {e}")
                     
