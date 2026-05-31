@@ -375,7 +375,9 @@ def main():
                 keep=args.keep,
                 force=args.force,
                 bsr_cutoff=args.bsr_cutoff,
-                dbmin=args.dbmin
+                dbmin=args.dbmin,
+                timeout=args.timeout,
+                max_retries=args.max_retries
             )
 
         elif args.subparser_name == 'rasr_plot':

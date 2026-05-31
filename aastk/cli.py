@@ -206,6 +206,10 @@ def __matrix_path(group, required=False):
     group.add_argument('-m', '--matrix_path', type=str, required=required,
                        help='Path to alignment matrix .npy file')
 
+def __max_retries(group, required=False):
+    group.add_argument('--max_retries', type=int, default=3, required=required,
+                       help='Maximum number of retries for DIAMOND search in case of failure or timeout (default: 3)')
+
 def __max_score_max(group, required=False):
     group.add_argument('-u', '--max_score_max', type=int, required=required,
                        help='Upper cutoff for max score range')
@@ -314,6 +318,10 @@ def __taxonomy_path(group, required=False):
 def __threads(group, required=False):
     group.add_argument('-n', '--threads', type=int, default=1, required=required,
                        help='Number of threads (default: 1)')
+
+def __timeout(group, required=False):
+    group.add_argument('--timeout', type=int, default=54000, required=required,
+                       help='Timeout for DIAMOND search in seconds (default: 54000s = 15 hours)')
 
 def __tmh(group, required=False):
     group.add_argument('--tmh', action='store_true', required=required,
@@ -673,6 +681,8 @@ def get_main_parser():
             __bsr_cutoff(grp)
             __keep(grp)
             __force(grp)
+            __timeout(grp)
+            __max_retries(grp)
 
     with subparser(sub_parsers, 'rasr_plot', 'Plot the Blast Score Ratio for RASR analysis') as parser:
         with arg_group(parser, 'Required arguments') as grp:

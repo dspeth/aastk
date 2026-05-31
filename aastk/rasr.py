@@ -259,9 +259,11 @@ def search(seed_db_out_path: str,
             sensitivity: str,
             bit_score_cutoff: int,
             max_target_seqs: int,
+            max_retries: int, 
+            timeout: int,
             block: int = 6,
             chunk: int = 2,
-            force: bool = False):
+            force=False):
     """
     Searches a DIAMOND reference database for homologous sequences.
     Single database vs. single query
@@ -276,6 +278,8 @@ def search(seed_db_out_path: str,
         block (int): Block size parameter for DIAMOND search
         chunk (int): Chunk size parameter for DIAMOND search
         force (bool): Whether to overwrite existing files
+        max_retries (int): Maximum number of retries for DIAMOND search in case of failure or timeout
+        timeout (int): Timeout for DIAMOND search in seconds
 
     Returns:
         blast_out_path: Path to tabular BLAST output file.
@@ -338,29 +342,48 @@ def search(seed_db_out_path: str,
     # =======================================
     # Execute DIAMOND blastx search
     # =======================================
-    try:
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=True
-        )
-        _, stderr = proc.communicate()
+    for attempt in range(max_retries):
+        if attempt > 0 and Path(output_path).exists():
+            logger.warning(f"Removing incomplete DIAMOND output file from previous attempt: {output_path}")
+            Path(output_path).unlink()
+        try:
+            proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.PIPE, text=True)
+            
+            try:
+                _, stderr = proc.communicate(timeout=timeout) # Wait for process to finish, but check for timeout
 
-        if proc.returncode != 0:
-            logger.error(f"DIAMOND blastx failed with return code {proc.returncode}")
+            except subprocess.TimeoutExpired: # if timout is reached, kill the process and retry if attempts remain
+                proc.kill()
+                proc.communicate()  # Clean up any remaining output by waiting for the process to terminate
+                if attempt < max_retries - 1:
+                    logger.warning(
+                        f"DIAMOND timed out after {timeout}s "
+                        f"(attempt {attempt+1}/{max_retries}), retrying..."
+                    )
+                    continue 
+                raise RuntimeError(
+                    f"DIAMOND timed out after {max_retries} attempts "
+                    f"(timeout={timeout}s) — possible threading deadlock with --algo 0"
+                )
+            
+            if proc.returncode != 0:
+                logger.error(f"DIAMOND blastx failed with return code {proc.returncode}")
+                if stderr:
+                    logger.error(f"STDERR: {stderr}")
+                raise RuntimeError(f"DIAMOND blastx search failed with return code {proc.returncode}")
+
             if stderr:
-                logger.error(f"STDERR: {stderr}")
-            raise RuntimeError(f"DIAMOND blastx search failed with return code {proc.returncode}")
+                logger.log(99, stderr)
 
-        if stderr:
-            logger.log(99, stderr)
+            # Successful run; do not retry.
+            break
 
-    except Exception as e:
-        if not isinstance(e, RuntimeError):
-            logger.error(f"Unexpected error in DIAMOND blastx search: {e}")
-            raise RuntimeError(f"DIAMOND blastx search failed: {e}") from e
-        raise
+        except Exception as e:
+            if not isinstance(e, RuntimeError):
+                logger.error(f"Unexpected error in DIAMOND blastx search: {e}")
+                raise RuntimeError(f"DIAMOND blastx search failed: {e}") from e
+            raise
 
     if not Path(output_path).exists():
         logger.error(f"DIAMOND output file not found at {output_path}")
@@ -1021,7 +1044,9 @@ def rasr(query: str,
             dbmin: int,
             threads: int = 1,
             force: bool = False,
-            keep: bool = False):
+            keep: bool = False,
+            timeout: int = 54000,
+            max_retries: int = 3):
     """
     Run the RASR workflow.
 
@@ -1059,6 +1084,8 @@ def rasr(query: str,
         keep (bool): Keep intermediate files.
         bsr_cutoff (float): Minimum BSR threshold for final selection (default: 0.9).
         dbmin (int): Minimum database score threshold for final selection (default: 110).
+        timeout (int): Timeout for DIAMOND searches in seconds.
+        max_retries (int): Maximum number of retries for DIAMOND searches.
 
     Returns:
         dict: Mapping {(dataset_name, gene_name): result_info} where result_info includes
@@ -1248,7 +1275,7 @@ def rasr(query: str,
         # =================== Search outgroup database with merged hits ===================
 
         logger.info(f"[SEARCH_2_START] query={merged_hits_file}")
-        og_search_output, og_column_info_path = search(outgrp_db, merged_hits_file, threads, output_dir, sensitivity, bit_score_cutoff=bit_score_cutoff, max_target_seqs=25, block=block, chunk=chunk, force=force)
+        og_search_output, og_column_info_path = search(outgrp_db, merged_hits_file, threads, output_dir, sensitivity, bit_score_cutoff=bit_score_cutoff, max_target_seqs=25, max_retries=max_retries, timeout=timeout, block=block, chunk=chunk, force=force)
 
         intermediate_results['og_search_output'] = og_search_output
         intermediate_results['og_column_info_path'] = og_column_info_path
