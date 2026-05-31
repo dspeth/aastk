@@ -695,7 +695,8 @@ def compute_bsr(seed_search_tab: str,
         force (bool): Whether to overwrite existing files
 
     Returns:
-        bsr_output_path (str): Path to BSR output file containing qseqid, sseqid_db, score_db, sseqid_og, score_og, bsr
+        tuple: (bsr_output_path (str), matched_count (int)) where bsr_output_path is the path to
+               the BSR output file and matched_count is the number of matched rows written.
     """
     # ==================
     # Output file setup
@@ -710,6 +711,7 @@ def compute_bsr(seed_search_tab: str,
     # ==========================================================
     # Load column info if provided and retrieve columns indexes
     # ==========================================================
+
     if column_info_path and Path(column_info_path).exists():
         try:
             with open(column_info_path, 'r') as f:
@@ -799,8 +801,8 @@ def compute_bsr(seed_search_tab: str,
     logger.info(
         f"[BSR_COMPUTE_DONE] target={protein_name} matched={matched_count:,} total_seed={total_seed_count:,} total_og={total_og_count:,} out={bsr_file}"
     )
-    
-    return bsr_file
+
+    return bsr_file, matched_count
 
 
 
@@ -851,11 +853,22 @@ def rasr_plot(bsr_file: str,
             if col not in bsr_df.columns:
                 raise ValueError(f"Required column '{col}' not found in BSR data")
 
+        # If there are no data rows, skip plotting and let caller decide next steps
+        if bsr_df.empty:
+            logger.warning(f"[BSR_PLOT_SKIP] No BSR rows in {bsr_file}; skipping plot")
+            return None
+
         # ===============================
         # Define axis ranges
         # ===============================
         x_max = bsr_df['score_og'].max()
         y_max = bsr_df['score_db'].max()
+
+        # Validate axis numeric values
+        if not np.isfinite(x_max) or not np.isfinite(y_max):
+            logger.warning(f"[BSR_PLOT_SKIP] Non-finite axis values in {bsr_file} (x_max={x_max}, y_max={y_max}); skipping plot")
+            return None
+        
         x_min = 45
         y_min = 45
 
@@ -1325,9 +1338,16 @@ def rasr(query: str,
                 logger.info(f"[PAIR_START] dataset={dataset_name} gene={gene_name}")
 
                 # =================== Calculate BSR values ===================
-                bsr_output = compute_bsr(db_split_output, og_split_output, column_info_path, output_dir=gene_output_dir, force=force)
+                bsr_output, matched = compute_bsr(db_split_output, og_split_output, column_info_path, output_dir=gene_output_dir, force=force)
 
                 result_info['bsr_output'] = bsr_output
+
+                # If no BSR matches were produced, abort workflow with a warning and preserve intermediate files
+                if matched == 0:
+                    logger.warning(f"[BSR_EMPTY] dataset={dataset_name} gene={gene_name} matched=0; aborting workflow and preserving intermediate files")
+                    # Ensure caller won't delete intermediate files
+                    keep = True
+                    raise RuntimeError(f"No BSR matches for dataset={dataset_name} gene={gene_name}")
 
                 # =================== Plot BSR values ===================
                 plot_output = rasr_plot(bsr_output, output_dir=gene_output_dir, bsr_cutoff=bsr_cutoff, dbmin=dbmin, force=force)
