@@ -317,8 +317,8 @@ def search(seed_db_out_path: str,
     # DIAMOND blastp output file column configuration
     # =======================================================
     # define the output columns of interest
-    columns = ["qseqid", "sseqid", "pident", "qlen", "slen", "length", "mismatch", "gapopen", "qstart", "qend",
-               "sstart", "send", "evalue", "bitscore", "score", "qtitle"]
+    columns = ["qtitle", "sseqid", "pident", "qlen", "slen", "length", "mismatch", "gapopen", "qstart", "qend",
+               "sstart", "send", "evalue", "bitscore", "score", "qseqid"]
 
     # save column information to json file as to not hardcode the score column in the bsr function
     column_info = {col: idx for idx, col in enumerate(columns)}
@@ -353,7 +353,7 @@ def search(seed_db_out_path: str,
            "--algo", str(0)]
 
     if sensitivity:
-        cmd.append(f"--{sensitivity}")
+        cmd.extend(["--sensitivity", sensitivity])
 
     # =======================================
     # Execute DIAMOND blastx search
@@ -409,19 +409,17 @@ def filter_best_hits_by_score(search_output_path: str,
     logger.info(f"[FILTER_START] Filtering search results keep_highest_score_per_query=True  aln_score_cutoff={aln_score_cutoff}")
     
     # Determine columns structure from the file content
-    columns = ["qseqid", "sseqid", "pident", "qlen", "slen", "length", "mismatch", "gapopen", "qstart", "qend",
-               "sstart", "send", "evalue", "bitscore", "score","qtitle"]
+    columns = ["qtitle", "sseqid", "pident", "qlen", "slen", "length", "mismatch", "gapopen", "qstart", "qend",
+               "sstart", "send", "evalue", "bitscore", "score","qseqid"]
     
-    best_hits = {}  # {qseqid: (score, full_row)}
+    best_hits = {}  # {qtitle: (score, full_row)}
     score_idx = columns.index('score')
-    qseqid_idx = columns.index('qseqid')
     qtitle_idx = columns.index('qtitle')
     
     # Stream through file to find best hits
     with open(search_output_path, 'r') as f:
         for line in f:
             fields = line.strip().split('\t')
-            qseqid = fields[qseqid_idx]
             qtitle = fields[qtitle_idx]
             score = float(fields[score_idx])
             
@@ -556,7 +554,7 @@ def split_search_output_by_mapping(blast_out_path: str,
 def extract_matched_reads(blast_tab: str,
                         query_path: str,
                         output_dir: str,
-                        query_key_column: int=15,
+                        query_key_column: int=0,
                         force: bool = False):
     """
     Extracts read sequences that have hits in the DIAMOND BLAST tabular output.
@@ -565,7 +563,7 @@ def extract_matched_reads(blast_tab: str,
         blast_tab (str): Path to DIAMOND BLAST tabular output file
         query_path (str): Path to sequencing read file, can be gzipped
         output_dir (str): Directory to save output files
-        query_key_column (int): Column index for query key (default: 15 = qtitle)
+        query_key_column (int): Column index for query key (default: 0 = qtitle)
         force (bool): Whether to overwrite existing files
 
     Returns:
@@ -718,12 +716,12 @@ def compute_bsr(seed_search_tab: str,
                 column_info = json.load(f)
                 
                 # Get all required column indexes from .json file
-                qseqid_col = column_info.get('qseqid', 0)
-                qtitle_col = column_info.get('qtitle', 15)
-                sseqid_col = column_info.get('sseqid', 1)
-                pident_col = column_info.get('pident', 2)
-                length_col = column_info.get('length', 5)
-                score_column = column_info.get('score', 14)
+                qseqid_col= column_info["qseqid"]
+                qtitle_col = column_info["qtitle"]
+                sseqid_col = column_info["sseqid"]
+                pident_col = column_info["pident"]
+                length_col = column_info["length"]
+                score_column = column_info["score"]
                 
                 logger.info(f"[BSR_COLUMN_INFO] Column indexes: qseqid={qseqid_col}, qtitle={qtitle_col}, sseqid={sseqid_col}, "
                            f"pident={pident_col}, length={length_col}, score={score_column}")
@@ -731,16 +729,16 @@ def compute_bsr(seed_search_tab: str,
         except Exception as e:
             logger.warning(f"Failed to load column info from {column_info_path}: {e}")
             # Fall back to default indexes
-            qseqid_col = 0
-            qtitle_col = 15
+            qseqid_col = 15
+            qtitle_col = 0
             sseqid_col = 1
             pident_col = 2
             length_col = 5
             score_column = 14
     else:
         # Use default column indexes if no .json file provided
-        qseqid_col = 0
-        qtitle_col = 15
+        qseqid_col = 15
+        qtitle_col = 0
         sseqid_col = 1
         pident_col = 2
         length_col = 5
@@ -752,21 +750,21 @@ def compute_bsr(seed_search_tab: str,
     # =====================================
     # Load BLAST outputs and calculate BSR
     # =====================================
-    # Read outgroup results into dict
-    db_data = {}  # {qseqid: (qtitle, sseqid_db, pident_db, length_db, score_db)}
+    # Read seed search results into dict keyed by qtitle
+    db_data = {}  # {qtitle: (qtitle, sseqid_db, pident_db, length_db, score_db)}
     total_seed_count = 0
     
     with open(seed_search_tab, 'r') as f:
         for line in f:
             total_seed_count += 1
             fields = line.strip().split('\t')
-            qseqid = fields[qseqid_col]
             qtitle = fields[qtitle_col]
             sseqid_db = fields[sseqid_col]
             pident_db = float(fields[pident_col])
             length_db = float(fields[length_col])
             score_db = float(fields[score_column])
-            db_data[qseqid] = (qtitle, sseqid_db, pident_db, length_db, score_db)
+            # key by qtitle to match downstream outgroup qtitle values
+            db_data[qtitle] = (qtitle, sseqid_db, pident_db, length_db, score_db)
     
     # Stream through outgroup results and calculate BSR
     matched_count = 0
@@ -774,28 +772,28 @@ def compute_bsr(seed_search_tab: str,
     
     with open(bsr_file, 'w') as out_f:
         # Write header
-        out_f.write('qseqid\tqtitle\tsseqid_db\tpident_db\tlength_db\tscore_db\tsseqid_og\tpident_og\tlength_og\tscore_og\tBSR\n')
+        out_f.write('qtitle\tsseqid_db\tpident_db\tlength_db\tscore_db\tsseqid_og\tpident_og\tlength_og\tscore_og\tBSR\n')
         
         with open(og_search_tab, 'r') as og_f:
             for line in og_f:
                 fields = line.strip().split('\t')
-                qseqid = fields[qseqid_col]
+                qtitle = fields[qtitle_col]
                 total_og_count += 1
                 
-                # Only process if we have database data for this query
-                if qseqid in db_data:
+                # Only process if we have database data for this query (lookup by qtitle)
+                if qtitle in db_data:
                     sseqid_og = fields[sseqid_col]
                     pident_og = float(fields[pident_col])
                     length_og = float(fields[length_col])
                     score_og = float(fields[score_column])
-                    
-                    qtitle, sseqid_db, pident_db, length_db, score_db = db_data[qseqid]
-                    
+
+                    qtitle_db, sseqid_db, pident_db, length_db, score_db = db_data[qtitle]
+
                     # Calculate BSR
                     bsr_value = score_db / score_og if score_og > 0 else 0.0
-                    
-                    # Write result
-                    out_f.write(f"{qseqid}\t{qtitle}\t{sseqid_db}\t{pident_db}\t{length_db}\t{score_db}\t{sseqid_og}\t{pident_og}\t{length_og}\t{score_og}\t{bsr_value}\n")
+
+                    # Write result (use seed DB title as primary identifier)
+                    out_f.write(f"{qtitle_db}\t{sseqid_db}\t{pident_db}\t{length_db}\t{score_db}\t{sseqid_og}\t{pident_og}\t{length_og}\t{score_og}\t{bsr_value}\n")
                     matched_count += 1
     
     logger.info(
@@ -813,7 +811,7 @@ def compute_bsr(seed_search_tab: str,
 def rasr_plot(bsr_file: str,
                 output_dir: str,
                 bsr_cutoff: float = 0.9,
-                dbmin: int = None,
+                dbmin: int = 120,
                 force: bool = False):
     """
     Creates a scatter plot of the BSR data flanked by histograms showing the distribution of datapoints alongside the axes.
@@ -822,25 +820,25 @@ def rasr_plot(bsr_file: str,
         bsr_file (str): Path to BSR results file
         output_dir (str): Directory to save output plot
         bsr_cutoff (float): Minimum BSR threshold to draw as reference line (default: 0.9)
-        dbmin (int): Minimum database score threshold to draw as reference line (default: 110)
+        dbmin (int): Minimum database score threshold to draw as reference line (default: 120)
         force (bool): Whether to overwrite existing files
     """
     logger = logging.getLogger(__name__)
+
+    protein_name = determine_dataset_name(bsr_file, '.', 0, '_bsr')
 
     # Handle None values from cli.py
     if bsr_cutoff is None:
         bsr_cutoff = 0.9
     if dbmin is None:
-        dbmin = 110
-
-    protein_name = determine_dataset_name(bsr_file, '.', 0, '_bsr')
-
+        dbmin = 120
     # ===============================
     # Output file path setup
     # ===============================
     out_graph = ensure_path(output_dir, f'{protein_name}_bsr.png', force=force)
 
     logger.info(f"[BSR_PLOT_START] Creating BSR scatter plot for {protein_name}")
+    logger.info(f"Plot parameters: bsr_cutoff={bsr_cutoff}, dbmin={dbmin}")
 
     try:
         # ===============================
@@ -943,7 +941,7 @@ def rasr_select(dbmin: float,
         dbmin (float): Minimum database score threshold for selection
         bsr_cutoff (float): Minimum BSR threshold for selection
         matched_fastq (str): Path to FASTQ file containing sequences that matched the gene database (Search 1)
-        bsr_file (str): Path to BSR results file containing qseqid, sseqid_db, score_db, sseqid_og, score_og, bsr
+        bsr_file (str): Path to BSR results file containing qtitle, sseqid_db, score_db, sseqid_og, score_og, bsr
         output_dir (str): Directory to save output files
         force (bool): Whether to overwrite existing files
 
@@ -958,7 +956,7 @@ def rasr_select(dbmin: float,
     if bsr_cutoff is None:
         bsr_cutoff = 0.9
     if dbmin is None:
-        dbmin = 110
+        dbmin = 120
 
     logger.info(f"[SELECT_START] Selecting RASR hits with database score >= {dbmin} and BSR >= {bsr_cutoff}")
 
@@ -979,7 +977,7 @@ def rasr_select(dbmin: float,
     selected_tsv = bsr_df[(bsr_df['score_db'] >= dbmin) & (bsr_df['BSR'] >= bsr_cutoff)]
     selected_tsv.to_csv(out_tsv, sep='\t', index=False)
 
-    selected_ids = selected_tsv['qseqid'].dropna().astype(str).unique()
+    selected_ids = selected_tsv['qtitle'].dropna().astype(str).unique()
 
     with open(id_file, 'w') as f:
         for seq_id in selected_ids:
@@ -1134,7 +1132,7 @@ def rasr(query: str,
         # Track outputs per dataset and gene
         # ===================================
         all_hit_seqs_paths = []  # Accumulate all _matched.fastq.gz file paths across datasets and genes
-        dict_dataset_seqids = {}  # {dataset_name: [qseqids]}
+        dict_dataset_seqids = {}  # {dataset_name: [qtitles]} of matched queries
 
         # ==================================================
         # Step 1: Search each dataset against gene database
@@ -1263,7 +1261,7 @@ def rasr(query: str,
         if plan['steps']['parse_search_2_per_query']:
             logger.info(f"[SPLIT_2_START] datasets={len(dict_dataset_seqids)} split_column=15")
 
-            og_split_outputs = split_search_output_by_mapping(og_search_output_filtered, mapping_dict=dict_dataset_seqids, output_dir=output_dir, split_column=15, force=force)
+            og_split_outputs = split_search_output_by_mapping(og_search_output_filtered, mapping_dict=dict_dataset_seqids, output_dir=output_dir, split_column=0, force=force)
 
             # Move split outputs to dataset-specific subdirectories
             for dataset_name, split_output in list(og_split_outputs.items()):

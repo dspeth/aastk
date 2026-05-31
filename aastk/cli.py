@@ -59,7 +59,7 @@ def __bsr(group, required=False):
                        help='Path to blast score ratio input file.')
 
 def __bsr_cutoff(group, required=False):
-    group.add_argument('-b', '--bsr_cutoff', type=float, default=None, required=required,
+    group.add_argument('-b', '--bsr_cutoff', type=float, required=required,
                        help="Blast Score Ratio cutoff for inclusion in updated dataset")
 
 def __chunk(group, required=False):
@@ -103,7 +103,7 @@ def __diamond_db(group, required=False):
                        help='Path to DIAMOND database')
 
 def __dbmin(group, required=False):
-    group.add_argument('-d', '--dbmin', type=int, default=None, required=required,
+    group.add_argument('-d', '--dbmin', type=int, required=required,
                        help='Lower database score cutoff for inclusion in updated dataset')
 
 def __db_path(group, required=False):
