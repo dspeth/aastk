@@ -93,12 +93,12 @@ def build_execution_plan(query,
         "query_info": query_info,
         "seed_info": seed_info,
         "steps": {
-            "merge_seed_databases": seed_is_multi,                # Only merge if multiple seed files
+            "merge_seed_databases": seed_is_multi,     # Only merge if multiple seed files
             "build_db": True,                          # Always build database from seed files
             "search_1": True,                          # Always run search
             "filter_search": True,                     # Always run filtering
             "parse_search_1_per_db": seed_is_multi,    # Only split if multiple seed files
-            "extract_hit_seqs": True,                      # Always get hit sequences
+            "extract_hit_seqs": True,                  # Always get hit sequences
             "merge_extracted_hit_seqs": (seed_is_multi or query_is_multi),  # Merge when multiple hit files are expected
             "search_2": True,                          # Always run outgroup search
             "parse_search_2_per_query": query_is_multi,   # Only split if multiple query files
@@ -207,26 +207,6 @@ def merge_seed_databases(db_files: list,
         db_dict (dict): Dictionary mapping db names to their sequence IDs.
     """
     merged_fasta_path = ensure_path(output_dir, "merged_seed_db.fasta", force=force)
-    
-    if Path(merged_fasta_path).exists() and not force:
-        logger.info(f"Merged database already exists at {merged_fasta_path}, using existing.")
-        
-        # Reconstruct db_dict by reading input files
-        db_dict = {}
-        for db_file in db_files:
-            gene_name = db_file.stem
-            
-            with open(db_file, 'r') as db_fasta:
-                for line in db_fasta:
-                    line = line.strip()
-                    if line.startswith('>'):
-                        header = line[1:]  # Remove '>'
-                        if gene_name not in db_dict:
-                            db_dict[gene_name] = []
-                        db_dict[gene_name].append(header)
-        
-        logger.info(f"Reconstructed db_dict from {len(db_files)} input file(s)")
-        return merged_fasta_path, db_dict
     
     with open(merged_fasta_path, 'w') as outfile:
         db_dict = {}
@@ -431,16 +411,13 @@ def filter_best_hits_by_score(search_output_path: str,
     # ===========================
     # Write filtered results
     # ===========================
-    temp_output = search_output_path + '.tmp'
-    with open(temp_output, 'w') as f:
+    filtered_output_path = search_output_path + '_filtered.tsv'
+    with open(filtered_output_path, 'w') as f:
         for score, line in best_hits.values():
             f.write(line)
-    
-    # Replace original with filtered
-    Path(temp_output).replace(search_output_path)
-    
-    logger.info(f"[FILTER_DONE] total_retained={len(best_hits)} out={search_output_path}")
-    return search_output_path
+     
+    logger.info(f"[FILTER_DONE] total_retained={len(best_hits)} out={filtered_output_path}")
+    return filtered_output_path
 
 
 
@@ -964,7 +941,7 @@ def rasr_select(dbmin: float,
     # Output file path setup
     # ===============================
     protein_name = determine_dataset_name(bsr_file, '.', 0, '_bsr')
-    out_fastq = ensure_path(output_dir, f"{protein_name}_selected.fastq", force=force)
+    out_fastq = ensure_path(output_dir, f"{protein_name}_selected.fastq.gz", force=force)
     id_file = ensure_path(output_dir, f"{protein_name}_selected_ids.txt", force=force)
     out_tsv = ensure_path(output_dir, f"{protein_name}_selected.tsv", force=force)
     
@@ -1151,16 +1128,20 @@ def rasr(query: str,
             # Search gene database
             # ======================
             logger.info(f"[SEARCH_1_START] dataset={dataset_name} query={query_file} db={db_path}")
-            search_output, column_info_path = search(db_path, str(query_file), threads, dataset_output_dir, sensitivity, bit_score_cutoff=bit_score_cutoff, max_target_seqs=1, block=block, chunk=chunk, force=force)
+            search_output, column_info_path = search(db_path, str(query_file), threads, dataset_output_dir, sensitivity, bit_score_cutoff=bit_score_cutoff, max_target_seqs=1, max_retries=max_retries, timeout=timeout, block=block, chunk=chunk, force=force)
             
+            if search_output not in intermediate_results:
+                intermediate_results['search_output'] = []
+            intermediate_results['search_output'].append(search_output)
+
             # =========================
             # Filter search results
             # =========================
-            search_output = filter_best_hits_by_score(search_output, aln_score_cutoff=aln_score_cutoff)
+            search_output_filtered = filter_best_hits_by_score(search_output, aln_score_cutoff=aln_score_cutoff)
 
-            if 'search_output' not in intermediate_results:
-                intermediate_results['search_output'] = []
-            intermediate_results['search_output'].append(search_output)
+            if 'search_output_filtered' not in intermediate_results:
+                intermediate_results['search_output_filtered'] = []
+            intermediate_results['search_output_filtered'].append(search_output_filtered)
 
             # ==============================
             # Split search results per gene
