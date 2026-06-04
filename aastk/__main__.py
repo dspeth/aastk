@@ -361,7 +361,6 @@ def main():
                 query=args.query,
                 genome=args.genome,
                 db_path=args.db_path,
-                yaml=args.yaml,
                 output=args.output,
                 keep=args.keep,
                 force=args.force

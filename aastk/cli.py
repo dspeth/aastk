@@ -641,7 +641,6 @@ def get_main_parser():
             __genome(grp)
         with arg_group(parser, 'Required arguments') as grp:
             __db_path(grp, required=True)
-            __yaml(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __force(grp)
