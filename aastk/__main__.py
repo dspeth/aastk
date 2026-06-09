@@ -8,6 +8,7 @@ from aastk.cugo import *
 from aastk.casm import *
 from aastk.database import *
 from aastk.annotate import *
+from aastk.plm_embedder import *
 from aastk.version import __version__, __copyright__, __author__
 import sys
 
@@ -363,6 +364,15 @@ def main():
                 db_path=args.db_path,
                 output=args.output,
                 keep=args.keep,
+                force=args.force
+            )
+
+        elif args.subparser_name == 'plm_embedder':
+            plm_embedder(
+                fasta=args.fasta,
+                output=args.output,
+                model=args.model,
+                batch_size=args.batch_size,
                 force=args.force
             )
 
