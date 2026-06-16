@@ -1,6 +1,3 @@
-# does workflow only provide BEST hit?
-# ADJUST ANNOTATE FUNCTION
-
 from .util import *
 from .pasr import *
 
@@ -59,15 +56,6 @@ def clean_fasta_header(header: str):
     """
     return header.split()[0]
 
-def file_has_allowed_extension(
-    path: str,
-    allowed_extensions: tuple[str, ...]):
-    """
-    returns a boolean whether the file type fits any of the given extensions or not
-    """
-    return str(path).endswith(allowed_extensions)
-##### end of util.py functions #####
-
 def check_fasta_protein(path: str):
     for header, sequence in stream_fasta(path):
         # only checks the first record
@@ -108,6 +96,8 @@ def check_fasta_genome(path: str, acgt_threshold: float = 0.8):
         return
 
     raise ValueError("Genome FASTA contains no sequences")
+
+##### end of possible util.py functions #####
 
 def clean_protein_query(query: str, output: str, force: bool = False):
     """
@@ -184,15 +174,44 @@ def call_genes_with_pyrodigal(genome: str, output: str, force: bool = False):
 
     return output_path
 
-def load_yaml_cutoffs(yaml_path: str):
+def clean_yaml_value(value):
+    if value == "xxx":
+        return pd.NA
+
+    return value
+
+def load_yaml_content(yaml_path: str, expected_marker: str):
     with open(yaml_path) as f:
         params = yaml_lib.safe_load(f)
 
+    if not isinstance(params, dict):
+        raise ValueError(f"YAML file has invalid structure: {yaml_path}")
+
+    if len(params) != 1:
+        raise ValueError(f"YAML file should contain exactly one marker entry: {yaml_path}")
+
+    marker = next(iter(params.keys()))
+
+    if expected_marker is not None and marker != expected_marker:
+        raise ValueError(f"Expected marker: {expected_marker}, but marker in YAML file is: {marker}")
+
+    marker_info = params[marker]
+
+    cutoffs = marker_info["cutoffs"]
+    annotations = marker_info.get("annotation", {})
+
+
     return {
-        "bsr_cutoff": float(params["bsr"]),
-        "max_score_lower": int(params["selfmin"]),
-        "max_score_upper": int(params["selfmax"]),
-        "protein_name": params.get("protein_name"),
+        "marker": marker,
+        "bsr_cutoff": float(cutoffs["lasr"]),
+        "max_score_lower": int(cutoffs["selfmin"]),
+        "max_score_upper": int(cutoffs["selfmax"]),
+
+        "gene_family": clean_yaml_value(marker_info.get("gene_family")),
+        "description": clean_yaml_value(marker_info.get("description")),
+        "COG": clean_yaml_value(annotations.get("COG")),
+        "KEGG": clean_yaml_value(annotations.get("KEGG")),
+        "PFAM": clean_yaml_value(annotations.get("PFAM"))
     }
 
 def classify_by_yaml_cutoffs(
@@ -234,77 +253,6 @@ def classify_by_yaml_cutoffs(
 
     raise RuntimeError("Classification of hits failed: max_score is out of bounds")
 
-def classification_output(
-        query_path: str,
-        bsr_path: str,
-        yaml_path: str,
-        output: str,
-        force: bool = False):
-
-    """
-    classifies the hits based off of classify_by_yaml_cutoffs,
-    creates an output file that includes hits and non-hits
-    """
-
-    cutoffs = load_yaml_cutoffs(yaml_path)
-    protein_name = cutoffs["protein_name"]
-
-    query_df = create_output_rows(query_path)
-    bsr_df = pd.read_csv(bsr_path, sep="\t")
-
-    query_id_column = bsr_df.columns[0]
-
-    bsr_df["classification"] = bsr_df.apply(
-        lambda row: classify_by_yaml_cutoffs(
-            max_score=row["max_score"],
-            hit_score=row["score"],
-            bsr_cutoff=cutoffs["bsr_cutoff"],
-            max_score_lower=cutoffs["max_score_lower"],
-            max_score_upper=cutoffs["max_score_upper"]
-        ),
-        axis=1
-    )
-
-    bsr_df = bsr_df.rename(columns={query_id_column: "prot_ID"})
-
-    result_df = query_df.merge(
-        bsr_df,
-        on="prot_ID",
-        how="left",
-    )
-
-    result_df["classification"] = result_df["classification"].fillna("no_hit")
-
-    result_df["annotation"] = result_df["classification"].apply(
-        lambda classification:
-            protein_name
-            if classification not in ["below_cutoff", "no_hit"]
-            else pd.NA
-    )
-
-    first_columns = [
-        "prot_ID",
-        "annotation",
-        "classification",
-        "sequence_length"
-    ]
-
-    additional_columns = []
-
-    for column in result_df.columns:
-        if column not in first_columns:
-            additional_columns.append(column)
-
-    result_df = result_df[first_columns + additional_columns]
-
-    output_path = ensure_path(output, f"{protein_name}_annotate.tsv", force=force)
-
-    result_df.to_csv(output_path, sep="\t", index=False)
-
-    logger.info(f"Classification complete! Hits saved to: {output_path}")
-
-    return output_path
-
 def create_output_rows(query_path: str):
     """
     creates one output row per protein sequence in the query fasta (hit and non-hit)
@@ -334,9 +282,9 @@ def annotate_plot_helper(
     output default is png, but can be set to svg
     """
 
-    cutoffs = load_yaml_cutoffs(yaml_path)
+    cutoffs = load_yaml_content(yaml_path, expected_marker=marker)
 
-    protein_name = cutoffs["protein_name"]
+    gene_family = cutoffs["gene_family"]
     bsr_cutoff = cutoffs["bsr_cutoff"]
     max_score_lower = cutoffs["max_score_lower"]
     max_score_upper = cutoffs["max_score_upper"]
@@ -360,11 +308,11 @@ def annotate_plot_helper(
             raise ValueError(f"Required column '{column}' not found in BSR table")
 
     if svg:
-        output_path = ensure_path(output, f"{protein_name}_annotate_plot.svg", force=force)
+        output_path = ensure_path(output, f"{marker}_annotate_plot.svg", force=force)
     else:
-        output_path = ensure_path(output, f"{protein_name}_annotate_plot.png", force=force)
+        output_path = ensure_path(output, f"{marker}_annotate_plot.png", force=force)
 
-    logger.info(f"Creating annotate plot for {protein_name}")
+    logger.info(f"Creating annotate plot for {marker}")
 
     score_max = bsr_df["score"].max()
     max_score_max = bsr_df["max_score"].max()
@@ -391,7 +339,7 @@ def annotate_plot_helper(
         vmax=100,
     )
 
-    ax.set_title(f"Annotate classification plot for {protein_name} ({marker})")
+    ax.set_title(f"Annotate classification plot for {marker} ({gene_family})")
     ax.set_xlabel("Calculated maximum score")
     ax.set_ylabel("Alignment score to seed set")
     ax.set_xlim(xlim)
@@ -443,33 +391,25 @@ def annotate_plot_helper(
 
     return output_path
 
-def marker_name_from_file(path: str):
-    path = Path(path)
-
-    if path.suffix == ".gz":
-        return Path(path.stem).stem
-
-    return Path(path).stem
-
 def collect_db_fastas(db_path: str):
     """
     collect all fasta files from db_path
     expected folder structure:
     db_path/
         marker1/
-            marker1.faa
-            marker1.yaml
+            sequences.faa
+            info.yaml
+            & other stuff
         marker2/
-            marker2.faa
-            marker2.yaml
+            sequences.faa
+            info.yaml
+            & other stuff
     marker name taken from subdirectory name
     """
     path = Path(db_path)
 
     if path.is_file():
-        check_fasta_protein(str(path))
-        marker_name = marker_name_from_file(str(path))
-        return {marker_name: str(path)}
+        raise ValueError("Database path is a singular file. Should be directory.")
 
     if not path.is_dir():
         raise ValueError(f"Database path does not exist: {db_path}")
@@ -481,30 +421,18 @@ def collect_db_fastas(db_path: str):
             continue
 
         marker_name = marker_dir.name
-        marker_fastas = []
+        fasta_path = marker_dir / "sequences.faa"
 
-        for file in sorted(marker_dir.iterdir()):
-            if not file.is_file():
-                continue
-
-            try:
-                check_fasta_protein(str(file))
-                marker_fastas.append(file)
-
-            except ValueError:
-                continue
-
-        if not marker_fastas:
-            logger.warning(f"No valid FASTA file found for marker: {marker_name}")
+        if not fasta_path.is_file():
+            logger.warning(f"No sequences.faa found for marker: {marker_name}")
             continue
 
-        if len(marker_fastas) > 1:
-            raise ValueError(f"Multiple FASTA files found for marker: {marker_name}")
+        check_fasta_protein(str(fasta_path))
 
-        fasta_files[marker_name] = str(marker_fastas[0])
+        fasta_files[marker_name] = str(fasta_path)
 
     if not fasta_files:
-        raise ValueError(f"No valid FASTA files found in database directory: {db_path}")
+        raise ValueError(f"No sequences.faa file found in database directory: {db_path}")
 
     return fasta_files
 
@@ -514,20 +442,20 @@ def collect_yaml_files(db_path: str):
     expected folder structure:
     db_path/
         marker1/
-            marker1.faa
-            marker1.yaml
+            sequences.faa
+            info.yaml
+            & other stuff
         marker2/
-            marker2.faa
-            marker2.yaml
+            sequences.faa
+            info.yaml
+            & other stuff
     marker name taken from subdirectory name
     """
 
     path = Path(db_path)
 
     if path.is_file():
-        load_yaml_cutoffs(str(path))
-        marker_name = marker_name_from_file(str(path))
-        return {marker_name: str(path)}
+        raise ValueError("Database path is a singular file. Should be directory.")
 
     if not path.is_dir():
         raise ValueError(f"Database path does not exist: {db_path}")
@@ -539,30 +467,18 @@ def collect_yaml_files(db_path: str):
             continue
 
         marker_name = marker_dir.name
-        marker_yamls = []
+        yaml_path = marker_dir / "info.yaml"
 
-        for file in sorted(marker_dir.iterdir()):
-            if not file.is_file():
-                continue
-
-            try:
-                load_yaml_cutoffs(str(file))
-                marker_yamls.append(file)
-
-            except (ValueError, KeyError, TypeError, yaml_lib.YAMLError):
-                continue
-
-        if not marker_yamls:
-            logger.warning(f"No valid YAML files found for marker: {marker_name}")
+        if not yaml_path.is_file():
+            logger.warning(f"No info.yaml found for marker: {marker_name}")
             continue
 
-        if len(marker_yamls) > 1:
-            raise ValueError(f"Multiple YAML files found for marker: {marker_name}")
+        load_yaml_content(str(yaml_path), expected_marker=marker_name)
 
-        yaml_files[marker_name] = str(marker_yamls[0])
+        yaml_files[marker_name] = str(yaml_path)
 
     if not yaml_files:
-        raise ValueError(f"No valid YAML files found in database directory: {db_path}")
+        raise ValueError(f"No info.yaml file found in database directory: {db_path}")
 
     return yaml_files
 
@@ -608,8 +524,7 @@ def concatenate_db_input(db_fastas: dict[str, str], output: str, force: bool = F
 
                 rows.append({
                     "db_ID": db_id,
-                    "marker": marker,
-                    "db_fasta": fasta_path
+                    "marker": marker
                 })
 
     db_metadata = pd.DataFrame(rows)
@@ -623,7 +538,7 @@ def concatenate_db_input(db_fastas: dict[str, str], output: str, force: bool = F
 
     return output_path, db_metadata
 
-def classification_output_new(
+def classification_output(
         query_path: str,
         bsr_path: str,
         yaml_files: dict[str, str],
@@ -633,23 +548,13 @@ def classification_output_new(
     """
     classifies hits based off of marker-specific YAML cutoffs
     creates one output file that includes hits and non-hits
-    for every protein and marker:
-        check if there is a bsr hit for that marker
-        classify using correct cutoffs
-        write combined output
     """
 
     cutoffs_by_marker = {
-        marker: load_yaml_cutoffs(yaml_path) for marker, yaml_path in yaml_files.items()
+        marker: load_yaml_content(yaml_path, expected_marker=marker) for marker, yaml_path in yaml_files.items()
     }
 
     query_df = create_output_rows(query_path)
-
-    marker_df = pd.DataFrame({
-        "marker": sorted(yaml_files.keys())
-    })
-
-    result_df = query_df.merge(marker_df, how="cross")
 
     bsr_df = pd.read_csv(bsr_path, sep="\t")
 
@@ -663,7 +568,12 @@ def classification_output_new(
         "BSR"
     ]
 
-    if not bsr_df.empty:
+    if bsr_df.empty:
+        result_df = query_df.copy()
+        result_df["annotation"] = pd.NA
+        result_df["classification"] = pd.NA
+
+    else:
         for column in required_bsr_columns:
             if column not in bsr_df.columns:
                 raise ValueError(f"Required column {column} not found in BSR table")
@@ -704,38 +614,58 @@ def classification_output_new(
             keep="first"
         )
 
-        result_df = result_df.merge(
-            bsr_df,
-            on=["prot_ID", "marker"],
+        metadata_columns = [
+            "annotation",
+            "gene_family",
+            "description",
+            "COG",
+            "KEGG",
+            "PFAM",
+        ]
+
+        for column in metadata_columns:
+            bsr_df[column] = pd.NA
+
+        # True/False values depending on classification
+        accepted_hit_filter = bsr_df["classification"] != "below_cutoff"
+
+        bsr_df.loc[accepted_hit_filter, "annotation"] = bsr_df.loc[
+            accepted_hit_filter, "marker"
+        ]
+
+        for column in ["gene_family", "description", "COG", "KEGG", "PFAM"]:
+            bsr_df.loc[accepted_hit_filter, column] = bsr_df.loc[
+                accepted_hit_filter, "marker"
+            ]. apply(
+                lambda marker: cutoffs_by_marker[marker][column]
+            )
+
+        accepted_hits_df = bsr_df[
+            bsr_df["classification"] != "below_cutoff"
+        ].copy()
+
+        result_df = query_df.merge(
+            accepted_hits_df,
+            on="prot_ID",
             how="left"
         )
-
-    result_df["classification"] = result_df["classification"].fillna("no_hit")
-
-    """
-    result_df["annotation"] = result_df.apply(
-        lambda row:
-            cutoffs_by_marker[row["marker"]]["protein_name"]
-            if row["classification"] not in ["below_cutoff", "no_hit"]
-            else pd.NA,
-        axis=1
-    )
-    # if we want to keep the "annotation" columns: add it to first_columns
-    """
-
-    result_df = result_df.replace("no_hit", pd.NA)
 
     first_columns = [
         "prot_ID",
         "sequence_length",
-        "marker",
+        "annotation",
         "classification",
+        "gene_family",
+        "description",
+        "COG",
+        "KEGG",
+        "PFAM",
     ]
 
     additional_columns = []
 
     for column in result_df.columns:
-        if column not in first_columns:
+        if column not in first_columns and column != "marker":
             additional_columns.append(column)
 
     result_df = result_df[first_columns + additional_columns]
@@ -828,88 +758,122 @@ def annotate(
 
     logger.info("Starting annotate workflow")
 
-    # get a uniform protein FASTA depending on input
-    if query:
-        query_path = clean_protein_query(query, output, force=force)
+    intermediate_results = {}
+    results = {}
 
-    elif genome:
-        query_path = call_genes_with_pyrodigal(genome, output, force=force)
+    try:
+        # get a uniform protein FASTA depending on input
+        if query:
+            query_path = clean_protein_query(query, output, force=force)
 
-    else:
-        raise ValueError("Either query or genome must be provided")
+        elif genome:
+            query_path = call_genes_with_pyrodigal(genome, output, force=force)
 
-    logger.info(f"Uniform query protein FASTA saved in: {query_path}")
+            # always keep modified query, only keep gff file if keep=True
+            gff_path = Path(query_path).with_name(
+                f"{Path(query_path).stem}_info.gff")
+            intermediate_results["genes_gff"] = gff_path
 
-    # collect marker-specific files
-    db_fastas = collect_db_fastas(db_path)
-    yaml_files = collect_yaml_files(db_path)
+        else:
+            raise ValueError("Either query or genome must be provided")
 
-    check_db_yaml_matching(
-        db_markers=set(db_fastas.keys()),
-        yaml_markers=set(yaml_files.keys())
-    )
+        results["query_path"] = query_path
 
-    # concatenate DB FASTAS
-    combined_db_path, db_metadata = concatenate_db_input(
-        db_fastas=db_fastas,
-        output=output,
-        force=force,
-    )
+        logger.info(f"Uniform query protein FASTA saved in: {query_path}")
 
-    # build the DIAMOND DB from combined DB FASTA
-    diamond_db = build(
-        seed_fasta=combined_db_path,
-        threads=1,
-        output=output,
-        force=force
-    )
+        # collect marker-specific files
+        db_fastas = collect_db_fastas(db_path)
+        yaml_files = collect_yaml_files(db_path)
 
-    # search query FASTA against the DIAMOND DB
-    hits_path, column_info_path = search(
-        db_path=diamond_db,
-        query_path=query_path,
-        threads=1,
-        output_dir=output,
-        sensitivity="fast",
-        force=force
-    )
+        check_db_yaml_matching(
+            db_markers=set(db_fastas.keys()),
+            yaml_markers=set(yaml_files.keys())
+        )
 
-    # calculate max scores for all query proteins
-    max_scores_path = max_score(
-        extracted=query_path,
-        output_dir=output,
-        matrix="BLOSUM45",
-        force=force
-    )
+        # concatenate DB FASTAS
+        combined_db_path, db_metadata = concatenate_db_input(
+            db_fastas=db_fastas,
+            output=output,
+            force=force,
+        )
+        intermediate_results["combined_db"] = combined_db_path
 
-    # calculate bsr for all hits
-    bsr_path = bsr(
-        blast_tab=hits_path,
-        max_scores_path=max_scores_path,
-        output_dir=output,
-        key_column=0,
-        column_info_path=column_info_path,
-        force=force
-    )
+        # build the DIAMOND DB from combined DB FASTA
+        diamond_db = build(
+            seed_fasta=combined_db_path,
+            threads=1,
+            output=output,
+            force=force
+        )
+        intermediate_results["diamond_db"] = f"{diamond_db}.dmnd"
 
-    # classify hits using yaml cutoffs
-    annotate_tsv = classification_output_new(
-        query_path=query_path,
-        bsr_path=bsr_path,
-        yaml_files=yaml_files,
-        db_metadata=db_metadata,
-        output=output,
-        force=force
-    )
+        # search query FASTA against the DIAMOND DB
+        hits_path, column_info_path = search(
+            db_path=diamond_db,
+            query_path=query_path,
+            threads=1,
+            output_dir=output,
+            sensitivity="fast",
+            force=force
+        )
+        intermediate_results["hits"] = hits_path
+        intermediate_results["column_info"] = column_info_path
 
-    annotate_plot_paths = annotate_plot_by_marker(
-        bsr_path=bsr_path,
-        yaml_files=yaml_files,
-        db_metadata=db_metadata,
-        output=output,
-        force=force
-    )
+        # calculate max scores for all query proteins
+        max_scores_path = max_score(
+            extracted=query_path,
+            output_dir=output,
+            matrix="BLOSUM45",
+            force=force
+        )
+        intermediate_results["max_scores"] = max_scores_path
 
-    logger.info("Annotate workflow completed")
+        # calculate bsr for all hits
+        bsr_path = bsr(
+            blast_tab=hits_path,
+            max_scores_path=max_scores_path,
+            output_dir=output,
+            key_column=0,
+            column_info_path=column_info_path,
+            force=force
+        )
+        intermediate_results["bsr"] = bsr_path
 
-    return annotate_tsv
+        # classify hits using yaml cutoffs
+        annotate_tsv = classification_output(
+            query_path=query_path,
+            bsr_path=bsr_path,
+            yaml_files=yaml_files,
+            db_metadata=db_metadata,
+            output=output,
+            force=force
+        )
+        results["annotate.tsv"] = annotate_tsv
+
+        annotate_plot_paths = annotate_plot_by_marker(
+            bsr_path=bsr_path,
+            yaml_files=yaml_files,
+            db_metadata=db_metadata,
+            output=output,
+            force=force
+        )
+        results["annotate_plots"] = annotate_plot_paths
+
+        logger.info("Annotate workflow completed")
+
+        return annotate_tsv
+
+    finally:
+        if not keep and intermediate_results:
+            logger.info("Cleaning up intermediate files")
+
+            for key, filepath in intermediate_results.items():
+                try:
+                    file_path = Path(filepath)
+
+                    if file_path.exists():
+                        file_path.unlink()
+                        logger.debug(f"Deleted {file_path}")
+
+                except Exception as e:
+                    logger.warning(f"Failed to delete {filepath}: {e}")
