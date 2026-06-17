@@ -303,6 +303,7 @@ def main():
                 iterations=args.iterations,
                 exaggeration=args.exaggeration,
                 threads=args.threads,
+                n_components=args.n_components,
                 force=args.force,
             )
 
@@ -329,6 +330,7 @@ def main():
                 perplexity=args.perplexity,
                 iterations=args.iterations,
                 exaggeration=args.exaggeration,
+                n_components=args.n_components,
                 metadata=args.metadata,
                 keep=args.keep,
                 force=args.force,

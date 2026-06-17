@@ -4,8 +4,10 @@ from .database import BASE_COLUMNS, ANNOTATION_COLUMNS, TAXONOMY_COLUMNS, CULTUR
 import logging
 import numpy as np
 import pandas as pd
+import scipy.sparse
 import openTSNE
 from sklearn.cluster import DBSCAN
+from sklearn.decomposition import TruncatedSVD
 import matplotlib.pyplot as plt
 import sqlite3
 import json
@@ -79,8 +81,8 @@ def build_alignment_matrix_split(align_file: str,
     # delete ID sets for efficient memory handling
     del queries_set, targets_set
 
-    # set up empty numpy matrix with correct dimensions
-    matrix = np.zeros((len(queries), len(targets)), dtype=np.float32)
+    # set up empty sparse matrix with correct dimensions
+    matrix = scipy.sparse.lil_matrix((len(queries), len(targets)), dtype=np.float32)
 
     # =======================================================
     # Second pass over alignment file: Matrix construction
@@ -114,17 +116,21 @@ def build_alignment_matrix_split(align_file: str,
                 logger.warning(f"Line {line_num}: Unexpected error. Skipping. ({e})")
                 continue
 
+    matrix = matrix.tocsr()
+
     # ===============================
     # Determine matrix statistics
     # ===============================
-    non_zero_elements = np.count_nonzero(matrix)
+    non_zero_elements = matrix.nnz
     matrix_elements = len(queries) * len(targets)
     sparsity = (matrix_elements - non_zero_elements) / matrix_elements * 100
+    score_min = float(matrix.data.min()) if matrix.nnz > 0 else 0.0
+    score_max = float(matrix.data.max()) if matrix.nnz > 0 else 0.0
 
     logger.info(f"Matrix construction completed")
     logger.info(f"Non-zero elements: {non_zero_elements:,} ({100 - sparsity:.2f}% filled)")
     logger.info(f"Matrix sparsity: {sparsity:.2f}%")
-    logger.info(f"Score range: {matrix.min():.2f} - {matrix.max():.2f}")
+    logger.info(f"Score range: {score_min:.2f} - {score_max:.2f}")
 
     dataset_name = determine_dataset_name(align_file, '.', 0)
 
@@ -132,22 +138,22 @@ def build_alignment_matrix_split(align_file: str,
     # Matrix and matrix metadate output to files
     # =============================================
     if output:
-        matrix_file = ensure_path(output, f"{dataset_name}_matrix.npy", force=force)
+        matrix_file = ensure_path(output, f"{dataset_name}_matrix.npz", force=force)
         metadata_file = ensure_path(output, f"{dataset_name}_matrix_metadata.json", force=force)
     else:
-        matrix_file = ensure_path(target=f"{dataset_name}_matrix.npy", force=force)
+        matrix_file = ensure_path(target=f"{dataset_name}_matrix.npz", force=force)
         metadata_file = ensure_path(target=f"{dataset_name}_matrix_metadata.json", force=force)
 
-    np.save(matrix_file, matrix)
+    scipy.sparse.save_npz(matrix_file, matrix)
     logger.info(f"Matrix saved to: {matrix_file}")
 
     metadata = {
         "queries": queries,
         "targets": targets,
-        "matrix_shape": matrix.shape,
+        "matrix_shape": list(matrix.shape),
         "non_zero_elements": int(non_zero_elements),
         "sparsity": float(sparsity),
-        "score_range": [float(matrix.min()), float(matrix.max())]
+        "score_range": [score_min, score_max]
     }
 
     with open(metadata_file, 'w') as file:
@@ -170,7 +176,10 @@ def load_alignment_matrix_from_file(matrix_path: str,
         queries (list): List of query protein IDs
         targets (list): List of reference protein IDs
     """
-    matrix = np.load(matrix_path)
+    if matrix_path.endswith('.npy'):
+        matrix = np.load(matrix_path)
+    else:
+        matrix = scipy.sparse.load_npz(matrix_path)
 
     with open(metadata_path, "r") as file:
         metadata = json.load(file)
@@ -248,7 +257,7 @@ def create_embedding_dataframe(embedding: np.ndarray,
     return df
 
 
-def tsne_embedding(matrix: np.ndarray,
+def tsne_embedding(matrix,
                    queries: list,
                    output: str,
                    basename: str,
@@ -256,6 +265,7 @@ def tsne_embedding(matrix: np.ndarray,
                    iterations: int = 500,
                    exaggeration: int = 6,
                    threads: int = 1,
+                   n_components: int = 50,
                    force: bool = False
                    ):
     """
@@ -283,6 +293,16 @@ def tsne_embedding(matrix: np.ndarray,
     logger.info(f"Matrix shape: {matrix.shape}")
     logger.info(f"Perplexity: {perplexity}, Iterations: {iterations}, Exaggeration: {exaggeration}")
     logger.info(f"Using {threads} threads")
+
+    # ========================
+    # Dimensionality reduction
+    # ========================
+
+    if scipy.sparse.issparse(matrix):
+        logger.info(f"Reducing sparse matrix from {matrix.shape[1]} to {n_components} dimensions with TruncatedSVD")
+        svd = TruncatedSVD(n_components=n_components, random_state=42)
+        matrix = svd.fit_transform(matrix)
+        logger.info(f"Explained variance ratio: {svd.explained_variance_ratio_.sum():.3f}")
 
     # ========================
     # Multiscale affinites
@@ -784,6 +804,7 @@ def cluster(matrix_path: str,
          iterations: int = 500,
          exaggeration: int = 6,
          threads: int = 1,
+         n_components: int = 50,
          force: bool = False,
          ):
     """
@@ -824,6 +845,7 @@ def cluster(matrix_path: str,
                               iterations=iterations,
                               exaggeration=exaggeration,
                               threads=threads,
+                              n_components=n_components,
                               force=force,
                               )
     logger.info("=== t-SNE Embedding Completed ===")
@@ -879,6 +901,7 @@ def casm(fasta: str,
          perplexity: int = 50,
          iterations: int = 500,
          exaggeration: int = 6,
+         n_components: int = 50,
          metadata: str = None,
          keep: bool = False,
          svg: bool = False,
@@ -944,6 +967,7 @@ def casm(fasta: str,
         iterations=iterations,
         exaggeration=exaggeration,
         threads=threads,
+        n_components=n_components,
         force=force
     )
     results['early_filename'] = early_filename
