@@ -135,25 +135,6 @@ When adding a new argument that will appear in more than one subcommand, add a h
 function. When an argument is specific to a single subcommand, it is acceptable to define
 it inline in the subparser block.
 
-### Flag letter conventions
-
-Commonly reused single-letter flags:
-
-| Flag | Argument |
-|------|----------|
-| `-d` | `--db_path` or `--diamond_db` |
-| `-f` | `--fasta` |
-| `-i` | `--id_list` or `--iterations` |
-| `-m` | `--matrix` or `--matched` |
-| `-n` | `--threads` |
-| `-o` | `--output` |
-| `-s` | `--seed`, `--subset`, `--show`, or `--score_column` |
-| `-t` | `--threads` (legacy); now consolidated to `-n` |
-
-Note that the same letter is sometimes reused with different meanings in different
-subcommands (argparse scopes flags per subparser). Be aware of this when adding new
-arguments and avoid collisions within a single subparser.
-
 ### Subparser structure
 
 Use the three context-manager helpers defined at the top of `cli.py`:
