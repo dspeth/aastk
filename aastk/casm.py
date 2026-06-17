@@ -81,31 +81,26 @@ def build_alignment_matrix_split(align_file: str,
     # delete ID sets for efficient memory handling
     del queries_set, targets_set
 
-    # set up empty sparse matrix with correct dimensions
-    matrix = scipy.sparse.lil_matrix((len(queries), len(targets)), dtype=np.float32)
-
     # =======================================================
     # Second pass over alignment file: Matrix construction
     # =======================================================
+    rows, cols, data = [], [], []
+
     with open(align_file, 'r') as f:
         for line_num, line in enumerate(f, 1):
             line = line.rstrip('\n\r')
             if not line:
                 continue
 
-            # split tab separated line to get query ID, target ID and score
             try:
                 parts = line.split("\t")
                 if len(parts) != 3:
                     continue
                 query, target, score_str = parts
 
-                score = float(score_str)
-                i = query_to_idx[query]
-                j = target_to_idx[target]
-
-                # assign alignment score to correct matrix cell
-                matrix[i, j] = score
+                rows.append(query_to_idx[query])
+                cols.append(target_to_idx[target])
+                data.append(float(score_str))
             except ValueError as e:
                 logger.warning(f"Line {line_num}: Invalid score '{score_str}'. Skipping. ({e})")
                 continue
@@ -116,7 +111,10 @@ def build_alignment_matrix_split(align_file: str,
                 logger.warning(f"Line {line_num}: Unexpected error. Skipping. ({e})")
                 continue
 
-    matrix = matrix.tocsr()
+    matrix = scipy.sparse.csr_matrix(
+        (np.array(data, dtype=np.float32), (rows, cols)),
+        shape=(len(queries), len(targets))
+    )
 
     # ===============================
     # Determine matrix statistics
