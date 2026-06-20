@@ -339,7 +339,7 @@ def annotate_plot_helper(
         vmax=100,
     )
 
-    ax.set_title(f"Annotate classification plot for {marker} ({gene_family})")
+    ax.set_title(f"Annotate classification plot for {marker}")
     ax.set_xlabel("Calculated maximum score")
     ax.set_ylabel("Alignment score to seed set")
     ax.set_xlim(xlim)
@@ -409,7 +409,7 @@ def collect_db_fastas(db_path: str):
     path = Path(db_path)
 
     if path.is_file():
-        raise ValueError("Database path is a singular file. Should be directory.")
+        raise ValueError("Database path is a singular file (should be directory). Type \"aastk annotate --help\" for further information.")
 
     if not path.is_dir():
         raise ValueError(f"Database path does not exist: {db_path}")
@@ -455,7 +455,7 @@ def collect_yaml_files(db_path: str):
     path = Path(db_path)
 
     if path.is_file():
-        raise ValueError("Database path is a singular file. Should be directory.")
+        raise ValueError("Database path is a singular file (should be directory). Type \"aastk annotate --help\" for further information.")
 
     if not path.is_dir():
         raise ValueError(f"Database path does not exist: {db_path}")
@@ -517,19 +517,19 @@ def concatenate_db_input(db_fastas: dict[str, str], output: str, force: bool = F
     with open(output_path, "w") as out:
         for marker, fasta_path in sorted(db_fastas.items()):
             for header, sequence in stream_fasta(fasta_path):
-                db_id = clean_fasta_header(header)
+                db_seq_id = clean_fasta_header(header)
 
-                out.write(f">{db_id}\n")
+                out.write(f">{db_seq_id}\n")
                 out.write(f"{sequence}\n")
 
                 rows.append({
-                    "db_ID": db_id,
+                    "db_seq_ID": db_seq_id,
                     "marker": marker
                 })
 
     db_metadata = pd.DataFrame(rows)
 
-    duplicate_ids = db_metadata[db_metadata["db_ID"].duplicated(keep=False)]
+    duplicate_ids = db_metadata[db_metadata["db_seq_ID"].duplicated(keep=False)]
 
     if not duplicate_ids.empty:
         raise ValueError(f"Duplicate IDs found in database: {duplicate_ids}")
@@ -573,6 +573,8 @@ def classification_output(
         result_df["annotation"] = pd.NA
         result_df["classification"] = pd.NA
 
+        logger.warning("No hits were found, writing empty file")
+
     else:
         for column in required_bsr_columns:
             if column not in bsr_df.columns:
@@ -580,12 +582,12 @@ def classification_output(
 
         bsr_df = bsr_df.rename(columns={
             "qseqid": "prot_ID",
-            "sseqid": "db_ID",
+            "sseqid": "db_seq_ID",
         })
 
-        db_marker_df = db_metadata[["db_ID", "marker"]].drop_duplicates()
+        db_marker_df = db_metadata[["db_seq_ID", "marker"]].drop_duplicates()
 
-        bsr_df = bsr_df.merge(db_marker_df, on="db_ID", how="left")
+        bsr_df = bsr_df.merge(db_marker_df, on="db_seq_ID", how="left")
 
         missing_marker = bsr_df[bsr_df["marker"].isna()]
 
@@ -644,13 +646,18 @@ def classification_output(
             bsr_df["classification"] != "below_cutoff"
         ].copy()
 
+        marker_counts_per_prot_id = accepted_hits_df.groupby("prot_ID")["marker"].nunique()#
+
+        for prot_id in marker_counts_per_prot_id[marker_counts_per_prot_id > 1].index:
+            logger.warning(f"More than one marker hit found for prot_ID {prot_id}")
+
         result_df = query_df.merge(
             accepted_hits_df,
             on="prot_ID",
             how="left"
         )
 
-    first_columns = [
+    column_order = [
         "prot_ID",
         "sequence_length",
         "annotation",
@@ -660,21 +667,21 @@ def classification_output(
         "COG",
         "KEGG",
         "PFAM",
+        "db_seq_ID",
+        "pident",
+        "qlen",
+        "score",
+        "max_score",
+        "BSR",
     ]
 
-    additional_columns = []
-
-    for column in result_df.columns:
-        if column not in first_columns and column != "marker":
-            additional_columns.append(column)
-
-    result_df = result_df[first_columns + additional_columns]
+    result_df = result_df[column_order]
 
     output_path = ensure_path(output, "annotate.tsv", force=force)
 
     result_df.to_csv(output_path, sep="\t", index=False)
 
-    logger.info(f"Classification complete! Hits saved to: {output_path}")
+    logger.info(f"Classification complete! Results saved to: {output_path}")
 
     return output_path
 
@@ -715,12 +722,12 @@ def annotate_plot_by_marker(
 
     bsr_df = bsr_df.rename(columns={
         "qseqid": "prot_ID",
-        "sseqid": "db_ID"
+        "sseqid": "db_seq_ID"
     })
 
-    db_marker_df = db_metadata[["db_ID", "marker"]].drop_duplicates()
+    db_marker_df = db_metadata[["db_seq_ID", "marker"]].drop_duplicates()
 
-    bsr_df = bsr_df.merge(db_marker_df, on="db_ID", how="left")
+    bsr_df = bsr_df.merge(db_marker_df, on="db_seq_ID", how="left")
 
     missing_marker = bsr_df[bsr_df["marker"].isna()]
 
