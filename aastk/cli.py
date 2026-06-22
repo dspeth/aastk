@@ -234,6 +234,10 @@ def __params(group, required=False):
     group.add_argument('--params', action='store_true', required=required,
                        help='Select subset of matched sequences based on command line parameters')
 
+def __n_svd_components(group, required=False):
+    group.add_argument('--n_svd_components', type=int, default=50, required=required,
+                       help='Number of TruncatedSVD dimensions used to pre-reduce sparse matrices before t-SNE (default: 50)')
+
 def __perplexity(group, required=False):
     group.add_argument('-p', '--perplexity', type=int, default=50, required=required,
                        help='Perplexity value for tSNE embedding (default: 50)')
@@ -278,6 +282,10 @@ def __size(group, required=False):
 def __sql(group, required=False):
     group.add_argument('--sql', action='store_true', required=required,
                        help='Retrieve sequences from AASTK SQLite database')
+
+def __sparse_threshold(group, required=False):
+    group.add_argument('--sparse_threshold', type=float, default=0.9, required=required,
+                       help='Sparsity fraction [0-1] above which sparse matrix format is used (default: 0.9)')
 
 def __subset(group, required=False):
     group.add_argument('-s', '--subset', type=str, required=required,
@@ -570,6 +578,7 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __threads(grp)
+            __sparse_threshold(grp)
             __force(grp)
 
     with subparser(sub_parsers, 'cluster', 'Run tSNE embedding and DBSCAN clustering on input matrix and matrix metadata') as parser:
@@ -583,6 +592,7 @@ def get_main_parser():
             __exaggeration(grp)
             __n_components(grp)
             __threads(grp)
+            __n_svd_components(grp)
             __force(grp)
 
 
@@ -612,6 +622,8 @@ def get_main_parser():
             __exaggeration(grp)
             __n_components(grp)
             __metadata(grp)
+            __sparse_threshold(grp)
+            __n_svd_components(grp)
             __force(grp)
             __keep(grp)
             __show(grp)
