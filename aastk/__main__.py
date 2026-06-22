@@ -331,7 +331,6 @@ def main():
                 perplexity=args.perplexity,
                 iterations=args.iterations,
                 exaggeration=args.exaggeration,
-                n_components=args.n_components,
                 metadata=args.metadata,
                 sparse_threshold=args.sparse_threshold,
                 n_svd_components=args.n_svd_components,

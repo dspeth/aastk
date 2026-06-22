@@ -218,9 +218,6 @@ def __metadata_matrix(group, required=False):
     group.add_argument('--metadata_matrix', type=str, required=required,
                        help='Path to alignment matrix metadata file')
 
-def __n_components(group, required=False):
-    group.add_argument('--n_components', type=int, default=50, required=required,
-                       help='Number of SVD components for dimensionality reduction before t-SNE (default: 50)')
 
 def __no_cluster(group, required=False):
     group.add_argument('-n', '--no_cluster', type=int, required=required,
@@ -590,7 +587,6 @@ def get_main_parser():
             __perplexity(grp)
             __iterations(grp)
             __exaggeration(grp)
-            __n_components(grp)
             __threads(grp)
             __n_svd_components(grp)
             __force(grp)
@@ -620,7 +616,6 @@ def get_main_parser():
             __perplexity(grp)
             __iterations(grp)
             __exaggeration(grp)
-            __n_components(grp)
             __metadata(grp)
             __sparse_threshold(grp)
             __n_svd_components(grp)
