@@ -291,7 +291,6 @@ def main():
                 subset=args.subset,
                 subset_size=args.subset_size,
                 threads=args.threads,
-                sparse_threshold=args.sparse_threshold,
                 force=args.force
             )
 
@@ -332,7 +331,6 @@ def main():
                 iterations=args.iterations,
                 exaggeration=args.exaggeration,
                 metadata=args.metadata,
-                sparse_threshold=args.sparse_threshold,
                 n_svd_components=args.n_svd_components,
                 keep=args.keep,
                 force=args.force,

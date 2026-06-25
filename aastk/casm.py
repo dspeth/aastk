@@ -20,25 +20,22 @@ CASM_BLAST_OUTPUT_COLUMNS = ["qseqid", "sseqid", "score"]
 
 def build_alignment_matrix_split(align_file: str,
                                  output: str = None,
-                                 sparse_threshold: float = 0.9,
                                  force: bool = False):
     """
     Builds alignment matrix from input Blast Tabular Output to be used in tSNE embedding.
 
-    When estimated sparsity exceeds sparse_threshold the matrix is stored as a
-    scipy CSR sparse matrix (.npz); otherwise a dense numpy array (.npy) is used.
+    The matrix is always stored as a scipy CSR sparse matrix (.npz).
 
     Args:
         align_file (str): Path to Blast Tabular Output
         output (str): Path to desired output directory
-        sparse_threshold (float): Sparsity fraction [0, 1] above which sparse format is used
         force (bool): If set, existing files will be overwritten
 
     Returns:
-        matrix: Alignment matrix (dense ndarray or scipy CSR)
+        matrix: Alignment matrix (scipy CSR sparse matrix)
         queries (list): List of query protein IDs
         targets (list): List of reference protein IDs
-        matrix_file (str): Path to matrix file (.npy or .npz)
+        matrix_file (str): Path to matrix file (.npz)
         metadata_file (str): Path to .json file containing matrix metadata
     """
     logger.info(f"Building alignment matrix from: {align_file} (split parsing)")
@@ -82,33 +79,19 @@ def build_alignment_matrix_split(align_file: str,
 
     del queries_set, targets_set
 
-    # ================================================================
-    # Decide storage format based on estimated sparsity
-    # line_count upper-bounds the number of non-zero entries (duplicate
-    # query-target pairs overwrite, so actual nnz <= line_count).
-    # ================================================================
     matrix_elements = len(queries) * len(targets)
-    estimated_sparsity = 1.0 - line_count / matrix_elements
-    use_sparse = estimated_sparsity >= sparse_threshold
-    logger.info(
-        f"Estimated sparsity: {estimated_sparsity:.1%} "
-        f"(threshold: {sparse_threshold:.1%}) → {'sparse' if use_sparse else 'dense'} format"
-    )
 
     # =======================================================
     # Second pass over alignment file: Matrix construction
     # =======================================================
-    if use_sparse:
-        # Pre-allocate numpy arrays sized to line_count (upper bound on nnz).
-        # This avoids the per-element Python object overhead of list.append(),
-        # keeping COO memory at ~12 bytes/entry (int32 + int32 + float32)
-        # rather than ~80+ bytes/entry for boxed Python objects in a list.
-        coo_rows = np.empty(line_count, dtype=np.int32)
-        coo_cols = np.empty(line_count, dtype=np.int32)
-        coo_data = np.empty(line_count, dtype=np.float32)
-        nnz = 0
-    else:
-        matrix = np.zeros((len(queries), len(targets)), dtype=np.float32)
+    # Pre-allocate numpy arrays sized to line_count (upper bound on nnz).
+    # This avoids the per-element Python object overhead of list.append(),
+    # keeping COO memory at ~12 bytes/entry (int32 + int32 + float32)
+    # rather than ~80+ bytes/entry for boxed Python objects in a list.
+    coo_rows = np.empty(line_count, dtype=np.int64)
+    coo_cols = np.empty(line_count, dtype=np.int64)
+    coo_data = np.empty(line_count, dtype=np.float32)
+    nnz = 0
 
     with open(align_file, 'r') as f:
         for line_num, line in enumerate(f, 1):
@@ -126,13 +109,10 @@ def build_alignment_matrix_split(align_file: str,
                 i = query_to_idx[query]
                 j = target_to_idx[target]
 
-                if use_sparse:
-                    coo_rows[nnz] = i
-                    coo_cols[nnz] = j
-                    coo_data[nnz] = score
-                    nnz += 1
-                else:
-                    matrix[i, j] = score
+                coo_rows[nnz] = i
+                coo_cols[nnz] = j
+                coo_data[nnz] = score
+                nnz += 1
             except ValueError as e:
                 logger.warning(f"Line {line_num}: Invalid score '{score_str}'. Skipping. ({e})")
                 continue
@@ -143,25 +123,19 @@ def build_alignment_matrix_split(align_file: str,
                 logger.warning(f"Line {line_num}: Unexpected error. Skipping. ({e})")
                 continue
 
-    if use_sparse:
-        matrix = scipy.sparse.csr_matrix(
-            (coo_data[:nnz], (coo_rows[:nnz], coo_cols[:nnz])),
-            shape=(len(queries), len(targets)),
-            dtype=np.float32
-        )
-        del coo_rows, coo_cols, coo_data
+    matrix = scipy.sparse.csr_matrix(
+        (coo_data[:nnz], (coo_rows[:nnz], coo_cols[:nnz])),
+        shape=(len(queries), len(targets)),
+        dtype=np.float32
+    )
+    del coo_rows, coo_cols, coo_data
 
     # ===============================
     # Determine matrix statistics
     # ===============================
-    if use_sparse:
-        non_zero_elements = matrix.nnz
-        score_min = float(matrix.data.min()) if matrix.nnz > 0 else 0.0
-        score_max = float(matrix.data.max()) if matrix.nnz > 0 else 0.0
-    else:
-        non_zero_elements = int(np.count_nonzero(matrix))
-        score_min = float(matrix.min())
-        score_max = float(matrix.max())
+    non_zero_elements = matrix.nnz
+    score_min = float(matrix.data.min()) if matrix.nnz > 0 else 0.0
+    score_max = float(matrix.data.max()) if matrix.nnz > 0 else 0.0
 
 
     sparsity = (matrix_elements - non_zero_elements) / matrix_elements * 100
@@ -176,18 +150,14 @@ def build_alignment_matrix_split(align_file: str,
     # =============================================
     # Matrix and matrix metadata output to files
     # =============================================
-    ext = "npz" if use_sparse else "npy"
     if output:
-        matrix_file = ensure_path(output, f"{dataset_name}_matrix.{ext}", force=force)
+        matrix_file = ensure_path(output, f"{dataset_name}_matrix.npz", force=force)
         metadata_file = ensure_path(output, f"{dataset_name}_matrix_metadata.json", force=force)
     else:
-        matrix_file = ensure_path(target=f"{dataset_name}_matrix.{ext}", force=force)
+        matrix_file = ensure_path(target=f"{dataset_name}_matrix.npz", force=force)
         metadata_file = ensure_path(target=f"{dataset_name}_matrix_metadata.json", force=force)
 
-    if use_sparse:
-        scipy.sparse.save_npz(matrix_file, matrix)
-    else:
-        np.save(matrix_file, matrix)
+    scipy.sparse.save_npz(matrix_file, matrix)
     logger.info(f"Matrix saved to: {matrix_file}")
 
     metadata = {
@@ -196,7 +166,7 @@ def build_alignment_matrix_split(align_file: str,
         "matrix_shape": list(matrix.shape),
         "non_zero_elements": non_zero_elements,
         "sparsity": float(sparsity),
-        "sparse": use_sparse,
+        "sparse": True,
         "score_range": [score_min, score_max]
     }
 
@@ -803,7 +773,6 @@ def matrix(fasta: str,
           subset: str,
           subset_size: int,
           threads: int,
-          sparse_threshold: float = 0.9,
           force: bool = False
           ):
     """
@@ -819,11 +788,10 @@ def matrix(fasta: str,
         subset (str): Path to subset FASTA file (if None, creates random subset)
         subset_size (int): Number of sequences for subset (ignored if subset provided)
         threads (int): Number of threads for DIAMOND alignment
-        sparse_threshold (float): Sparsity fraction above which sparse format is used
         force (bool): Overwrite existing files if True
 
     Returns:
-        matrix_file (str): Path to matrix file (.npy or .npz)
+        matrix_file (str): Path to matrix file (.npz)
         metadata_file (str): Path to .json file containing matrix metadata
     """
     logger.info("=== Starting Matrix Construction ===")
@@ -843,7 +811,7 @@ def matrix(fasta: str,
 
     logger.info("=== Phase 2: Matrix Construction ===")
     _, _, _, matrix_file, metadata_file = build_alignment_matrix_split(
-        align_output, output, sparse_threshold=sparse_threshold, force=force
+        align_output, output, force=force
     )
 
     return matrix_file, metadata_file
@@ -955,7 +923,6 @@ def casm(fasta: str,
          iterations: int = 500,
          exaggeration: int = 6,
          metadata: str = None,
-         sparse_threshold: float = 0.9,
          n_svd_components: int = 50,
          keep: bool = False,
          svg: bool = False,
@@ -976,8 +943,7 @@ def casm(fasta: str,
         iterations (int): Number of optimization iterations
         exaggeration (int): Early exaggeration parameter
         metadata (str): Path to protein metadata file
-        sparse_threshold (float): Sparsity fraction above which sparse matrix format is used
-        n_svd_components (int): SVD dimensions used when matrix is sparse
+        n_svd_components (int): SVD dimensions used for pre-reduction before t-SNE
         keep (bool): Keep intermediate files
         svg (bool): Generate plot in SVG format
         force (bool): Force overwrite existing files
@@ -1008,7 +974,6 @@ def casm(fasta: str,
                                         subset=subset,
                                         subset_size=subset_size,
                                         threads=threads,
-                                        sparse_threshold=sparse_threshold,
                                         force=force
                                         )
     intermediate_results['matrix_file'] = matrix_file
