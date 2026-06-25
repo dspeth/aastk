@@ -252,7 +252,7 @@ def merge_seed_databases(db_files: list,
 # ================
 # search function
 # ================
-def search(seed_db_out_path: str,
+def rasr_search(seed_db_out_path: str,
             query_fastq: str,
             threads: int,
             output_dir: str,
@@ -261,8 +261,9 @@ def search(seed_db_out_path: str,
             max_target_seqs: int,
             max_retries: int, 
             timeout: int,
-            block: int = 6,
-            chunk: int = 2,
+            block: int = 2,
+            chunk: int = 4,
+            query_name: str = None,
             force=False):
     """
     Searches a DIAMOND reference database for homologous sequences.
@@ -280,6 +281,7 @@ def search(seed_db_out_path: str,
         force (bool): Whether to overwrite existing files
         max_retries (int): Maximum number of retries for DIAMOND search in case of failure or timeout
         timeout (int): Timeout for DIAMOND search in seconds
+        query_name (str): Name of the query file
 
     Returns:
         blast_out_path: Path to tabular BLAST output file.
@@ -289,20 +291,28 @@ def search(seed_db_out_path: str,
     check_dependency_availability("diamond")
 
     # automatically name files
-    db_filename = determine_dataset_name(seed_db_out_path, '.', 0, '_db')
+    if 'merged' in seed_db_out_path:
+        db_filename = determine_dataset_name(seed_db_out_path, '.', 0, 'seed_db')
+    else:
+        db_filename = determine_dataset_name(seed_db_out_path, '.', 0, '_db')
+
+    if query_name:
+        prefix = f"{db_filename}_{query_name}"
+    else:
+        prefix = db_filename
 
     # ===============================
     # Output file path setup
     # ===============================
-    output_path = ensure_path(output_dir, f"{db_filename}_hits.tsv", force=force)
-    column_info_path = ensure_path(output_dir, f"{db_filename}_columns.json", force=force)
+    output_path = ensure_path(output_dir, f"{prefix}_hits.tsv", force=force)
+    column_info_path = ensure_path(output_dir, f"{prefix}_columns.json", force=force)
 
     # =======================================================
     # DIAMOND blastp output file column configuration
     # =======================================================
     # define the output columns of interest
     columns = ["qtitle", "sseqid", "pident", "qlen", "slen", "length", "mismatch", "gapopen", "qstart", "qend",
-               "sstart", "send", "evalue", "bitscore", "score", "qseqid"]
+               "sstart", "send", "evalue", "bitscore", "score"]
 
     # save column information to json file as to not hardcode the score column in the bsr function
     column_info = {col: idx for idx, col in enumerate(columns)}
@@ -315,7 +325,7 @@ def search(seed_db_out_path: str,
     logger.info(
         f"[SEARCH] db={seed_db_out_path} query={query_fastq} out={output_path} col_info={column_info_path} "
         f"sensitivity={sensitivity if sensitivity else 'default'} block={block} chunk={chunk} "
-        f"min_score={bit_score_cutoff} max_target_seqs={max_target_seqs} algo=0"
+        f"min_score={bit_score_cutoff} max_target_seqs={max_target_seqs} algo=0 timeout={timeout}s max_retries={max_retries}"
     )
 
     # ====================================
@@ -337,8 +347,8 @@ def search(seed_db_out_path: str,
            "--algo", str(0)]
 
     if sensitivity:
-        cmd.extend(["--sensitivity", sensitivity])
-
+       cmd.append(f"--{sensitivity}")
+    
     # =======================================
     # Execute DIAMOND blastx search
     # =======================================
@@ -364,7 +374,7 @@ def search(seed_db_out_path: str,
                     continue 
                 raise RuntimeError(
                     f"DIAMOND timed out after {max_retries} attempts "
-                    f"(timeout={timeout}s) — possible threading deadlock with --algo 0"
+                    f"(timeout={timeout}s) — possible threading deadlock..."
                 )
             
             if proc.returncode != 0:
@@ -434,7 +444,9 @@ def filter_best_hits_by_score(search_output_path: str,
     # ===========================
     # Write filtered results
     # ===========================
-    filtered_output_path = search_output_path + '_filtered.tsv'
+    base = Path(search_output_path).with_suffix('')
+    filtered_output_path = str(base) + '_filtered.tsv'
+
     with open(filtered_output_path, 'w') as f:
         for score, line in best_hits.values():
             f.write(line)
@@ -814,6 +826,8 @@ def rasr_plot(bsr_file: str,
                 output_dir: str,
                 bsr_cutoff: float = 0.9,
                 dbmin: int = 120,
+                dataset_name: str = None,
+                seed_name: str = None,
                 force: bool = False):
     """
     Creates a scatter plot of the BSR data flanked by histograms showing the distribution of datapoints alongside the axes.
@@ -823,6 +837,8 @@ def rasr_plot(bsr_file: str,
         output_dir (str): Directory to save output plot
         bsr_cutoff (float): Minimum BSR threshold to draw as reference line (default: 0.9)
         dbmin (int): Minimum database score threshold to draw as reference line (default: 120)
+        dataset_name (str): Query dataset name for the plot title (optional)
+        seed_name (str): Seed/gene name for the plot title (optional)
         force (bool): Whether to overwrite existing files
     """
     logger = logging.getLogger(__name__)
@@ -902,9 +918,12 @@ def rasr_plot(bsr_file: str,
             vmax=100
         )
         # Set labels and title
-        ax.set_xlabel('Alignment score to outgroup')
-        ax.set_ylabel('Alignment score to database')
-        ax.set_title(f'BSR Plot for {protein_name}')
+        ax.set_xlabel('Alignment score to outgroup database')
+        ax.set_ylabel('Alignment score to target gene database')
+        if dataset_name and seed_name:
+            ax.set_title(f'{dataset_name} — {seed_name}')
+        else:
+            ax.set_title(f'BSR Plot for {protein_name}')
         ax.set_xlim(xlim)
         ax.set_ylim(ylim)
         ax.set_aspect('equal', adjustable='box')
@@ -993,8 +1012,8 @@ def rasr_select(dbmin: float,
     selected_ids = selected_tsv['qtitle'].dropna().astype(str).unique()
 
     with open(id_file, 'w') as f:
-        for seq_id in selected_ids:
-            f.write(f"{seq_id}\n")
+        for qtitle in selected_ids:
+            f.write(f"{qtitle}\n")
 
     logger.info(f"[SELECT_DONE] total_ids={len(selected_ids)} ids_out={id_file}")
 
@@ -1172,7 +1191,7 @@ def rasr(query: str,
         # Track outputs per dataset and gene
         # ===================================
         all_hit_seqs_paths = []  # Accumulate all _matched.fastq.gz file paths across datasets and genes
-        dict_dataset_seqids = {}  # {dataset_name: [qtitles]} of matched queries
+        dict_dataset_qtitle = {}  # {dataset_name: [qtitles]} of matched queries
 
         # ==================================================
         # Step 1: Search each dataset against gene database
@@ -1191,7 +1210,7 @@ def rasr(query: str,
             # Search gene database
             # ======================
             logger.info(f"[SEARCH_1_START] dataset={dataset_name} query={query_file} db={db_path}")
-            search_output, column_info_path = search(db_path, str(query_file), threads, dataset_output_dir, sensitivity, bit_score_cutoff=bit_score_cutoff, max_target_seqs=1, max_retries=max_retries, timeout=timeout, block=block, chunk=chunk, force=force)
+            search_output, column_info_path = rasr_search(db_path, str(query_file), threads, dataset_output_dir, sensitivity, bit_score_cutoff=bit_score_cutoff, max_target_seqs=1, max_retries=max_retries, timeout=timeout, block=block, chunk=chunk, query_name=dataset_name, force=force)
             
             if search_output not in intermediate_results:
                 intermediate_results['search_output'] = []
@@ -1200,7 +1219,7 @@ def rasr(query: str,
             # =========================
             # Filter search results
             # =========================
-            search_output_filtered = filter_best_hits_by_score(search_output, aln_score_cutoff=aln_score_cutoff)
+            search_output_filtered = filter_best_hits_by_score(search_output, aln_score_cutoff=aln_score_cutoff, column_info_path=column_info_path)
 
             if 'search_output_filtered' not in intermediate_results:
                 intermediate_results['search_output_filtered'] = []
@@ -1213,7 +1232,7 @@ def rasr(query: str,
                 if db_seqid_dict is None:
                     raise RuntimeError("mapping dict database:[seqid] is required for splitting search outputs when seed_is_multi is True but was not initialized")
 
-                db_split_outputs = split_search_output_by_mapping(search_output, mapping_dict=db_seqid_dict, output_dir=dataset_output_dir, split_column=1, force=force)
+                db_split_outputs = split_search_output_by_mapping(search_output_filtered, mapping_dict=db_seqid_dict, output_dir=dataset_output_dir, split_column=1, force=force)
 
                 # Move split outputs to gene-specific subdirectories
                 for gene_name, split_output in list(db_split_outputs.items()):
@@ -1224,7 +1243,7 @@ def rasr(query: str,
 
             else:
                 single_gene_name = determine_dataset_name(str(db_files[0]), '.', 0, '')
-                db_split_outputs = {single_gene_name: search_output}
+                db_split_outputs = {single_gene_name: search_output_filtered}
 
 
             if 'db_split_outputs' not in intermediate_results:
@@ -1252,10 +1271,10 @@ def rasr(query: str,
                     'output_dir': gene_output_dir
                 }
                 
-                # Accumulate dataset matched queries for later outgroup splitting
-                if dataset_name not in dict_dataset_seqids:
-                    dict_dataset_seqids[dataset_name] = []
-                dict_dataset_seqids[dataset_name].extend(dataset_dict[dataset_name])
+                # Accumulate dataset matched queries for later outgroup splitting (dict_dataset_qtitle: {dataset_name: [qtitle1, qtitle2, ...]})
+                if dataset_name not in dict_dataset_qtitle:
+                    dict_dataset_qtitle[dataset_name] = []
+                dict_dataset_qtitle[dataset_name].extend(dataset_dict[dataset_name])
 
             logger.info(f"[DATASET_DONE] step=1 dataset={dataset_name} genes_processed={len(db_split_outputs)}")
 
@@ -1288,7 +1307,7 @@ def rasr(query: str,
         # =================== Search outgroup database with merged hits ===================
 
         logger.info(f"[SEARCH_2_START] query={merged_hits_file}")
-        og_search_output, og_column_info_path = search(outgrp_db, merged_hits_file, threads, output_dir, sensitivity, bit_score_cutoff=bit_score_cutoff, max_target_seqs=25, max_retries=max_retries, timeout=timeout, block=block, chunk=chunk, force=force)
+        og_search_output, og_column_info_path = rasr_search(outgrp_db, merged_hits_file, threads, output_dir, sensitivity, bit_score_cutoff=bit_score_cutoff, max_target_seqs=25, max_retries=max_retries, timeout=timeout, block=block, chunk=chunk, force=force)
 
         intermediate_results['og_search_output'] = og_search_output
         intermediate_results['og_column_info_path'] = og_column_info_path
@@ -1303,9 +1322,9 @@ def rasr(query: str,
 
         og_split_outputs = {}
         if plan['steps']['parse_search_2_per_query']:
-            logger.info(f"[SPLIT_2_START] datasets={len(dict_dataset_seqids)} split_column=15")
+            logger.info(f"[SPLIT_2_START] datasets={len(dict_dataset_qtitle)} split_column=0")
 
-            og_split_outputs = split_search_output_by_mapping(og_search_output_filtered, mapping_dict=dict_dataset_seqids, output_dir=output_dir, split_column=0, force=force)
+            og_split_outputs = split_search_output_by_mapping(og_search_output_filtered, mapping_dict=dict_dataset_qtitle, output_dir=output_dir, split_column=0, force=force)
 
             # Move split outputs to dataset-specific subdirectories
             for dataset_name, split_output in list(og_split_outputs.items()):
@@ -1317,7 +1336,7 @@ def rasr(query: str,
         else:
             logger.info("[SPLIT_2_SKIP] reason=single_dataset")
 
-            only_dataset = next(iter(dict_dataset_seqids.keys()))
+            only_dataset = next(iter(dict_dataset_qtitle.keys()))
             og_split_outputs[only_dataset] = og_search_output_filtered
 
         intermediate_results['og_split_outputs'] = og_split_outputs
@@ -1350,7 +1369,7 @@ def rasr(query: str,
                     raise RuntimeError(f"No BSR matches for dataset={dataset_name} gene={gene_name}")
 
                 # =================== Plot BSR values ===================
-                plot_output = rasr_plot(bsr_output, output_dir=gene_output_dir, bsr_cutoff=bsr_cutoff, dbmin=dbmin, force=force)
+                plot_output = rasr_plot(bsr_output, output_dir=gene_output_dir, bsr_cutoff=bsr_cutoff, dbmin=dbmin, dataset_name=dataset_name, seed_name=gene_name, force=force)
 
                 result_info['bsr_plot'] = plot_output
           
