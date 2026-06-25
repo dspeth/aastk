@@ -15,77 +15,137 @@ logger = logging.getLogger(__name__)
 
 
 # ===============================
-# aastk build_execution_plan FUNCTION
+# build_execution_plan FUNCTION
 # ===============================
 def build_execution_plan(query,
                          query_dir,
                          seed,
                          seed_dir):
     """
-    Builds an execution plan for the RASR pipeline based on the provided input combinations of query and seed files.
+    Builds an execution plan for the RASR pipeline and resolves the list of input files.
+
+    Validates paths, checks file types, and lists all input files.
 
     Args:
         query (str): Path to a single FASTQ file containing sequencing reads to search against the seed database.
         query_dir (str): Path to a directory containing multiple FASTQ files to search against the seed database.
         seed (str): Path to a single FASTA file containing reference sequences for the gene of interest to build the seed database.
         seed_dir (str): Path to a directory containing multiple FASTA files, each representing reference sequences for a different gene of interest to build the seed database.
-    
+
     Returns:
         execution_plan (dict): A dictionary containing the execution plan for the RASR pipeline,
-            including which steps to run based on the input combinations and the relevant information for each input type.
+            including which steps to run and query_info/seed_info dicts that carry a
+            "files" key with the resolved list of Path objects.
     """
-    # ===============================================================
-    # Build query_info and seed_info dictionaries for downstream use
-    # ===============================================================
-    # Build query_info{"path": Path, "mode": "single" or "batch", "label": "query", "expected_type": "fastq"}
-    if (query is None) == (query_dir is None):
-        raise ValueError("Invalid input combination. Use exactly one of --query or --query_dir.")
-    
+    # ======================================================================
+    # Resolve query input: validate path and collect files with type check
+    # ======================================================================
+    # --query
     if query is not None:
         query_path = Path(query)
+
+        # Validate that the query path exists and is a file
         if not query_path.exists():
             raise FileNotFoundError(f"Query file does not exist: {query}")
         if not query_path.is_file():
             raise ValueError(f"Query path is not a file: {query}. --query expects a path to a single FASTQ file.")
 
-        query_info = {"path": query_path, "mode": "single", "label": "query", "expected_type": "fastq"}
+        # Validate that the query file is of type FASTQ
+        file_type = determine_file_type(query_path)
+        if file_type != "fastq":
+            raise ValueError(f"Query input file has invalid type: {query_path}. Expected a FASTQ file, got {file_type}.")
 
+        # If all checks pass, create a list with the single query file
+        query_files = [query_path]
+        query_info = {"path": query_path, "mode": "single", "label": "query", "expected_type": "fastq", "files": query_files}
+
+    # --query_dir
     else:
         query_path = Path(query_dir)
+
+        # Validate that the query directory exists and is a directory
         if not query_path.exists():
             raise FileNotFoundError(f"Query directory does not exist: {query_dir}")
         if not query_path.is_dir():
             raise ValueError(f"Query path is not a directory: {query_dir}. --query_dir expects a path to a directory containing FASTQ files.")
 
-        query_info = {"path": query_path, "mode": "batch", "label": "query", "expected_type": "fastq"}
+        # Iterate through the directory and collect all FASTQ files, skipping non-FASTQ files
+        query_files = []
+        for element in sorted(query_path.iterdir()):
+            if not element.is_file():
+                continue
+            file_type = determine_file_type(element)
+            if file_type == "fastq":
+                query_files.append(element)
+            else:
+                logger.warning(f"Skipping {element}: not a FASTQ file (detected type: {file_type}).")
+        
+        # If no FASTQ files were found, raise an error
+        if not query_files:
+            raise ValueError(f"No FASTQ files found in query directory: {query_dir}")
 
-    # Build seed_info{"path": Path, "mode": "single" or "batch", "label": "seed", "expected_type": "fasta"}
-    if (seed is None) == (seed_dir is None):
-        raise ValueError("Invalid input combination. Use exactly one of --seed or --seed_dir.")
-    
+        query_info = {"path": query_path, "mode": "batch", "label": "query", "expected_type": "fastq", "files": query_files}
+
+    logger.info(f"[QUERY_INPUT] mode={query_info['mode']} files={len(query_files)} path={query_path}")
+
+    if query_info["mode"] == "batch" and len(query_files) > 20:
+        logger.warning(f"Found {len(query_files)} query files in batch mode at {query_path}. "
+            "This may lead to long runtimes and high resource usage.")
+
+    # =====================================================================
+    # Resolve seed input: validate path and collect files with type check
+    # =====================================================================
+    # --seed
     if seed is not None:
         seed_path = Path(seed)
+
+        # Validate that the seed path exists and is a file
         if not seed_path.exists():
             raise FileNotFoundError(f"Seed file does not exist: {seed}")
         if not seed_path.is_file():
             raise ValueError(f"Seed path is not a file: {seed}. --seed expects a path to a single FASTA file.")
 
-        seed_info = {"path": seed_path, "mode": "single", "label": "seed", "expected_type": "fasta"}
+        # Validate that the seed file is of type FASTA
+        file_type = determine_file_type(seed_path)
+        if file_type != "fasta":
+            raise ValueError(f"Seed input file has invalid type: {seed_path}. Expected a FASTA file, got {file_type}.")
 
+        # If all checks pass, create a list with the single seed file
+        seed_files = [seed_path]
+        seed_info = {"path": seed_path, "mode": "single", "label": "seed", "expected_type": "fasta", "files": seed_files}
+
+    # --seed_dir
     else:
         seed_path = Path(seed_dir)
+
+        # Validate that the seed directory exists and is a directory
         if not seed_path.exists():
             raise FileNotFoundError(f"Seed directory does not exist: {seed_dir}")
         if not seed_path.is_dir():
             raise ValueError(f"Seed path is not a directory: {seed_dir}. --seed_dir expects a path to a directory containing FASTA files.")
 
-        seed_info = {"path": seed_path, "mode": "batch", "label": "seed", "expected_type": "fasta"}
+        # Iterate through the directory and collect all FASTA files, skipping non-FASTA files
+        seed_files = []
+        for element in sorted(seed_path.iterdir()):
+            if not element.is_file():
+                continue
+            file_type = determine_file_type(element)
+            if file_type == "fasta":
+                seed_files.append(element)
+            else:
+                logger.warning(f"Skipping {element}: not a FASTA file (detected type: {file_type}).")
 
-    # ===============================
+        # If no FASTA files were found, raise an error
+        if not seed_files:
+            raise ValueError(f"No FASTA files found in seed directory: {seed_dir}")
+
+        seed_info = {"path": seed_path, "mode": "batch", "label": "seed", "expected_type": "fasta", "files": seed_files}
+
+    logger.info(f"[SEED_INPUT] mode={seed_info['mode']} files={len(seed_files)} path={seed_path}")
+
+    # ======================================================================
     # Build execution plan dict of steps to run based on input combinations
-    # ===============================
-    # The execution plan is a dictionary that specifies which steps of the pipeline to run based on the input combinations.
-
+    # ======================================================================
     seed_is_multi = seed_info["mode"] == "batch"
     query_is_multi = query_info["mode"] == "batch"
 
@@ -103,89 +163,15 @@ def build_execution_plan(query,
             "search_2": True,                          # Always run outgroup search
             "parse_search_2_per_query": query_is_multi,   # Only split if multiple query files
             "bsr": True,                                  # Always calculate BSR
-            "rasr_bsr_plot": True,                            # Always create plot
+            "rasr_bsr_plot": True,                        # Always create plot
             "rasr_select": True                           # Always select hits based on BSR and db score cutoffs
         }
     }
-
-    # Log execution plan for debugging
-    logger.info(f"Query input: {query_info['path']} (mode: {query_info['mode']})")
-    logger.info(f"Seed input: {seed_info['path']} (mode: {seed_info['mode']})")
 
     for step, state in execution_plan["steps"].items():
         logger.info(f"  {step}: {'RUN' if state else 'SKIP'}")
 
     return execution_plan
-
-
-
-
-# ===============================
-# aastk list_inputs FUNCTION
-# ===============================
-def list_inputs(input_info: dict):
-    """
-    Lists input files path(s) based on the provided input information dictionary.
-
-    Args:
-        input_info (dict): Dictionary containing "path", "mode" ("single" | "batch"), "label"("query" | "seed"), and "expected_type"("fastq" | "fasta") for the input
-
-    Returns:
-        list_of_paths (list): List of Path objects for input files
-    """
-    # =========================
-    # Set up input's variables
-    # =========================
-    input_path = input_info["path"]
-    expected_type = input_info["expected_type"]
-    input_mode = input_info["mode"]
-    label = input_info["label"]
-
-    list_of_paths = []
-
-    # =================================
-    # List input file(s) based on mode
-    # =================================
-    if input_mode == "batch":
-
-        for element in input_path.iterdir():
-            if not element.is_file():
-                continue
-
-            file_type = determine_file_type(element)
-
-            if file_type == expected_type:
-                list_of_paths.append(element)
-            else:
-                logger.warning(f"Skipping {element} because it is not a {expected_type.upper()} file.")
-                continue
-
-        list_of_paths.sort()
-    
-    elif input_mode == "single":
-
-        file_type = determine_file_type(input_path)
-
-        if file_type != expected_type:
-            raise ValueError(f"{label} input file has invalid type: {input_path}. Expected a {expected_type.upper()} file.")
-
-        list_of_paths.append(input_path)
-
-    logger.info(
-        f"[{label.upper()} INPUT] label={label} mode={input_mode} expected_type={expected_type} "
-        f"files={len(list_of_paths)} path={input_path}"
-    )
-
-    if label == "query" and input_mode == "batch" and len(list_of_paths) > 20:
-        logger.warning(
-            f"Found {len(list_of_paths)} query files in batch mode at {str(input_path)}. "
-            "This may lead to long runtimes and high resource usage. "
-            "Consider using single mode or reducing the number of files per batch."
-        )
-
-    return list_of_paths
-
-
 
 
 # ==============================
@@ -1134,13 +1120,11 @@ def rasr(query: str,
     plan = build_execution_plan(query, query_dir, seed, seed_dir)
     
     # =======================================
-    # List inputs and plan mode of execution
+    # Retrieve input file lists from plan
     # =======================================
-    logger.info("[LISTING_INPUTS_START]")
+    query_files = plan["query_info"]["files"]
+    db_files = plan["seed_info"]["files"]
 
-    query_files = list_inputs(plan["query_info"])
-    db_files = list_inputs(plan["seed_info"])
-    
     if not db_files:
         raise ValueError("No seed database files found")
     if not query_files:
