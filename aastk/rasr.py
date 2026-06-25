@@ -181,56 +181,61 @@ def merge_seed_databases(db_files: list,
               output_dir: str,
               force: bool = False):
     """
-    Merges multiple FASTA files into a single unique FASTA file.
+    Merges multiple FASTA files into a single FASTA file and builds a gene→sequence ID mapping.
+
+    Pass 1: scan headers only to build db_dict (no sequence data loaded into memory).
+    Pass 2: concatenate files with seqkit seq.
 
     Args:
-        db_files (list): List of paths to FASTA files
+        db_files (list): List of paths to FASTA files (plain or gzipped)
         output_dir (str): Directory to save merged FASTA file
         force (bool): Whether to overwrite existing files
 
     Returns:
         merged_fasta_path (str): Path to merged FASTA file.
-        db_dict (dict): Dictionary mapping db names to their sequence IDs.
+        db_dict (dict): Dictionary mapping gene names to their sequence IDs.
     """
-    merged_fasta_path = ensure_path(output_dir, "merged_seed_db.fasta", force=force)
-    
-    with open(merged_fasta_path, 'w') as outfile:
-        db_dict = {}
-        
-        for db_file in db_files:
-            gene_name = db_file.stem
-            
-            with open(db_file, 'r') as db_fasta:
-                current_header = None
-                current_seq = []
+    check_dependency_availability("seqkit")
 
-                for line in db_fasta:
-                    line = line.strip()
-                    if line.startswith('>'):
-                        # Write previous sequence if exists
-                        if current_header:
-                            outfile.write(f">{current_header}\n")
-                            outfile.write(''.join(current_seq) + '\n')
-                            if gene_name not in db_dict:
-                                db_dict[gene_name] = []
-                            db_dict[gene_name].append(current_header)
-                        
-                        # Start new sequence
-                        current_header = line[1:]  # Remove '>'
-                        current_seq = []
-                    else:
-                        current_seq.append(line)
-                
-                # Write last sequence
-                if current_header:
-                    outfile.write(f">{current_header}\n")
-                    outfile.write(''.join(current_seq) + '\n')
-                    if gene_name not in db_dict:
-                        db_dict[gene_name] = []
-                    db_dict[gene_name].append(current_header)
-    
-    logger.info(f"[MERGE_DB_DONE] Merged database created at {merged_fasta_path}")
-    
+    merged_fasta_path = ensure_path(output_dir, "merged_seed_db.fasta", force=force)
+
+    # ================================================
+    # Pass 1: build db_dict by scanning headers only
+    # ================================================
+    db_dict = {}
+    for db_file in db_files:
+        if db_file.suffix == '.gz':
+            gene_name = Path(db_file.stem).stem  # Remove .gz and then .fasta/.fa
+        else:
+            gene_name = db_file.stem
+
+        db_dict[gene_name] = []
+
+        if db_file.suffix == '.gz':
+            opener = gzip.open
+        else:
+            opener = open
+
+        with opener(db_file, 'rt') as fh:
+            for line in fh:
+                if line.startswith('>'):
+                    db_dict[gene_name].append(line[1:].strip().split()[0])  # Take first word after '>' as sequence ID to match DMND sseqid
+
+        logger.info(f"[MERGE_DB_SCAN] gene={gene_name} sequences={len(db_dict[gene_name])}")
+
+    # ================================================
+    # Pass 2: concatenate files with seqkit
+    # ================================================
+    cmd = ["seqkit", "seq", "-w", "0", *[str(f) for f in db_files], "-o", merged_fasta_path]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+
+    except subprocess.CalledProcessError as e:
+        logger.error(f"seqkit seq failed during FASTA merge: {e.stderr}")
+        raise RuntimeError(f"Failed to merge seed FASTA files: {e.stderr}") from e
+
+    logger.info(f"[MERGE_DB_DONE] genes={len(db_dict)} out={merged_fasta_path}")
+
     return str(merged_fasta_path), db_dict
 
 
