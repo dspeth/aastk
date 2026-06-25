@@ -472,7 +472,7 @@ def split_search_output_by_mapping(blast_out_path: str,
     split_outputs = {}
 
     # ====================================================================
-    # Build dictionary for seqid mapping during streaming of blast output
+    # Build dictionary for seqid mapping (qtitle or sseqid) during streaming of blast output
     # ====================================================================
     dict_seqid_group_name = {}
     for group_name, seq_ids in mapping_dict.items():
@@ -810,8 +810,8 @@ def rasr_plot(bsr_file: str,
                 seed_name: str = None,
                 force: bool = False):
     """
-    Creates a scatter plot of the BSR data flanked by histograms showing the distribution of datapoints alongside the axes.
-    
+    Creates a scatter plot of the BSR data.
+
     Args:
         bsr_file (str): Path to BSR results file
         output_dir (str): Directory to save output plot
@@ -996,11 +996,11 @@ def rasr_select(dbmin: float,
 
     logger.info(f"[SELECT_DONE] total_ids={len(selected_ids)} ids_out={id_file}")
 
-    # ===============================
-    # Extract selected sequences
-    # ===============================
+    # ============================================================
+    # Extract selected sequences from matched FASTQ using seqkit
+    # ============================================================
     try:
-        cmd = ["seqkit", "grep", "-f", id_file, matched_fastq, "-o", out_fastq]
+        cmd = ["seqkit", "grep", "-n", "-f", id_file, matched_fastq, "-o", out_fastq]
 
         subprocess.run(cmd, check=True, capture_output=True, text=True)
         logger.info(f"[SELECT_DONE] fastq_out={out_fastq}")
@@ -1053,10 +1053,10 @@ def rasr(query: str,
             aln_score_cutoff: int,
             bsr_cutoff: float,
             dbmin: int,
+            timeout: int,
             threads: int = 1,
             force: bool = False,
             keep: bool = False,
-            timeout: int = 54000,
             max_retries: int = 3):
     """
     Run the RASR workflow.
@@ -1132,7 +1132,7 @@ def rasr(query: str,
     )
 
     intermediate_results = {}
-    results_by_ds_gene = {}
+    results_by_dataset_gene = {}
     db_seqid_dict = None
 
     try:
@@ -1239,7 +1239,7 @@ def rasr(query: str,
 
                 all_hit_seqs_paths.append(str(hit_seqs_path))
 
-                results_by_ds_gene[(dataset_name, gene_name)] = {
+                results_by_dataset_gene[(dataset_name, gene_name)] = {
                     'dataset_name': dataset_name,
                     'gene_name': gene_name,
                     'db_search_output': split_output,
@@ -1322,9 +1322,9 @@ def rasr(query: str,
         # ================================================================
         # Step 3: Calculate BSR and generate plots for each dataset x gene
         # ================================================================
-        logger.info(f"[STEP_3_START] pairs={len(results_by_ds_gene)}")
+        logger.info(f"[STEP_3_START] pairs={len(results_by_dataset_gene)}")
 
-        for (dataset_name, gene_name), result_info in results_by_ds_gene.items():
+        for (dataset_name, gene_name), result_info in results_by_dataset_gene.items():
             
             gene_output_dir = result_info['output_dir']
             db_split_output = result_info['db_search_output']
@@ -1362,7 +1362,7 @@ def rasr(query: str,
 
         logger.info("[STEP_3_DONE] pair_processing_complete=true")
         logger.info("[RUN_DONE] workflow=rasr_multiple status=success")
-        return results_by_ds_gene
+        return results_by_dataset_gene
 
     except Exception as e:
         keep = True
@@ -1375,7 +1375,7 @@ def rasr(query: str,
     finally:
         if not keep and intermediate_results:
             logger.info("Cleaning up intermediate files")
-            for key, raw_value in intermediate_results.items():
+            for raw_value in intermediate_results.values():
                 for filepath in collect_paths_for_cleanup(raw_value):
                     try:
                         file_path = Path(filepath)

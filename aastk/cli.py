@@ -320,8 +320,8 @@ def __threads(group, required=False):
                        help='Number of threads (default: 1)')
 
 def __timeout(group, required=False):
-    group.add_argument('--timeout', type=int, default=54000, required=required,
-                       help='Timeout for DIAMOND search in seconds (default: 54000s = 15 hours)')
+    group.add_argument('--timeout', type=int, required=required,
+                       help='Timeout for DIAMOND search in seconds')
 
 def __tmh(group, required=False):
     group.add_argument('--tmh', action='store_true', required=required,
