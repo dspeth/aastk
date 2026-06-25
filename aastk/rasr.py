@@ -399,26 +399,27 @@ def rasr_search(seed_db_out_path: str,
 # search_filtering function
 # ==========================
 def filter_best_hits_by_score(search_output_path: str,
-                     aln_score_cutoff: int):
+                     aln_score_cutoff: int, 
+                     column_info_path: str):
     """
     Filters DIAMOND search output, keeping only the highest scoring hit per query above a minimum score threshold.
 
     Args:
         search_output_path (str): Path to DIAMOND search output file
         aln_score_cutoff (int): Minimum raw alignment score threshold to keep hits
+        column_info_path (str): Path to JSON file containing column indices
 
     Returns:
         search_output_path (str): Path to filtered search output file
     """
     logger.info(f"[FILTER_START] Filtering search results keep_highest_score_per_query=True  aln_score_cutoff={aln_score_cutoff}")
     
-    # Determine columns structure from the file content
-    columns = ["qtitle", "sseqid", "pident", "qlen", "slen", "length", "mismatch", "gapopen", "qstart", "qend",
-               "sstart", "send", "evalue", "bitscore", "score","qseqid"]
+    with open(column_info_path) as f:
+        column_info = json.load(f)
+    score_idx = column_info["score"]
+    qtitle_idx = column_info["qtitle"]
     
     best_hits = {}  # {qtitle: (score, full_row)}
-    score_idx = columns.index('score')
-    qtitle_idx = columns.index('qtitle')
     
     # Stream through file to find best hits
     with open(search_output_path, 'r') as f:
@@ -712,45 +713,26 @@ def compute_bsr(seed_search_tab: str,
     )
     
     # ==========================================================
-    # Load column info if provided and retrieve columns indexes
+    # Load column info and retrieve column indexes
     # ==========================================================
+    with open(column_info_path, 'r') as f:
+        column_info = json.load(f)
 
-    if column_info_path and Path(column_info_path).exists():
-        try:
-            with open(column_info_path, 'r') as f:
-                column_info = json.load(f)
-                
-                # Get all required column indexes from .json file
-                qseqid_col= column_info["qseqid"]
-                qtitle_col = column_info["qtitle"]
-                sseqid_col = column_info["sseqid"]
-                pident_col = column_info["pident"]
-                length_col = column_info["length"]
-                score_column = column_info["score"]
-                
-                logger.info(f"[BSR_COLUMN_INFO] Column indexes: qseqid={qseqid_col}, qtitle={qtitle_col}, sseqid={sseqid_col}, "
-                           f"pident={pident_col}, length={length_col}, score={score_column}")
+    required = {"qtitle", "sseqid", "pident", "length", "score"}
+    missing = required - column_info.keys()
+    if missing:
+        raise ValueError(f"Column info JSON at {column_info_path} is missing required keys: {missing}")
 
-        except Exception as e:
-            logger.warning(f"Failed to load column info from {column_info_path}: {e}")
-            # Fall back to default indexes
-            qseqid_col = 15
-            qtitle_col = 0
-            sseqid_col = 1
-            pident_col = 2
-            length_col = 5
-            score_column = 14
-    else:
-        # Use default column indexes if no .json file provided
-        qseqid_col = 15
-        qtitle_col = 0
-        sseqid_col = 1
-        pident_col = 2
-        length_col = 5
-        score_column = 14
-        logger.info("[BSR_COLUMN_INFO] Using default column indexes (no column_info file provided)"
-                   f" qseqid={qseqid_col}, qtitle={qtitle_col}, sseqid={sseqid_col}, "
-                   f"pident={pident_col}, length={length_col}, score={score_column}")
+    qtitle_col = column_info["qtitle"]
+    sseqid_col = column_info["sseqid"]
+    pident_col = column_info["pident"]
+    length_col = column_info["length"]
+    score_column = column_info["score"]
+
+    logger.info(
+        f"[BSR_COLUMN_INFO] qtitle={qtitle_col} sseqid={sseqid_col} "
+        f"pident={pident_col} length={length_col} score={score_column}"
+    )
 
     # =====================================
     # Load BLAST outputs and calculate BSR
@@ -1303,7 +1285,7 @@ def rasr(query: str,
 
         # =================== Filter outgroup search results ===================
 
-        og_search_output_filtered = filter_best_hits_by_score(og_search_output, aln_score_cutoff=aln_score_cutoff)
+        og_search_output_filtered = filter_best_hits_by_score(og_search_output, aln_score_cutoff=aln_score_cutoff, column_info_path=og_column_info_path)
 
         intermediate_results['og_search_output_filtered'] = og_search_output_filtered
 
