@@ -783,9 +783,16 @@ def compute_bsr(seed_search_tab: str,
                     out_f.write(f"{qtitle_db}\t{sseqid_db}\t{pident_db}\t{length_db}\t{score_db}\t{sseqid_og}\t{pident_og}\t{length_og}\t{score_og}\t{bsr_value}\n")
                     matched_count += 1
     
-    logger.info(
-        f"[BSR_COMPUTE_DONE] target={protein_name} matched={matched_count:,} total_seed={total_seed_count:,} total_og={total_og_count:,} out={bsr_file}"
-    )
+    if matched_count == 0:
+        logger.warning(
+            f"[BSR_COMPUTE_DONE] target={protein_name} matched=0 total_seed={total_seed_count:,} "
+            f"total_og={total_og_count:,} out={bsr_file}"
+        )
+    else:
+        logger.info(
+            f"[BSR_COMPUTE_DONE] target={protein_name} matched={matched_count:,} total_seed={total_seed_count:,} "
+            f"total_og={total_og_count:,} out={bsr_file}"
+        )
 
     return bsr_file, matched_count
 
@@ -814,7 +821,6 @@ def rasr_plot(bsr_file: str,
         seed_name (str): Seed/gene name for the plot title (optional)
         force (bool): Whether to overwrite existing files
     """
-    logger = logging.getLogger(__name__)
 
     protein_name = determine_dataset_name(bsr_file, '.', 0, '_bsr')
 
@@ -1332,12 +1338,11 @@ def rasr(query: str,
 
                 result_info['bsr_output'] = bsr_output
 
-                # If no BSR matches were produced, abort workflow with a warning and preserve intermediate files
                 if matched == 0:
-                    logger.warning(f"[BSR_EMPTY] dataset={dataset_name} gene={gene_name} matched=0; aborting workflow and preserving intermediate files")
-                    # Ensure caller won't delete intermediate files
-                    keep = True
-                    raise RuntimeError(f"No BSR matches for dataset={dataset_name} gene={gene_name}")
+                    logger.warning(
+                        f"[BSR_EMPTY] dataset={dataset_name} gene={gene_name} matched=0; "
+                        "no reads matched both seed and outgroup databases — plot will be skipped, empty selection files will be produced"
+                    )
 
                 # =================== Plot BSR values ===================
                 plot_output = rasr_plot(bsr_output, output_dir=gene_output_dir, bsr_cutoff=bsr_cutoff, dbmin=dbmin, dataset_name=dataset_name, seed_name=gene_name, force=force)
