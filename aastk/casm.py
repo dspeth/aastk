@@ -40,95 +40,93 @@ def build_alignment_matrix_split(align_file: str,
     """
     logger.info(f"Building alignment matrix from: {align_file} (split parsing)")
 
-    # ===============================
-    # Storage preparation
-    # ===============================
-
     queries_set = set()
     targets_set = set()
-    line_count = 0  # valid alignment entries; used to estimate sparsity before allocation
+    row_nnz_dict = {}
 
     # =======================================================
-    # First pass over alignment file: Retrieve protein IDs
+    # First pass: collect protein IDs and count nnz per row
     # =======================================================
     with open(align_file, 'r') as f:
         for line_num, line in enumerate(f, 1):
             line = line.rstrip('\n\r')
             if not line:
                 continue
-
-            try:
-                parts = line.split("\t")
-                if len(parts) != 3:
-                    logger.warning(f"Line {line_num}: Expected 3 fields, got {len(parts)}. Skipping.")
-                    continue
-                query, target, score_str = parts
-
-                queries_set.add(query)
-                targets_set.add(target)
-                line_count += 1
-            except Exception as e:
-                logger.warning(f"Line {line_num}: Error parsing line. Skipping. ({e})")
+            parts = line.split("\t")
+            if len(parts) != 3:
+                logger.warning(f"Line {line_num}: Expected 3 fields, got {len(parts)}. Skipping.")
                 continue
+            query, target, score_str = parts
+            try:
+                float(score_str)
+            except ValueError:
+                logger.warning(f"Line {line_num}: Invalid score '{score_str}'. Skipping.")
+                continue
+            queries_set.add(query)
+            targets_set.add(target)
+            row_nnz_dict[query] = row_nnz_dict.get(query, 0) + 1
 
     queries = sorted(queries_set)
     targets = sorted(targets_set)
-
     query_to_idx = {q: i for i, q in enumerate(queries)}
     target_to_idx = {t: i for i, t in enumerate(targets)}
-
     del queries_set, targets_set
 
-    matrix_elements = len(queries) * len(targets)
+    nrows = len(queries)
+    ncols = len(targets)
+    total_nnz = sum(row_nnz_dict.values())
+    matrix_elements = nrows * ncols
+
+    # Build CSR indptr from per-row counts
+    row_nnz = np.array([row_nnz_dict.get(q, 0) for q in queries], dtype=np.int64)
+    del row_nnz_dict
+    indptr = np.empty(nrows + 1, dtype=np.int64)
+    indptr[0] = 0
+    np.cumsum(row_nnz, out=indptr[1:])
+    del row_nnz
+
+    logger.info(f"Allocating CSR arrays: {total_nnz:,} non-zero entries "
+                f"(~{total_nnz * 12 / 1e9:.1f} GB)")
+
+    # Allocate final CSR arrays directly (float32 data + int64 indices = 12 bytes/entry).
+    # The previous COO approach (int64+int64+float32 = 20 bytes/entry) plus the CSR copy
+    # created during scipy.sparse.csr_matrix() peaked at ~28 bytes/entry simultaneously.
+    csr_data = np.empty(total_nnz, dtype=np.float32)
+    csr_indices = np.empty(total_nnz, dtype=np.int64)
+    row_pos = indptr[:-1].copy()  # per-row write-position tracker
 
     # =======================================================
-    # Second pass over alignment file: Matrix construction
+    # Second pass: fill CSR arrays directly
     # =======================================================
-    # Pre-allocate numpy arrays sized to line_count (upper bound on nnz).
-    # This avoids the per-element Python object overhead of list.append(),
-    # keeping COO memory at ~12 bytes/entry (int32 + int32 + float32)
-    # rather than ~80+ bytes/entry for boxed Python objects in a list.
-    coo_rows = np.empty(line_count, dtype=np.int64)
-    coo_cols = np.empty(line_count, dtype=np.int64)
-    coo_data = np.empty(line_count, dtype=np.float32)
-    nnz = 0
-
     with open(align_file, 'r') as f:
         for line_num, line in enumerate(f, 1):
             line = line.rstrip('\n\r')
             if not line:
                 continue
-
+            parts = line.split("\t")
+            if len(parts) != 3:
+                continue
+            query, target, score_str = parts
             try:
-                parts = line.split("\t")
-                if len(parts) != 3:
-                    continue
-                query, target, score_str = parts
-
                 score = float(score_str)
-                i = query_to_idx[query]
-                j = target_to_idx[target]
+            except ValueError:
+                continue
+            if query not in query_to_idx or target not in target_to_idx:
+                continue
+            i = query_to_idx[query]
+            j = target_to_idx[target]
+            pos = row_pos[i]
+            csr_data[pos] = score
+            csr_indices[pos] = j
+            row_pos[i] += 1
 
-                coo_rows[nnz] = i
-                coo_cols[nnz] = j
-                coo_data[nnz] = score
-                nnz += 1
-            except ValueError as e:
-                logger.warning(f"Line {line_num}: Invalid score '{score_str}'. Skipping. ({e})")
-                continue
-            except KeyError as e:
-                logger.warning(f"Line {line_num}: Key not found in mapping. Skipping. ({e})")
-                continue
-            except Exception as e:
-                logger.warning(f"Line {line_num}: Unexpected error. Skipping. ({e})")
-                continue
+    del row_pos
 
     matrix = scipy.sparse.csr_matrix(
-        (coo_data[:nnz], (coo_rows[:nnz], coo_cols[:nnz])),
-        shape=(len(queries), len(targets)),
+        (csr_data, csr_indices, indptr),
+        shape=(nrows, ncols),
         dtype=np.float32
     )
-    del coo_rows, coo_cols, coo_data
 
     # ===============================
     # Determine matrix statistics
