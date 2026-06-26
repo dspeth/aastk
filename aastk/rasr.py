@@ -1189,9 +1189,13 @@ def rasr(query: str,
             logger.info(f"[SEARCH_1_START] dataset={dataset_name} query={query_file} db={db_path}")
             search_output, column_info_path = rasr_search(db_path, str(query_file), threads, dataset_output_dir, sensitivity, bit_score_cutoff=bit_score_cutoff, max_target_seqs=1, max_retries=max_retries, timeout=timeout, block=block, chunk=chunk, query_name=dataset_name, force=force)
             
-            if search_output not in intermediate_results:
+            if 'search_output' not in intermediate_results:
                 intermediate_results['search_output'] = []
             intermediate_results['search_output'].append(search_output)
+
+            if 'column_info_path' not in intermediate_results:
+                intermediate_results['column_info_path'] = []
+            intermediate_results['column_info_path'].append(column_info_path)
 
             # =========================
             # Filter search results
@@ -1247,6 +1251,14 @@ def rasr(query: str,
                     'matched_ids_path': id_file,
                     'output_dir': gene_output_dir
                 }
+
+                if 'matched_fastq_paths' not in intermediate_results:
+                    intermediate_results['matched_fastq_paths'] = []
+                intermediate_results['matched_fastq_paths'].append(hit_seqs_path)
+
+                if 'matched_ids_paths' not in intermediate_results:
+                    intermediate_results['matched_ids_paths'] = []
+                intermediate_results['matched_ids_paths'].append(id_file)
                 
                 # Accumulate dataset matched queries for later outgroup splitting (dict_dataset_qtitle: {dataset_name: [qtitle1, qtitle2, ...]})
                 if dataset_name not in dict_dataset_qtitle:
