@@ -6,9 +6,10 @@ from .database import ANNOTATION_COLUMNS
 import pandas as pd
 import logging
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
-from matplotlib.cm import ScalarMappable, get_cmap
+from matplotlib.cm import ScalarMappable
 from typing import Optional
 from pathlib import Path
 import sqlite3
@@ -418,7 +419,7 @@ def plot_size_per_position(context_path: str,
         fig, ax = plt.subplots(figsize=(width, 16/3))
 
     # Set up colormap and normalization
-    cmap = get_cmap('Blues')
+    cmap = matplotlib.colormaps['Blues']
     norm = Normalize(vmin=0, vmax=heat_data.max())
 
     # Draw heatmap rectangles
@@ -510,7 +511,7 @@ def plot_tmh_per_position(context_path: str,
         fig, ax = plt.subplots(figsize=(width, 16/3))
 
     # Set up colormap and normalization
-    cmap = get_cmap('Reds')
+    cmap = matplotlib.colormaps['Reds']
     norm = Normalize(vmin=0, vmax=heat_data.max())
 
     # Draw heatmap rectangles

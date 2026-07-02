@@ -7,6 +7,7 @@ from aastk.pasr import *
 from aastk.cugo import *
 from aastk.casm import *
 from aastk.database import *
+from aastk.db.build import database  # overrides aastk.database.database during the rewrite
 from aastk.version import __version__, __copyright__, __author__
 import sys
 
@@ -178,17 +179,8 @@ def main():
         ### PARSER FOR CUGO FUNCTIONALITIES AND WORKFLOW ###
         elif args.subparser_name == 'database':
             database(
-                cog_gff_tar_path=args.cog_gff,
-                kegg_gff_tar_path=args.kegg_gff,
-                pfam_gff_tar_path=args.pfam_gff,
-                tmhmm_tar_path=args.tmhmm_dir,
-                protein_fasta_path=args.all_proteins,
-                taxonomy_path=args.taxonomy_path,
-                culture_collection_path=args.culture_collection_path,
-                high_level_environment_path=args.high_level_environment_path,
-                low_level_environment_path=args.low_level_environment_path,
-                output_dir=args.output,
-                globdb_version=args.globdb_version
+                chunk_dir=args.chunk_dir,
+                db_path=args.db_path
             )
 
         elif args.subparser_name == 'database_check':

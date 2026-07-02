@@ -62,6 +62,10 @@ def __cluster_path(group, required=False):
     group.add_argument('-c', '--cluster_path', type=str, default=None, required=required,
                        help='Path to cluster TSV file')
 
+def __chunk_dir(group, required=False):
+    group.add_argument('--chunk_dir', type=str, required=required,
+                       help='Path to directory containing the chunk subfolders of gzipped SQLite shard databases')
+
 def __cog_gff(group, required=False):
     group.add_argument('-c', '--cog_gff', type=str, required=required,
                        help='Path to (.tar.gz) GFF directory containing COG annotations')
@@ -446,8 +450,10 @@ def get_main_parser():
     ### PARSER FOR CUGO FUNCTIONALITIES AND WORKFLOW ###
     with subparser(sub_parsers, 'database', 'Create AASTK SQLite database') as parser:
         with arg_group(parser, 'Required arguments') as grp:
-            __all_proteins(grp, required=True)
+            __chunk_dir(grp, required=True)
+            __db_path(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
+            __all_proteins(grp)
             __cog_gff(grp)
             __kegg_gff(grp)
             __pfam_gff(grp)
@@ -456,7 +462,6 @@ def get_main_parser():
             __high_level_environment_path(grp)
             __low_level_environment_path(grp)
             __globdb_version(grp)
-            __output(grp)
             __tmhmm_dir(grp)
 
     with subparser(sub_parsers, 'database_check', 'Checks for missing data in AASTK SQLite database') as parser:
