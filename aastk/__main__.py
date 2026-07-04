@@ -7,6 +7,7 @@ from aastk.pasr import *
 from aastk.cugo import *
 from aastk.casm import *
 from aastk.database import *
+from aastk.plm_embedder import *
 from aastk.version import __version__, __copyright__, __author__
 import sys
 
@@ -356,6 +357,14 @@ def main():
                 force=args.force
             )
 
+        elif args.subparser_name == 'plm_embedder':
+            plm_embedder(
+                fasta=args.fasta,
+                output=args.output,
+                model=args.model,
+                batch_size=args.batch_size,
+                force=args.force
+            )
 
     except Exception as e:
         logger.error(f"Error executing command: {e}")
