@@ -50,18 +50,44 @@ def read_annotations(conn: sqlite3.Connection):
 
     return annotations
 
+def read_contig_info(conn: sqlite3.Connection):
+    rows = conn.execute("""
+        SELECT gene_callers_id, contig, start, stop, direction
+        FROM genes_in_contigs
+        """).fetchall()
+
+    contig_info = defaultdict(dict)
+
+    for gene_caller_id, contig, start, stop, direction in rows:
+        contig_info[gene_caller_id]['contig'] = contig
+        contig_info[gene_caller_id]['start'] = start
+        contig_info[gene_caller_id]['stop'] = stop
+        contig_info[gene_caller_id]['aa_length'] = int((abs(int(stop) - int(start)) + 1)/3)
+        if direction == 'f':
+            contig_info[gene_caller_id]['direction'] = '+'
+        elif direction == 'r':
+            contig_info[gene_caller_id]['direction'] = '-'
+
+
+    return contig_info
+
 def read_shard(shard_path: Path):
     prefix = shard_path.name.replace('.db.gz', '')
     conn = open_shard(shard_path)
     try:
         sequences = read_sequences(conn, prefix)
         annotations = read_annotations(conn)
+        contig_info = read_contig_info(conn)
 
         records = []
         for gene_caller_id, seqID, protein_seq in sequences:
             ann = annotations.get(gene_caller_id, {})
+            contig = contig_info.get(gene_caller_id, {})
+            print(contig)
+
             records.append((
-                seqID, ann.get('COG_ID'), ann.get('KEGG_ID'), ann.get('Pfam_ID'), protein_seq
+                seqID, contig.get('contig'), contig.get('aa_length'), contig.get('direction'), ann.get('COG_ID'),
+                ann.get('KEGG_ID'), ann.get('Pfam_ID'), protein_seq
             ))
         return records
     finally:
