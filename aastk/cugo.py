@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from .util import *
-from .database import ANNOTATION_COLUMNS
+from .db.schema import ANNOTATION_COLUMNS
 
 import pandas as pd
 import logging
