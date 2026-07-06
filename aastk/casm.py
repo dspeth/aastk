@@ -277,7 +277,6 @@ def tsne_embedding(matrix,
                    iterations: int = 500,
                    exaggeration: int = 6,
                    threads: int = 1,
-                   n_svd_components: int = 50,
                    force: bool = False
                    ):
     """
@@ -286,11 +285,8 @@ def tsne_embedding(matrix,
     Creates early (exaggerated) and final t-SNE embeddings with DBSCAN clustering
     applied to the early embedding. Same cluster labels are used for both embeddings.
 
-    When matrix is a scipy sparse matrix, TruncatedSVD reduces it to n_svd_components
-    dense dimensions before t-SNE, keeping peak memory proportional to nnz rather than N*n.
-
     Args:
-        matrix (np.ndarray or scipy sparse matrix): Alignment matrix for embedding
+        matrix (np.ndarray): Alignment matrix for embedding
         queries (list): List of protein IDs corresponding to matrix rows
         output (str): Output directory (default: current working directory)
         basename (str): Base name for output files
@@ -298,7 +294,6 @@ def tsne_embedding(matrix,
         iterations (int): Number of optimization iterations per phase
         exaggeration (int): Early exaggeration factor
         threads (int): Number of threads for parallel processing
-        n_svd_components (int): SVD output dimensions used when matrix is sparse
         force (bool): Overwrite existing files if True
 
     Returns:
@@ -309,18 +304,6 @@ def tsne_embedding(matrix,
     logger.info(f"Matrix shape: {matrix.shape}")
     logger.info(f"Perplexity: {perplexity}, Iterations: {iterations}, Exaggeration: {exaggeration}")
     logger.info(f"Using {threads} threads")
-
-    # ========================
-    # SVD pre-reduction
-    # ========================
-
-    if scipy.sparse.issparse(matrix):
-        n_components = min(n_svd_components, matrix.shape[1] - 1)
-        logger.info(f"Sparse matrix: applying TruncatedSVD ({n_components} components)")
-        svd = TruncatedSVD(n_components=n_components, random_state=42)
-        matrix = svd.fit_transform(matrix)
-        logger.info(f"Reduced matrix shape: {matrix.shape}")
-        logger.info(f"Explained variance ratio: {svd.explained_variance_ratio_.sum():.3f}")
 
     # ========================
     # Multiscale affinities
@@ -856,6 +839,14 @@ def cluster(matrix_path: str,
 
     matrix, queries, targets = load_alignment_matrix_from_file(matrix_path, matrix_metadata_path)
 
+    if scipy.sparse.issparse(matrix):
+        n_components = min(n_svd_components, matrix.shape[1] - 1)
+        logger.info(f"Sparse matrix: applying TruncatedSVD ({n_components} components)")
+        svd = TruncatedSVD(n_components=n_components, random_state=42)
+        matrix = svd.fit_transform(matrix)
+        logger.info(f"Reduced matrix shape: {matrix.shape}")
+        logger.info(f"Explained variance ratio: {svd.explained_variance_ratio_.sum():.3f}")
+
     early_filename, final_filename = tsne_embedding(matrix=matrix,
                               queries=queries,
                               output=output,
@@ -864,7 +855,6 @@ def cluster(matrix_path: str,
                               iterations=iterations,
                               exaggeration=exaggeration,
                               threads=threads,
-                              n_svd_components=n_svd_components,
                               force=force,
                               )
     logger.info("=== t-SNE Embedding Completed ===")
