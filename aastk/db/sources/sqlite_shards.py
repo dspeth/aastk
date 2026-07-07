@@ -20,8 +20,10 @@ def open_shard(shard_path: Path) -> sqlite3.Connection:
 
 def read_sequences(conn: sqlite3.Connection, prefix: str):
     rows = conn.execute("""
-        SELECT gene_callers_id, sequence
-        FROM gene_amino_acid_sequences
+        SELECT s.gene_callers_id, s.sequence
+        FROM gene_amino_acid_sequences s
+        JOIN genes_in_contigs g ON g.gene_callers_id = s.gene_callers_id
+        WHERE g.call_type = 1
     """).fetchall()
 
     return [
@@ -50,10 +52,13 @@ def read_annotations(conn: sqlite3.Connection):
 
     return annotations
 
+
+
 def read_contig_info(conn: sqlite3.Connection):
     rows = conn.execute("""
         SELECT gene_callers_id, contig, start, stop, direction
         FROM genes_in_contigs
+        WHERE call_type = 1
         """).fetchall()
 
     contig_info = defaultdict(dict)
@@ -68,6 +73,19 @@ def read_contig_info(conn: sqlite3.Connection):
         elif direction == 'r':
             contig_info[gene_caller_id]['direction'] = '-'
 
+    sorted_contig_info = {k: v for k, v in sorted(contig_info.items(),
+                          key=lambda x: (x[1]['contig'], x[1]['start']))}
+
+    cugo_number = 0
+    previous_key = None
+    for key in sorted_contig_info.keys():
+        if previous_key is None or (sorted_contig_info[key]['direction'] == sorted_contig_info[previous_key]['direction'] and sorted_contig_info[key]['contig'] == sorted_contig_info[previous_key]['contig']):
+            contig_info[key]['cugo_number'] = cugo_number
+            previous_key = key
+        else:
+            cugo_number += 1
+            contig_info[key]['cugo_number'] = cugo_number
+            previous_key = key
 
     return contig_info
 
@@ -83,11 +101,10 @@ def read_shard(shard_path: Path):
         for gene_caller_id, seqID, protein_seq in sequences:
             ann = annotations.get(gene_caller_id, {})
             contig = contig_info.get(gene_caller_id, {})
-            print(contig)
 
             records.append((
-                seqID, contig.get('contig'), contig.get('aa_length'), contig.get('direction'), ann.get('COG_ID'),
-                ann.get('KEGG_ID'), ann.get('Pfam_ID'), protein_seq
+                seqID, contig.get('contig'), contig.get('aa_length'), contig.get('direction'), ann.get('COG_ID', 'NA'),
+                ann.get('KEGG_ID', 'NA'), ann.get('Pfam_ID', 'NA'), contig.get('cugo_number'), protein_seq
             ))
         return records
     finally:
