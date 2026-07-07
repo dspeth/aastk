@@ -26,6 +26,10 @@ def __all_proteins(group, required=False):
     group.add_argument('-a', '--all_proteins', type=str, required=required,
                        help='Path to FASTA file containing all GlobDB protein sequences')
 
+def __anvio(group, required=False):
+    group.add_argument('--anvio', action='store_true', required=required,
+                       help='Import protein sequences, annotations and CUGO data from anvi\'o SQLite shards')
+
 def __all_metadata(group, required=False):
     group.add_argument('--all_metadata', action='store_true', required=required,
                        help='Include all metadata in output file')
@@ -309,9 +313,13 @@ def __tmh(group, required=False):
     group.add_argument('--tmh', action='store_true', required=required,
                        help='Generate transmembrane helices plot')
 
-def __tmhmm_dir(group, required=False):
-    group.add_argument('-t', '--tmhmm_dir', type=str, required=required,
-                       help='Directory containing tmhmm files')
+def __tmhmm(group, required=False):
+    group.add_argument('--tmhmm', action='store_true', required=required,
+                       help='Import number of predicted transmembrane helices from tmhmm files')
+
+def __tmhmm_tar_path(group, required=False):
+    group.add_argument('-t', '--tmhmm_tar_path', type=str, required=required,
+                       help='Path to gzipped tar archive of tmhmm files')
 
 def __tmh_y_range(group, required=False):
     group.add_argument('-t', '--tmh_y_range', type=int, required=required,
@@ -453,16 +461,10 @@ def get_main_parser():
             __chunk_dir(grp, required=True)
             __db_path(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
-            __all_proteins(grp)
-            __cog_gff(grp)
-            __kegg_gff(grp)
-            __pfam_gff(grp)
-            __taxonomy_path(grp)
-            __culture_collection_path(grp)
-            __high_level_environment_path(grp)
-            __low_level_environment_path(grp)
-            __globdb_version(grp)
-            __tmhmm_dir(grp)
+            __anvio(grp)
+            __tmhmm(grp)
+            __tmhmm_tar_path(grp)
+            __threads(grp)
 
     with subparser(sub_parsers, 'database_check', 'Checks for missing data in AASTK SQLite database') as parser:
         with arg_group(parser, 'Required arguments') as grp:

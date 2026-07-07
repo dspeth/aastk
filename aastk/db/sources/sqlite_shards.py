@@ -1,7 +1,6 @@
 import gzip
 import sqlite3
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict
 
 from ...util import compress_sequence

@@ -180,7 +180,11 @@ def main():
         elif args.subparser_name == 'database':
             database(
                 chunk_dir=args.chunk_dir,
-                db_path=args.db_path
+                db_path=args.db_path,
+                tmhmm_tar_path=args.tmhmm_tar_path,
+                anvio=args.anvio,
+                tmhmm=args.tmhmm,
+                threads=args.threads,
             )
 
         elif args.subparser_name == 'database_check':
