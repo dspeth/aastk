@@ -38,14 +38,16 @@ def database(chunk_dir: str = None,
              culture_collection_path: str = None,
              high_level_environment_path: str = None,
              low_level_environment_path: str = None,
-             db_path: str = None,
+             db_version: str = None,
+             output: str = None,
              anvio: bool = False,
              tmhmm: bool = False,
              taxonomy: bool = False,
              culture_collection: bool = False,
              environmental_data: bool = False,
              all_sources: bool = False,
-             threads: int = 1):
+             threads: int = 1,
+             force: bool = False):
     if all_sources:
         missing = [
             name for name, path in [
@@ -65,6 +67,14 @@ def database(chunk_dir: str = None,
         taxonomy = True
         culture_collection = True
         environmental_data = True
+
+    output_dir = Path(output) if output else Path('.')
+    output_dir.mkdir(parents=True, exist_ok=True)
+    db_path = str(output_dir / f"globdb_r{db_version}_aastk.db")
+
+    if force and Path(db_path).exists():
+        logger.warning(f"Removing existing database: {db_path}")
+        Path(db_path).unlink()
 
     conn = setup_database(db_path)
     if anvio:
@@ -90,6 +100,10 @@ def database(chunk_dir: str = None,
                             protein_seq = excluded.protein_seq
                     """, records)
                     conn.commit()
+
+            logger.info("Creating parent_ID index...")
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_parent_id ON protein_data(parent_ID)')
+            conn.commit()
 
     if tmhmm is True:
         if not tmhmm_tar_path:
@@ -166,11 +180,6 @@ def database(chunk_dir: str = None,
         else:
             _insert_environment_data(conn, high_level_environment_path, HIGH_LEVEL_ENV_COLUMNS, 'high-level')
             _insert_environment_data(conn, low_level_environment_path, LOW_LEVEL_ENV_COLUMNS, 'low-level')
-
-    if taxonomy or culture_collection or environmental_data:
-        logger.info("Creating genome_data index...")
-        conn.execute('CREATE INDEX IF NOT EXISTS idx_genome_id ON genome_data(genome_ID)')
-        conn.commit()
 
     conn.close()
 

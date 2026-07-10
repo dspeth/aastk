@@ -118,6 +118,10 @@ def __db_path(group, required=False):
     group.add_argument('-d', '--db_path', type=str, default='temp_genome_data.db', required=required,
                        help='Path to SQLite database')
 
+def __db_version(group, required=False):
+    group.add_argument('-g', '--db_version', type=str, required=required,
+                       help='GlobDB version number, without the leading "r" (example: 226)')
+
 def __environmental_data(group, required=False):
     group.add_argument('--environmental_data', action='store_true', required=required,
                        help='Import high and low level environment data')
@@ -474,7 +478,7 @@ def get_main_parser():
     ### PARSER FOR CUGO FUNCTIONALITIES AND WORKFLOW ###
     with subparser(sub_parsers, 'database', 'Create AASTK SQLite database') as parser:
         with arg_group(parser, 'Required arguments') as grp:
-            __db_path(grp, required=True)
+            __db_version(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __anvio(grp)
             __chunk_dir(grp)
@@ -489,6 +493,8 @@ def get_main_parser():
             __low_level_environment_path(grp)
             __all_sources(grp)
             __threads(grp)
+            __output(grp)
+            __force(grp)
 
     with subparser(sub_parsers, 'database_check', 'Checks for missing data in AASTK SQLite database') as parser:
         with arg_group(parser, 'Required arguments') as grp:
