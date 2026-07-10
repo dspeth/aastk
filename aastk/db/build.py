@@ -2,7 +2,7 @@ import logging
 import shutil
 import subprocess
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from tqdm import tqdm
 
@@ -86,7 +86,7 @@ def database(chunk_dir: str = None,
             shard_paths = list(iter_shard_paths(chunk_dir))
             batches = [shard_paths[i:i + BATCH_SIZE] for i in range(0, len(shard_paths), BATCH_SIZE)]
 
-            with ThreadPoolExecutor(max_workers=threads) as executor:
+            with ProcessPoolExecutor(max_workers=threads) as executor:
                 for batch in tqdm(batches, desc="Processing anvi\'o shards..."):
                     futures = [executor.submit(read_shard, shard_path) for shard_path in batch]
                     records = []
