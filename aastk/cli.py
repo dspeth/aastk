@@ -26,6 +26,10 @@ def __all_proteins(group, required=False):
     group.add_argument('-a', '--all_proteins', type=str, required=required,
                        help='Path to FASTA file containing all GlobDB protein sequences')
 
+def __all_sources(group, required=False):
+    group.add_argument('--all_sources', action='store_true', required=required,
+                       help='Import all available data sources (anvi\'o, TMHMM, taxonomy, culture collection, environment)')
+
 def __anvio(group, required=False):
     group.add_argument('--anvio', action='store_true', required=required,
                        help='Import protein sequences, annotations and CUGO data from anvi\'o SQLite shards')
@@ -90,6 +94,10 @@ def __cugo_range(group, required=False):
     group.add_argument('-r', '--cugo_range', type=int, required=required,
                        help='CUGO range for genomic context analysis')
 
+def __culture_collection(group, required=False):
+    group.add_argument('--culture_collection', action='store_true', required=required,
+                       help='Import culture collection data')
+
 def __culture_collection_path(group, required=False):
     group.add_argument('-c', '--culture_collection_path', type=str, required=required,
                        help='Path to culture collection data TSV file')
@@ -109,6 +117,10 @@ def __dbmin(group, required=False):
 def __db_path(group, required=False):
     group.add_argument('-d', '--db_path', type=str, default='temp_genome_data.db', required=required,
                        help='Path to SQLite database')
+
+def __environmental_data(group, required=False):
+    group.add_argument('--environmental_data', action='store_true', required=required,
+                       help='Import high and low level environment data')
 
 def __exaggeration(group, required=False):
     group.add_argument('-e', '--exaggeration', type=int, default=6, required=required,
@@ -147,7 +159,7 @@ def __help(group, required=False):
                        help='Display help text')
 
 def __high_level_environment_path(group, required=False):
-    group.add_argument('-h', '--high_level_environment_path', type=str, required=required,
+    group.add_argument('--high_level_environment_path', type=str, required=required,
                        help='Path to high level environment data TSV file')
 
 def __id_list(group, required=False):
@@ -192,7 +204,7 @@ def __key_column(group, required=False):
 
 def __low_level_environment_path(group, required=False):
     group.add_argument('-l', '--low_level_environment_path', type=str, required=required,
-                       help='Path to high level environment data TSV file')
+                       help='Path to low level environment data TSV file')
 
 def __matched(group, required=False):
     group.add_argument('-m', '--matched', type=str, required=required,
@@ -300,6 +312,10 @@ def __subset_size(group, required=False):
 def __svg(group, required=False):
     group.add_argument('--svg', action='store_true', required=required,
                        help='Generate plot in SVG format')
+
+def __taxonomy(group, required=False):
+    group.add_argument('--taxonomy', action='store_true', required=required,
+                       help='Import taxonomy data')
 
 def __taxonomy_path(group, required=False):
     group.add_argument('-t', '--taxonomy_path', type=str, default=None, required=required,
@@ -458,12 +474,20 @@ def get_main_parser():
     ### PARSER FOR CUGO FUNCTIONALITIES AND WORKFLOW ###
     with subparser(sub_parsers, 'database', 'Create AASTK SQLite database') as parser:
         with arg_group(parser, 'Required arguments') as grp:
-            __chunk_dir(grp, required=True)
             __db_path(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __anvio(grp)
+            __chunk_dir(grp)
             __tmhmm(grp)
             __tmhmm_tar_path(grp)
+            __taxonomy(grp)
+            __taxonomy_path(grp)
+            __culture_collection(grp)
+            __culture_collection_path(grp)
+            __environmental_data(grp)
+            __high_level_environment_path(grp)
+            __low_level_environment_path(grp)
+            __all_sources(grp)
             __threads(grp)
 
     with subparser(sub_parsers, 'database_check', 'Checks for missing data in AASTK SQLite database') as parser:

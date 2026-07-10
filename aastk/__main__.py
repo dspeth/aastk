@@ -182,8 +182,16 @@ def main():
                 chunk_dir=args.chunk_dir,
                 db_path=args.db_path,
                 tmhmm_tar_path=args.tmhmm_tar_path,
+                taxonomy_path=args.taxonomy_path,
+                culture_collection_path=args.culture_collection_path,
+                high_level_environment_path=args.high_level_environment_path,
+                low_level_environment_path=args.low_level_environment_path,
                 anvio=args.anvio,
                 tmhmm=args.tmhmm,
+                taxonomy=args.taxonomy,
+                culture_collection=args.culture_collection,
+                environmental_data=args.environmental_data,
+                all_sources=args.all_sources,
                 threads=args.threads,
             )
 
