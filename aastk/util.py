@@ -20,6 +20,12 @@ def check_dependency_availability(command: str):
 		logger.error(f"Command not found in PATH: {command}")
 		raise FileNotFoundError(f"Command not found in PATH: {command}")
 
+def clean_fasta_header(header: str):
+    """
+    keeps the first part of the FASTA header up until the first whitespace
+    """
+    return header.split()[0]
+
 def compress_sequence(sequence: str) -> bytes:
 	return zlib.compress(sequence.encode('utf-8'), level=9)
 
@@ -376,6 +382,42 @@ def run_diamond_alignment(fasta: str,
 	logger.info(f"Successfully completed DIAMOND search. Results at {align_output}")
 
 	return align_output
+
+def stream_fasta(fasta: str):
+    """
+    reads a fasta file entry by entry and returns one header-sequence pair at a time to save memory
+    (generator function: "yield" returns values one by one)
+    supports multi line FASTA sequences
+    """
+
+    filepath = Path(fasta)
+
+    if filepath.suffix == ".gz":
+        file_handle = gzip.open(filepath, "rt")
+    else:
+        file_handle = open(filepath, "r")
+
+    header = None
+    sequence_parts = []
+
+    with file_handle as f:
+        for line in f:
+            line = line.strip()
+
+            if not line:
+                continue
+
+            if line.startswith(">"):
+                if header is not None:
+                    yield header, "".join(sequence_parts)
+
+                header = line[1:]
+                sequence_parts = []
+
+            else:
+                sequence_parts.append(line)
+    if header is not None:
+        yield header, "".join(sequence_parts)
 
 def write_fa_matches(seq_file, ids):
 	"""

@@ -35,8 +35,8 @@ def __annotation(group, required=False):
                        help='Annotation: COG_ID, KEGG_ID, Pfam_ID (default: COG_ID)')
 
 def __batch_size(group, required=False):
-    group.add_argument('--batch_size', type=int, default=None, required=required,
-                       help='Number of protein sequences to embed at once')
+    group.add_argument('--batch_size', type=int, default=1, required=required,
+                       help='Number of protein sequences to embed at once (default: 1)')
 
 def __bin_width(group, required=False):
     group.add_argument('-b', '--bin_width', type=int, default=50, required=required,
