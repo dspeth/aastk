@@ -154,10 +154,6 @@ def __flank_upper(group, required=False):
     group.add_argument('-u', '--flank_upper', type=int, required=required,
                        help='End of flanking window (inclusive)')
 
-def __globdb_version(group, required=False):
-    group.add_argument('-g', '--globdb_version', type=str, required=required,
-                       help='GlobDB version (example: r226)')
-
 def __help(group, required=False):
     group.add_argument('-h', '--help', action='help',
                        help='Display help text')
