@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import sqlite3
 import json
 import hashlib
+from concurrent.futures import ProcessPoolExecutor
 
 
 logger = logging.getLogger(__name__)
@@ -203,6 +204,31 @@ def load_alignment_matrix_from_file(matrix_path: str,
     logger.info(f"Loaded {len(queries)} queries and {len(targets)} targets")
 
     return matrix, queries, targets
+
+def _load_and_reduce_matrix(matrix_path: str,
+                            metadata_path: str,
+                            n_svd_components: int):
+    """
+    Loads the alignment matrix and, if sparse, reduces it with TruncatedSVD.
+
+    Returns:
+        matrix (np.ndarray): Dense (possibly SVD-reduced) matrix
+        queries (list): List of query protein IDs
+        targets (list): List of reference protein IDs
+        explained_variance (float or None): Sum of explained variance ratio if SVD was applied, else None
+    """
+    matrix, queries, targets = load_alignment_matrix_from_file(matrix_path, metadata_path)
+
+    explained_variance = None
+    if scipy.sparse.issparse(matrix):
+        n_components = min(n_svd_components, matrix.shape[1] - 1)
+        logger.info(f"Sparse matrix: applying TruncatedSVD ({n_components} components)")
+        svd = TruncatedSVD(n_components=n_components, random_state=42)
+        matrix = svd.fit_transform(matrix)
+        explained_variance = float(svd.explained_variance_ratio_.sum())
+
+    return matrix, queries, targets, explained_variance
+
 
 def create_embedding_file(output_file: str,
                           embedding: np.ndarray,
@@ -837,15 +863,17 @@ def cluster(matrix_path: str,
 
     prefix = determine_dataset_name(matrix_path, '.', 0, '_matrix')
 
-    matrix, queries, targets = load_alignment_matrix_from_file(matrix_path, matrix_metadata_path)
+    # Loaded and (if sparse) SVD-reduced in a worker process so the sparse
+    # matrix and TruncatedSVD's internal working memory are fully released
+    # to the OS when the worker exits, rather than lingering in this process's RSS.
+    with ProcessPoolExecutor(max_workers=1) as executor:
+        matrix, queries, targets, explained_variance = executor.submit(
+            _load_and_reduce_matrix, matrix_path, matrix_metadata_path, n_svd_components
+        ).result()
 
-    if scipy.sparse.issparse(matrix):
-        n_components = min(n_svd_components, matrix.shape[1] - 1)
-        logger.info(f"Sparse matrix: applying TruncatedSVD ({n_components} components)")
-        svd = TruncatedSVD(n_components=n_components, random_state=42)
-        matrix = svd.fit_transform(matrix)
+    if explained_variance is not None:
         logger.info(f"Reduced matrix shape: {matrix.shape}")
-        logger.info(f"Explained variance ratio: {svd.explained_variance_ratio_.sum():.3f}")
+        logger.info(f"Explained variance ratio: {explained_variance:.3f}")
 
     early_filename, final_filename = tsne_embedding(matrix=matrix,
                               queries=queries,
