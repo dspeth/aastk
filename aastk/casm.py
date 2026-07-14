@@ -839,25 +839,44 @@ def cluster(matrix_path: str,
 
     matrix, queries, targets = load_alignment_matrix_from_file(matrix_path, matrix_metadata_path)
 
+    reduced_matrix = None
     if scipy.sparse.issparse(matrix):
         n_components = min(n_svd_components, matrix.shape[1] - 1)
         logger.info(f"Sparse matrix: applying TruncatedSVD ({n_components} components)")
         svd = TruncatedSVD(n_components=n_components, random_state=42)
-        matrix = svd.fit_transform(matrix)
+        reduced_matrix = svd.fit_transform(matrix)
+
         logger.info(f"Reduced matrix shape: {matrix.shape}")
         logger.info(f"Explained variance ratio: {svd.explained_variance_ratio_.sum():.3f}")
 
-    early_filename, final_filename = tsne_embedding(matrix=matrix,
-                              queries=queries,
-                              output=output,
-                              basename=prefix,
-                              perplexity=perplexity,
-                              iterations=iterations,
-                              exaggeration=exaggeration,
-                              threads=threads,
-                              force=force,
-                              )
-    logger.info("=== t-SNE Embedding Completed ===")
+        del matrix
+        gc.collect()
+
+    if reduced_matrix:
+        early_filename, final_filename = tsne_embedding(matrix=reduced_matrix,
+                                  queries=queries,
+                                  output=output,
+                                  basename=prefix,
+                                  perplexity=perplexity,
+                                  iterations=iterations,
+                                  exaggeration=exaggeration,
+                                  threads=threads,
+                                  force=force,
+                                  )
+    else:
+        early_filename, final_filename = tsne_embedding(matrix=matrix,
+                                                        queries=queries,
+                                                        output=output,
+                                                        basename=prefix,
+                                                        perplexity=perplexity,
+                                                        iterations=iterations,
+                                                        exaggeration=exaggeration,
+                                                        threads=threads,
+                                                        force=force,
+                                                        )
+
+        logger.info("=== t-SNE Embedding Completed ===")
+
     return early_filename, final_filename
 
 
