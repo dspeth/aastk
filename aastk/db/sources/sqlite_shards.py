@@ -12,12 +12,14 @@ def iter_shard_paths(chunk_dir):
     yield from Path(chunk_dir).rglob("*.db.gz")
 
 def open_shard(shard_path: Path) -> sqlite3.Connection:
+    # instead of gunzipping to a new file, the individual db is in-memory
     raw = gzip.decompress(shard_path.read_bytes())
     conn = sqlite3.connect(":memory:")
     conn.deserialize(raw)
     return conn
 
 def read_sequences(conn: sqlite3.Connection, prefix: str):
+    # call_type = 1 ensures that only protein-coding sequences are included
     rows = conn.execute("""
         SELECT s.gene_callers_id, s.sequence
         FROM gene_amino_acid_sequences s
@@ -45,6 +47,7 @@ def read_annotations(conn: sqlite3.Connection):
             annotations[gene_caller_id]['COG_ID'] = accession
         elif source == "KOfam":
             annotations[gene_caller_id]['KEGG_ID'] = accession
+        # for now, Pfam_ID with the lowest e-value is included (possibly subject to change)
         elif source == "Pfam" and e_value < best_pfam_evalue.get(gene_caller_id, float('inf')):
             best_pfam_evalue[gene_caller_id] = e_value
             annotations[gene_caller_id]['Pfam_ID'] = accession
@@ -54,6 +57,7 @@ def read_annotations(conn: sqlite3.Connection):
 
 
 def read_contig_info(conn: sqlite3.Connection):
+    # call_type = 1 ensures that only protein-coding sequences are included
     rows = conn.execute("""
         SELECT gene_callers_id, contig, start, stop, direction
         FROM genes_in_contigs
@@ -72,6 +76,7 @@ def read_contig_info(conn: sqlite3.Connection):
         elif direction == 'r':
             contig_info[gene_caller_id]['direction'] = '-'
 
+    # sort dict first by contig ID and then by gene start position for subsequent CUGO number assignment
     sorted_contig_info = {k: v for k, v in sorted(contig_info.items(),
                           key=lambda x: (x[1]['contig'], x[1]['start']))}
 
