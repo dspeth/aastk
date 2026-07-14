@@ -6,8 +6,10 @@ from aastk.cli import get_main_parser
 from aastk.pasr import *
 from aastk.cugo import *
 from aastk.casm import *
-from aastk.database import *
-from aastk.db.build import database  # overrides aastk.database.database during the rewrite
+from aastk.db.build import database
+from aastk.db.check import database_check
+from aastk.db.meta import meta, list_metadata
+from aastk.db.export import export_fasta
 from aastk.version import __version__, __copyright__, __author__
 import sys
 
