@@ -6,13 +6,13 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from tqdm import tqdm
 
-from .setup import  setup_database
-from .schema import TAXONOMY_COLUMNS, HIGH_LEVEL_ENV_COLUMNS, LOW_LEVEL_ENV_COLUMNS
-from .sources.sqlite_shards import *
-from .sources.tmhmm import *
-from .sources.taxonomy import parse_taxonomy_file
-from .sources.culture_collection import parse_culture_collection_file
-from .sources.environment import parse_environment_file
+from aastk.db.setup import setup_database
+from aastk.db.schema import TAXONOMY_COLUMNS, HIGH_LEVEL_ENV_COLUMNS, LOW_LEVEL_ENV_COLUMNS
+from aastk.db.sources.sqlite_shards import *
+from aastk.db.sources.tmhmm import *
+from aastk.db.sources.taxonomy import parse_taxonomy_file
+from aastk.db.sources.culture_collection import parse_culture_collection_file
+from aastk.db.sources.environment import parse_environment_file
 
 logger = logging.getLogger(__name__)
 

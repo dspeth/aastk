@@ -1,7 +1,7 @@
 import gzip
 from pathlib import Path
 
-from ..schema import TAXONOMY_COLUMNS
+from aastk.db.schema import TAXONOMY_COLUMNS
 
 import logging
 logger = logging.getLogger(__name__)

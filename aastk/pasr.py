@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from .util import *
+from aastk.util import *
 
 import subprocess
 import matplotlib.pyplot as plt

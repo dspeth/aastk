@@ -15,7 +15,7 @@
 #                                                                             #
 ###############################################################################
 
-from .version import (
+from aastk.version import (
     __version__,
     __author__,
     __author_email__,

@@ -3,7 +3,7 @@ import sqlite3
 from pathlib import Path
 from collections import defaultdict
 
-from ...util import compress_sequence
+from aastk.util import compress_sequence
 
 import logging
 logger = logging.getLogger(__name__)

@@ -1,6 +1,6 @@
 import sqlite3
 
-from .schema import PROTEIN_SCHEMA, GENOME_SCHEMA, PROTEIN_COLUMNS
+from aastk.db.schema import PROTEIN_SCHEMA, GENOME_SCHEMA, PROTEIN_COLUMNS
 
 
 def setup_database(db_path: str) -> sqlite3.Connection:

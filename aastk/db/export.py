@@ -1,7 +1,7 @@
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from ..util import ensure_path, decompress_sequence
+from aastk.util import ensure_path, decompress_sequence
 
 
 def stream_sequence_ids(db_path, batch_size):

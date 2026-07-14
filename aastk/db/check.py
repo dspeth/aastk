@@ -1,7 +1,7 @@
 import sqlite3
 
-from ..util import ensure_path
-from .schema import TAXONOMY_COLUMNS, HIGH_LEVEL_ENV_COLUMNS, LOW_LEVEL_ENV_COLUMNS
+from aastk.util import ensure_path
+from aastk.db.schema import TAXONOMY_COLUMNS, HIGH_LEVEL_ENV_COLUMNS, LOW_LEVEL_ENV_COLUMNS
 
 
 def database_check(db_path: str,

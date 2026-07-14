@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import logging
-from .log import logger_setup
+from aastk.log import logger_setup
 from aastk.cli import get_main_parser
 from aastk.pasr import *
 from aastk.cugo import *

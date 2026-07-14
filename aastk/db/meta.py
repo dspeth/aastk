@@ -4,8 +4,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from tqdm import tqdm
 
-from ..util import ensure_path, determine_dataset_name, read_fasta_to_dict
-from .schema import (
+from aastk.util import ensure_path, determine_dataset_name, read_fasta_to_dict
+from aastk.db.schema import (
     BASE_COLUMNS,
     ANNOTATION_COLUMNS,
     TAXONOMY_COLUMNS,
