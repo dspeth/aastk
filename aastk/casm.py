@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import sqlite3
 import json
 import hashlib
+import gc
 
 
 logger = logging.getLogger(__name__)
