@@ -847,13 +847,13 @@ def cluster(matrix_path: str,
         svd = TruncatedSVD(n_components=n_components, random_state=42)
         reduced_matrix = svd.fit_transform(matrix)
 
-        logger.info(f"Reduced matrix shape: {matrix.shape}")
+        logger.info(f"Reduced matrix shape: {reduced_matrix.shape}")
         logger.info(f"Explained variance ratio: {svd.explained_variance_ratio_.sum():.3f}")
 
         del matrix
         gc.collect()
 
-    if reduced_matrix:
+    if reduced_matrix is not None:
         early_filename, final_filename = tsne_embedding(matrix=reduced_matrix,
                                   queries=queries,
                                   output=output,
@@ -876,7 +876,7 @@ def cluster(matrix_path: str,
                                                         force=force,
                                                         )
 
-        logger.info("=== t-SNE Embedding Completed ===")
+    logger.info("=== t-SNE Embedding Completed ===")
 
     return early_filename, final_filename
 
