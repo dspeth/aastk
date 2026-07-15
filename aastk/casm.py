@@ -585,17 +585,26 @@ def plot_clusters(tsv_file: str,
                             label=f'Cluster {cluster}')
 
     else:
-        unique_vals = df[color_column].dropna().unique()
+        is_numeric = pd.api.types.is_numeric_dtype(df[color_column])
+
+        # NA and 0 both signal "no data"/"no signal" for this metadata column, so
+        # group them together and render them in a distinct gray rather than as
+        # part of the colormap/category colors used for real values.
+        if is_numeric:
+            no_data_mask = df[color_column].isna() | (df[color_column] == 0)
+        else:
+            no_data_mask = df[color_column].isna() | (df[color_column].astype(str).str.upper() == 'NA')
+
+        unique_vals = df.loc[~no_data_mask, color_column].dropna().unique()
 
         color_map = {
             metadatum: '#' + hashlib.md5(str(metadatum).encode()).hexdigest()[:6]
             for metadatum in unique_vals
         }
 
-        na_mask = df[color_column].isna()
-        if na_mask.any():
-            plt.scatter(df.loc[na_mask, 'tsne1'], df.loc[na_mask, 'tsne2'],
-                        c='lightgray', alpha=0.4, s=12, edgecolors='none', label='No data')
+        if no_data_mask.any():
+            plt.scatter(df.loc[no_data_mask, 'tsne1'], df.loc[no_data_mask, 'tsne2'],
+                        c='darkgray', alpha=0.4, s=12, edgecolors='none', label='No data / 0')
 
         if pd.api.types.is_string_dtype(df[color_column]) or pd.api.types.is_categorical_dtype(df[color_column]):
             for val in unique_vals:
@@ -604,8 +613,8 @@ def plot_clusters(tsv_file: str,
                             color=color_map[val], s=15, alpha=0.7,
                             edgecolors='white', linewidths=0.3, label=str(val))
         else:
-            plt.scatter(df['tsne1'], df['tsne2'],
-                        c=df[color_column], cmap='viridis', s=15,
+            plt.scatter(df.loc[~no_data_mask, 'tsne1'], df.loc[~no_data_mask, 'tsne2'],
+                        c=df.loc[~no_data_mask, color_column], cmap='viridis', s=15,
                         alpha=0.7, edgecolors='white', linewidths=0.3)
 
 
