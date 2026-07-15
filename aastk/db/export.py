@@ -41,7 +41,8 @@ def export_fasta(db_path: str,
                   output: str,
                   threads: int = 1,
                   force: bool = False):
-    protein_fasta_file = ensure_path(output, 'globdb_all_prot.faa', force=force)
+    version = db_path.split('_')[1].replace('r', '')
+    protein_fasta_file = ensure_path(output, f'globdb_r{version}_all_prot.faa', force=force)
 
     batch_size = 900
 
