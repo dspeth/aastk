@@ -495,7 +495,7 @@ def plot_clusters(tsv_file: str,
             df = extend_embedding_with_metadata(df, db_path, protein_col=metadata)
             color_column = metadata
 
-    if metadata  and not db_path:
+    if metadata and not db_path:
         logger.info("Metadata selected but path to SQLite DB not provided, coloring by cluster")
         color_column = 'cluster'
     elif color_column is None or color_column not in df.columns:
