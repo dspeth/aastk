@@ -123,7 +123,7 @@ def build_alignment_matrix_split(align_file: str,
 
     del row_pos
 
-    matrix = scipy.sparse.csr_matrix(
+    matrix = scipy.sparse.csr_array(
         (csr_data, csr_indices, indptr),
         shape=(nrows, ncols),
         dtype=np.float32
