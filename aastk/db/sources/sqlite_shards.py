@@ -27,8 +27,10 @@ def read_sequences(conn: sqlite3.Connection, prefix: str):
         WHERE g.call_type = 1
     """).fetchall()
 
+
+
     return [
-        (gene_caller_id, f"{prefix}___{gene_caller_id}", compress_sequence(sequence))
+        (gene_caller_id, f"{prefix}___{gene_caller_id}", compress_sequence(sequence), len(sequence))
         for gene_caller_id, sequence in rows
     ]
 
@@ -70,7 +72,6 @@ def read_contig_info(conn: sqlite3.Connection):
         contig_info[gene_caller_id]['contig'] = contig
         contig_info[gene_caller_id]['start'] = start
         contig_info[gene_caller_id]['stop'] = stop
-        contig_info[gene_caller_id]['aa_length'] = int((abs(int(stop) - int(start)) + 1)/3)
         if direction == 'f':
             contig_info[gene_caller_id]['direction'] = '+'
         elif direction == 'r':
@@ -102,12 +103,12 @@ def read_shard(shard_path: Path):
         contig_info = read_contig_info(conn)
 
         records = []
-        for gene_caller_id, seqID, protein_seq in sequences:
+        for gene_caller_id, seqID, protein_seq, sequence_length in sequences:
             ann = annotations.get(gene_caller_id, {})
             contig = contig_info.get(gene_caller_id, {})
 
             records.append((
-                seqID, contig.get('contig'), contig.get('aa_length'), contig.get('direction'), ann.get('COG_ID', 'NA'),
+                seqID, contig.get('contig'), sequence_length, contig.get('direction'), ann.get('COG_ID', 'NA'),
                 ann.get('KEGG_ID', 'NA'), ann.get('Pfam_ID', 'NA'), contig.get('cugo_number'), protein_seq
             ))
         return records
