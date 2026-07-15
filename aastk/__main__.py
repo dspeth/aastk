@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import logging
+import argcomplete
 from aastk.log import logger_setup
 from aastk.cli import get_main_parser
 from aastk.pasr import *
@@ -61,6 +62,7 @@ def print_help():
 
 def main():
     parser = get_main_parser()
+    argcomplete.autocomplete(parser)
 
     if len(sys.argv) == 1:
         print_help()
