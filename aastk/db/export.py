@@ -1,5 +1,5 @@
 import sqlite3
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from aastk.util import ensure_path, decompress_sequence
 
@@ -47,7 +47,7 @@ def export_fasta(db_path: str,
     batch_size = 900
 
     with open(protein_fasta_file, 'w') as out:
-        with ThreadPoolExecutor(max_workers=threads) as executor:
+        with ProcessPoolExecutor(max_workers=threads) as executor:
             futures = set()
 
             for batch in stream_sequence_ids(db_path, batch_size):
@@ -63,3 +63,5 @@ def export_fasta(db_path: str,
             for future in as_completed(futures):
                 for seqID, seq in future.result():
                     out.write(f">{seqID}\n{seq}\n")
+
+    return protein_fasta_file
