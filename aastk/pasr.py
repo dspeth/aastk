@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from aastk.util import *
+from aastk.cugo import filter
 
 import subprocess
 import matplotlib.pyplot as plt
@@ -900,8 +901,10 @@ def pasr_select(yaml_path: str,
                 max_score_max: int = None,
                 dbmin: int = None,
                 bsr: float = None,
+                threads: int = 1,
                 force: bool = False,
-                params: bool = False):
+                params: bool = False,
+                filter_seqs: bool = False):
     """
     Subsets matched sequences based on YAML thresholds or provided parameters.
 
@@ -914,8 +917,10 @@ def pasr_select(yaml_path: str,
         max_score_max (int): Maximum max_score score threshold (required when params=True).
         dbmin (int): Minimum database score threshold (mutually exclusive with bsr).
         bsr (float): Minimum BSR threshold (mutually exclusive with dbmin).
+        threads (int): Number of threads to use when filter_seqs is True (default: 1).
         force (bool): If true, existing files/directories in output path are overwritten.
         params (bool): Use provided parameters instead of YAML file (mutually exclusive with yaml_path).
+        filter_seqs (bool): Additionally filter the selected sequences for improved homogeneity.
     """
     # check if seqkit is in path
     check_dependency_availability('seqkit')
@@ -1072,6 +1077,10 @@ def pasr_select(yaml_path: str,
                                 force=force,
                                 update=True
                                 )
+
+    if filter_seqs:
+        logger.info(f"Filtering {output_path}")
+        output_path = filter(output_path, db_path=None, output=output_dir, threads=threads, force=force)
 
     if created_yaml_path:
         return output_path, stats_path, created_yaml_path, update_plot

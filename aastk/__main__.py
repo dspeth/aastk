@@ -155,8 +155,10 @@ def main():
                 max_score_max=args.max_score_max,
                 dbmin=args.dbmin,
                 bsr=args.bsr_cutoff,
+                threads=args.threads,
                 force=args.force,
-                params=args.params
+                params=args.params,
+                filter_seqs=args.filter_seqs
             )
 
         elif args.subparser_name == 'pasr':
@@ -352,6 +354,8 @@ def main():
                 fasta=args.fasta,
                 no_cluster=args.no_cluster,
                 output=args.output,
+                threads=args.threads,
+                filter_seqs=args.filter_seqs,
                 force=args.force
             )
 

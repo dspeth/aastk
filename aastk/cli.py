@@ -448,6 +448,8 @@ def get_main_parser():
             __max_score_max(grp)
             __dbmin(grp)
             __bsr_cutoff(grp)
+            __threads(grp)
+            __filter_seqs(grp)
             __force(grp)
 
 
@@ -659,6 +661,8 @@ def get_main_parser():
             __no_cluster(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __threads(grp)
+            __filter_seqs(grp)
             __force(grp)
 
     with subparser(sub_parsers, 'list_metadata', 'Display avaiilable metadata categories') as parser:

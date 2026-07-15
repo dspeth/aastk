@@ -1,5 +1,6 @@
 from aastk.util import *
 from aastk.db.schema import BASE_COLUMNS, ANNOTATION_COLUMNS, TAXONOMY_COLUMNS, CULTURE_COLLECTION_COLUMNS, HIGH_LEVEL_ENV_COLUMNS, LOW_LEVEL_ENV_COLUMNS
+from aastk.cugo import filter
 
 import logging
 import numpy as np
@@ -683,6 +684,8 @@ def casm_select(final_embedding_file: str,
          fasta: str,
          no_cluster: int,
          output: str,
+         threads: int = 1,
+         filter_seqs: bool = False,
          force: bool = False):
     """
     Extract proteins belonging to a specific cluster into a separate FASTA file.
@@ -695,6 +698,8 @@ def casm_select(final_embedding_file: str,
         fasta (str): Path to input FASTA file containing all protein sequences
         no_cluster (int): Cluster number to extract
         output (str): Output directory path
+        threads (int): Number of threads to use when filter_seqs is True (default: 1).
+        filter_seqs (bool): Additionally filter the selected sequences for improved homogeneity.
         force (bool): Overwrite existing files if True
 
     Returns:
@@ -741,6 +746,10 @@ def casm_select(final_embedding_file: str,
         for id in cluster_seqIDs:
             if id in input_fasta_dict:
                 file.write(f">{id}\n{input_fasta_dict[id]}\n")
+
+    if filter_seqs:
+        logger.info(f"Filtering {cluster_fasta}")
+        cluster_fasta = filter(cluster_fasta, db_path=None, output=output, threads=threads, force=force)
 
     return cluster_fasta
 
