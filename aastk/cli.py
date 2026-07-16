@@ -187,7 +187,7 @@ def __include_taxonomy(group, required=False):
                        help='Include taxonomy metadata in output')
 
 def __iterations(group, required=False):
-    group.add_argument('-i', '--iterations', type=str, default=500, required=required,
+    group.add_argument('-i', '--iterations', type=int, default=500, required=required,
                        help='Number of tSNE embedding iterations (default: 500)')
 
 def __keep(group, required=False):
