@@ -92,6 +92,47 @@ def get_header(include_taxonomy: bool,
     return header
 
 
+# one representative column per category: presence of data there indicates
+# that the corresponding ingestion step (build.py) has actually been run
+AVAILABILITY_CHECKS = {
+    'annotation': ('protein_data', 'COG_ID'),
+    'taxonomy': ('genome_data', 'domain'),
+    'culture_collection': ('genome_data', 'culture_collection'),
+    'high_level_environment': ('genome_data', 'animal_associated'),
+    'low_level_environment': ('genome_data', 'human'),
+}
+
+
+def check_metadata_availability(db_path: str,
+                                include_taxonomy: bool,
+                                include_annotation: bool,
+                                include_culture_collection: bool,
+                                include_high_level_environment: bool,
+                                include_low_level_environment: bool) -> list:
+    requested = {
+        'annotation': include_annotation,
+        'taxonomy': include_taxonomy,
+        'culture_collection': include_culture_collection,
+        'high_level_environment': include_high_level_environment,
+        'low_level_environment': include_low_level_environment,
+    }
+
+    unavailable = []
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    for category, is_requested in requested.items():
+        if not is_requested:
+            continue
+        table, column = AVAILABILITY_CHECKS[category]
+        cursor.execute(f"SELECT 1 FROM {table} WHERE {column} IS NOT NULL LIMIT 1")
+        if cursor.fetchone() is None:
+            unavailable.append(category)
+
+    conn.close()
+    return unavailable
+
+
 def process_batch(db_path: str,
                   batch: list,
                   include_taxonomy: bool,
@@ -178,6 +219,20 @@ def meta(db_path: str,
             "Must specify at least one metadata type "
             "(--taxonomy, --annotation, --culture-collection, "
             "--high-level-environment, --low-level-environment, or --all-metadata)"
+        )
+        return
+
+    unavailable = check_metadata_availability(
+        db_path,
+        include_taxonomy,
+        include_annotation,
+        include_culture_collection,
+        include_high_level_environment,
+        include_low_level_environment
+    )
+    if unavailable:
+        logger.error(
+            f"Requested metadata not available in database: {', '.join(unavailable)}"
         )
         return
 
