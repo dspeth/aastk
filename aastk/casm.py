@@ -1,15 +1,19 @@
-from .util import *
-from .database import BASE_COLUMNS, ANNOTATION_COLUMNS, TAXONOMY_COLUMNS, CULTURE_COLLECTION_COLUMNS, HIGH_LEVEL_ENV_COLUMNS, LOW_LEVEL_ENV_COLUMNS
+from aastk.util import *
+from aastk.db.schema import BASE_COLUMNS, ANNOTATION_COLUMNS, TAXONOMY_COLUMNS, CULTURE_COLLECTION_COLUMNS, HIGH_LEVEL_ENV_COLUMNS, LOW_LEVEL_ENV_COLUMNS
+from aastk.cugo import filter
 
 import logging
 import numpy as np
 import pandas as pd
+import scipy.sparse
 import openTSNE
 from sklearn.cluster import DBSCAN
+from sklearn.decomposition import TruncatedSVD
 import matplotlib.pyplot as plt
 import sqlite3
 import json
 import hashlib
+import gc
 
 
 logger = logging.getLogger(__name__)
@@ -18,141 +22,167 @@ CASM_BLAST_OUTPUT_COLUMNS = ["qseqid", "sseqid", "score"]
 
 def build_alignment_matrix_split(align_file: str,
                                  output: str = None,
-                                 force: bool = False):
+                                 force: bool = False,
+                                 save: bool = True):
     """
-    Builds alignment matrix from input Blast Tabular Output to be used in tSNE embedding
+    Builds alignment matrix from input Blast Tabular Output to be used in tSNE embedding.
+
+    The matrix is always stored as a scipy CSR sparse matrix (.npz).
 
     Args:
         align_file (str): Path to Blast Tabular Output
         output (str): Path to desired output directory
         force (bool): If set, existing files will be overwritten
+        save (bool): If set, write the matrix and its metadata to disk. Disable
+            when the matrix is only needed in-memory by the caller (e.g. the
+            full `casm` pipeline), to skip a slow compressed write/read round-trip.
 
     Returns:
-        matrix: Alignment matrix as dense numpy matrix
+        matrix: Alignment matrix (scipy CSR sparse matrix)
         queries (list): List of query protein IDs
         targets (list): List of reference protein IDs
-        matrix_file (str): Path to .npy file containing numpy matrix
-        metadata_file (str): Path to .json file containing matrix metadata (queries, targets, matrix stats)
+        matrix_file (str): Path to matrix file (.npz), or None if save=False
+        metadata_file (str): Path to .json file containing matrix metadata, or None if save=False
     """
     logger.info(f"Building alignment matrix from: {align_file} (split parsing)")
 
-    # ===============================
-    # Storage preparation
-    # ===============================
-
-    # set up empty sets for storing query and reference protein IDs
     queries_set = set()
     targets_set = set()
+    row_nnz_dict = {}
 
     # =======================================================
-    # First pass over alignment file: Retrieve protein IDs
+    # First pass: collect protein IDs and count nnz per row
     # =======================================================
     with open(align_file, 'r') as f:
         for line_num, line in enumerate(f, 1):
             line = line.rstrip('\n\r')
             if not line:
                 continue
-
-            try:
-                # split tab separated line to get query ID, target ID and score
-                parts = line.split("\t")
-                if len(parts) != 3:
-                    logger.warning(f"Line {line_num}: Expected 3 fields, got {len(parts)}. Skipping.")
-                    continue
-                query, target, score_str = parts
-
-                # add protein IDs to respective sets
-                queries_set.add(query)
-                targets_set.add(target)
-            except Exception as e:
-                logger.warning(f"Line {line_num}: Error parsing line. Skipping. ({e})")
+            parts = line.split("\t")
+            if len(parts) != 3:
+                logger.warning(f"Line {line_num}: Expected 3 fields, got {len(parts)}. Skipping.")
                 continue
+            query, target, score_str = parts
+            try:
+                float(score_str)
+            except ValueError:
+                logger.warning(f"Line {line_num}: Invalid score '{score_str}'. Skipping.")
+                continue
+            queries_set.add(query)
+            targets_set.add(target)
+            row_nnz_dict[query] = row_nnz_dict.get(query, 0) + 1
 
-    # sort both sets
     queries = sorted(queries_set)
     targets = sorted(targets_set)
-
-    # determine indices for each ID for matrix construction and save {protID: index}
     query_to_idx = {q: i for i, q in enumerate(queries)}
     target_to_idx = {t: i for i, t in enumerate(targets)}
-
-    # delete ID sets for efficient memory handling
     del queries_set, targets_set
 
-    # set up empty numpy matrix with correct dimensions
-    matrix = np.zeros((len(queries), len(targets)), dtype=np.float32)
+    nrows = len(queries)
+    ncols = len(targets)
+    total_nnz = sum(row_nnz_dict.values())
+    matrix_elements = nrows * ncols
+
+    # Build CSR indptr from per-row counts
+    row_nnz = np.array([row_nnz_dict.get(q, 0) for q in queries], dtype=np.int64)
+    del row_nnz_dict
+    indptr = np.empty(nrows + 1, dtype=np.int64)
+    indptr[0] = 0
+    np.cumsum(row_nnz, out=indptr[1:])
+    del row_nnz
+
+    logger.info(f"Allocating CSR arrays: {total_nnz:,} non-zero entries "
+                f"(~{total_nnz * 12 / 1e9:.1f} GB)")
+
+    # Allocate final CSR arrays directly (float32 data + int64 indices = 12 bytes/entry).
+    # The previous COO approach (int64+int64+float32 = 20 bytes/entry) plus the CSR copy
+    # created during scipy.sparse.csr_matrix() peaked at ~28 bytes/entry simultaneously.
+    csr_data = np.empty(total_nnz, dtype=np.float32)
+    csr_indices = np.empty(total_nnz, dtype=np.int64)
+    row_pos = indptr[:-1].copy()  # per-row write-position tracker
 
     # =======================================================
-    # Second pass over alignment file: Matrix construction
+    # Second pass: fill CSR arrays directly
     # =======================================================
     with open(align_file, 'r') as f:
         for line_num, line in enumerate(f, 1):
             line = line.rstrip('\n\r')
             if not line:
                 continue
-
-            # split tab separated line to get query ID, target ID and score
+            parts = line.split("\t")
+            if len(parts) != 3:
+                continue
+            query, target, score_str = parts
             try:
-                parts = line.split("\t")
-                if len(parts) != 3:
-                    continue
-                query, target, score_str = parts
-
                 score = float(score_str)
-                i = query_to_idx[query]
-                j = target_to_idx[target]
+            except ValueError:
+                continue
+            if query not in query_to_idx or target not in target_to_idx:
+                continue
+            i = query_to_idx[query]
+            j = target_to_idx[target]
+            pos = row_pos[i]
+            csr_data[pos] = score
+            csr_indices[pos] = j
+            row_pos[i] += 1
 
-                # assign alignment score to correct matrix cell
-                matrix[i, j] = score
-            except ValueError as e:
-                logger.warning(f"Line {line_num}: Invalid score '{score_str}'. Skipping. ({e})")
-                continue
-            except KeyError as e:
-                logger.warning(f"Line {line_num}: Key not found in mapping. Skipping. ({e})")
-                continue
-            except Exception as e:
-                logger.warning(f"Line {line_num}: Unexpected error. Skipping. ({e})")
-                continue
+    del row_pos
+
+    matrix = scipy.sparse.csr_array(
+        (csr_data, csr_indices, indptr),
+        shape=(nrows, ncols),
+        dtype=np.float32
+    )
 
     # ===============================
     # Determine matrix statistics
     # ===============================
-    non_zero_elements = np.count_nonzero(matrix)
-    matrix_elements = len(queries) * len(targets)
+    non_zero_elements = matrix.nnz
+    score_min = float(matrix.data.min()) if matrix.nnz > 0 else 0.0
+    score_max = float(matrix.data.max()) if matrix.nnz > 0 else 0.0
+
+
     sparsity = (matrix_elements - non_zero_elements) / matrix_elements * 100
 
     logger.info(f"Matrix construction completed")
     logger.info(f"Non-zero elements: {non_zero_elements:,} ({100 - sparsity:.2f}% filled)")
     logger.info(f"Matrix sparsity: {sparsity:.2f}%")
-    logger.info(f"Score range: {matrix.min():.2f} - {matrix.max():.2f}")
+    logger.info(f"Score range: {score_min:.2f} - {score_max:.2f}")
 
     dataset_name = determine_dataset_name(align_file, '.', 0)
 
     # =============================================
-    # Matrix and matrix metadate output to files
+    # Matrix and matrix metadata output to files
     # =============================================
-    if output:
-        matrix_file = ensure_path(output, f"{dataset_name}_matrix.npy", force=force)
-        metadata_file = ensure_path(output, f"{dataset_name}_matrix_metadata.json", force=force)
+    matrix_file = None
+    metadata_file = None
+
+    if save:
+        if output:
+            matrix_file = ensure_path(output, f"{dataset_name}_matrix.npz", force=force)
+            metadata_file = ensure_path(output, f"{dataset_name}_matrix_metadata.json", force=force)
+        else:
+            matrix_file = ensure_path(target=f"{dataset_name}_matrix.npz", force=force)
+            metadata_file = ensure_path(target=f"{dataset_name}_matrix_metadata.json", force=force)
+
+        scipy.sparse.save_npz(matrix_file, matrix)
+        logger.info(f"Matrix saved to: {matrix_file}")
+
+        metadata = {
+            "queries": queries,
+            "targets": targets,
+            "matrix_shape": list(matrix.shape),
+            "non_zero_elements": non_zero_elements,
+            "sparsity": float(sparsity),
+            "sparse": True,
+            "score_range": [score_min, score_max]
+        }
+
+        with open(metadata_file, 'w') as file:
+            json.dump(metadata, file, indent=2)
+        logger.info(f"Matrix metadata saved to: {metadata_file}")
     else:
-        matrix_file = ensure_path(target=f"{dataset_name}_matrix.npy", force=force)
-        metadata_file = ensure_path(target=f"{dataset_name}_matrix_metadata.json", force=force)
-
-    np.save(matrix_file, matrix)
-    logger.info(f"Matrix saved to: {matrix_file}")
-
-    metadata = {
-        "queries": queries,
-        "targets": targets,
-        "matrix_shape": matrix.shape,
-        "non_zero_elements": int(non_zero_elements),
-        "sparsity": float(sparsity),
-        "score_range": [float(matrix.min()), float(matrix.max())]
-    }
-
-    with open(metadata_file, 'w') as file:
-        json.dump(metadata, file, indent=2)
-    logger.info(f"Matrix metadata saved to: {metadata_file}")
+        logger.info("Skipping matrix disk write (in-memory pipeline)")
 
     return matrix, queries, targets, matrix_file, metadata_file
 
@@ -170,15 +200,18 @@ def load_alignment_matrix_from_file(matrix_path: str,
         queries (list): List of query protein IDs
         targets (list): List of reference protein IDs
     """
-    matrix = np.load(matrix_path)
-
     with open(metadata_path, "r") as file:
         metadata = json.load(file)
+
+    if metadata.get("sparse", False):
+        matrix = scipy.sparse.load_npz(matrix_path)
+    else:
+        matrix = np.load(matrix_path)
 
     queries = metadata["queries"]
     targets = metadata["targets"]
 
-    logger.info(f"Loaded matrix shape: {matrix.shape}")
+    logger.info(f"Loaded {'sparse' if metadata.get('sparse') else 'dense'} matrix shape: {matrix.shape}")
     logger.info(f"Loaded {len(queries)} queries and {len(targets)} targets")
 
     return matrix, queries, targets
@@ -248,7 +281,7 @@ def create_embedding_dataframe(embedding: np.ndarray,
     return df
 
 
-def tsne_embedding(matrix: np.ndarray,
+def tsne_embedding(matrix,
                    queries: list,
                    output: str,
                    basename: str,
@@ -285,10 +318,9 @@ def tsne_embedding(matrix: np.ndarray,
     logger.info(f"Using {threads} threads")
 
     # ========================
-    # Multiscale affinites
+    # Multiscale affinities
     # ========================
 
-    # compute affinity matrix using multiple perplexity values for local and global structure
     logger.info("Computing multiscale affinities")
     affinities = openTSNE.affinity.Multiscale(matrix,
                                               perplexities=[20, perplexity],
@@ -299,7 +331,6 @@ def tsne_embedding(matrix: np.ndarray,
     # Initialize embedding
     # ========================
 
-    # initialize with PCA for better convergence
     logger.info("Initializing t-SNE with PCA")
     pca_init = openTSNE.initialization.pca(matrix)
 
@@ -475,7 +506,7 @@ def plot_clusters(tsv_file: str,
             df = extend_embedding_with_metadata(df, db_path, protein_col=metadata)
             color_column = metadata
 
-    if metadata  and not db_path:
+    if metadata and not db_path:
         logger.info("Metadata selected but path to SQLite DB not provided, coloring by cluster")
         color_column = 'cluster'
     elif color_column is None or color_column not in df.columns:
@@ -564,17 +595,26 @@ def plot_clusters(tsv_file: str,
                             label=f'Cluster {cluster}')
 
     else:
-        unique_vals = df[color_column].dropna().unique()
+        is_numeric = pd.api.types.is_numeric_dtype(df[color_column])
+
+        # NA and 0 both signal "no data"/"no signal" for this metadata column, so
+        # group them together and render them in a distinct gray rather than as
+        # part of the colormap/category colors used for real values.
+        if is_numeric:
+            no_data_mask = df[color_column].isna() | (df[color_column] == 0)
+        else:
+            no_data_mask = df[color_column].isna() | (df[color_column].astype(str).str.upper() == 'NA')
+
+        unique_vals = df.loc[~no_data_mask, color_column].dropna().unique()
 
         color_map = {
             metadatum: '#' + hashlib.md5(str(metadatum).encode()).hexdigest()[:6]
             for metadatum in unique_vals
         }
 
-        na_mask = df[color_column].isna()
-        if na_mask.any():
-            plt.scatter(df.loc[na_mask, 'tsne1'], df.loc[na_mask, 'tsne2'],
-                        c='lightgray', alpha=0.4, s=12, edgecolors='none', label='No data')
+        if no_data_mask.any():
+            plt.scatter(df.loc[no_data_mask, 'tsne1'], df.loc[no_data_mask, 'tsne2'],
+                        c='darkgray', alpha=0.4, s=12, edgecolors='none', label='No data / 0')
 
         if pd.api.types.is_string_dtype(df[color_column]) or pd.api.types.is_categorical_dtype(df[color_column]):
             for val in unique_vals:
@@ -583,8 +623,8 @@ def plot_clusters(tsv_file: str,
                             color=color_map[val], s=15, alpha=0.7,
                             edgecolors='white', linewidths=0.3, label=str(val))
         else:
-            plt.scatter(df['tsne1'], df['tsne2'],
-                        c=df[color_column], cmap='viridis', s=15,
+            plt.scatter(df.loc[~no_data_mask, 'tsne1'], df.loc[~no_data_mask, 'tsne2'],
+                        c=df.loc[~no_data_mask, color_column], cmap='viridis', s=15,
                         alpha=0.7, edgecolors='white', linewidths=0.3)
 
 
@@ -663,6 +703,8 @@ def casm_select(final_embedding_file: str,
          fasta: str,
          no_cluster: int,
          output: str,
+         threads: int = 1,
+         filter_seqs: bool = False,
          force: bool = False):
     """
     Extract proteins belonging to a specific cluster into a separate FASTA file.
@@ -675,6 +717,8 @@ def casm_select(final_embedding_file: str,
         fasta (str): Path to input FASTA file containing all protein sequences
         no_cluster (int): Cluster number to extract
         output (str): Output directory path
+        threads (int): Number of threads to use when filter_seqs is True (default: 1).
+        filter_seqs (bool): Additionally filter the selected sequences for improved homogeneity.
         force (bool): Overwrite existing files if True
 
     Returns:
@@ -722,6 +766,10 @@ def casm_select(final_embedding_file: str,
             if id in input_fasta_dict:
                 file.write(f">{id}\n{input_fasta_dict[id]}\n")
 
+    if filter_seqs:
+        logger.info(f"Filtering {cluster_fasta}")
+        cluster_fasta = filter(cluster_fasta, db_path=None, output=output, threads=threads, force=force)
+
     return cluster_fasta
 
 # ==================================================
@@ -753,8 +801,8 @@ def matrix(fasta: str,
         force (bool): Overwrite existing files if True
 
     Returns:
-        matrix_file (str): Path to .npy file containing numpy matrix
-        metadata_file (str): Path to .json file containing matrix metadata (queries, targets, matrix stats)
+        matrix_file (str): Path to matrix file (.npz)
+        metadata_file (str): Path to .json file containing matrix metadata
     """
     logger.info("=== Starting Matrix Construction ===")
     logger.info(f"Input FASTA: {fasta}")
@@ -772,9 +820,58 @@ def matrix(fasta: str,
     align_output = run_diamond_alignment(fasta, subset_fasta, subset_size, threads, CASM_BLAST_OUTPUT_COLUMNS, output, force=force)
 
     logger.info("=== Phase 2: Matrix Construction ===")
-    _, _, _, matrix_file, metadata_file = build_alignment_matrix_split(align_output, output, force)
+    _, _, _, matrix_file, metadata_file = build_alignment_matrix_split(
+        align_output, output, force=force
+    )
 
     return matrix_file, metadata_file
+
+
+def _reduce_and_embed(matrix,
+                      queries: list,
+                      output: str,
+                      basename: str,
+                      perplexity: int,
+                      iterations: int,
+                      exaggeration: int,
+                      threads: int,
+                      n_svd_components: int,
+                      force: bool):
+    """
+    Applies TruncatedSVD (if the matrix is sparse) followed by t-SNE embedding.
+
+    Shared by `cluster` (which loads the matrix from disk) and `casm` (which keeps
+    the matrix in memory from matrix construction), so the reduction/embedding
+    logic only lives in one place.
+
+    Returns:
+        early_filename (str), final_filename (str): Paths to early and final embedding TSV files
+    """
+    reduced_matrix = None
+    if scipy.sparse.issparse(matrix):
+        n_components = min(n_svd_components, matrix.shape[1] - 1)
+        logger.info(f"Sparse matrix: applying TruncatedSVD ({n_components} components)")
+        svd = TruncatedSVD(n_components=n_components, random_state=42)
+        reduced_matrix = svd.fit_transform(matrix)
+
+        logger.info(f"Reduced matrix shape: {reduced_matrix.shape}")
+        logger.info(f"Explained variance ratio: {svd.explained_variance_ratio_.sum():.3f}")
+
+        del matrix
+        gc.collect()
+
+    embed_matrix = reduced_matrix if reduced_matrix is not None else matrix
+
+    return tsne_embedding(matrix=embed_matrix,
+                          queries=queries,
+                          output=output,
+                          basename=basename,
+                          perplexity=perplexity,
+                          iterations=iterations,
+                          exaggeration=exaggeration,
+                          threads=threads,
+                          force=force,
+                          )
 
 
 def cluster(matrix_path: str,
@@ -784,6 +881,7 @@ def cluster(matrix_path: str,
          iterations: int = 500,
          exaggeration: int = 6,
          threads: int = 1,
+         n_svd_components: int = 50,
          force: bool = False,
          ):
     """
@@ -794,13 +892,14 @@ def cluster(matrix_path: str,
     Optionally enriches results with protein and genome metadata.
 
     Args:
-        matrix_path (str): Path to alignment matrix file
+        matrix_path (str): Path to alignment matrix file (.npy or .npz)
         matrix_metadata_path (str): Path to matrix metadata file
         output (str): Base name for output files
         perplexity (int): t-SNE perplexity parameter
         iterations (int): Number of optimization iterations per phase
         exaggeration (int): Early exaggeration factor
         threads (int): Number of threads for parallel processing
+        n_svd_components (int): SVD dimensions used when matrix is sparse
         force (bool): Overwrite existing files if True
 
     Returns:
@@ -816,17 +915,20 @@ def cluster(matrix_path: str,
 
     matrix, queries, targets = load_alignment_matrix_from_file(matrix_path, matrix_metadata_path)
 
-    early_filename, final_filename = tsne_embedding(matrix=matrix,
-                              queries=queries,
-                              output=output,
-                              basename=prefix,
-                              perplexity=perplexity,
-                              iterations=iterations,
-                              exaggeration=exaggeration,
-                              threads=threads,
-                              force=force,
-                              )
+    early_filename, final_filename = _reduce_and_embed(matrix=matrix,
+                                                        queries=queries,
+                                                        output=output,
+                                                        basename=prefix,
+                                                        perplexity=perplexity,
+                                                        iterations=iterations,
+                                                        exaggeration=exaggeration,
+                                                        threads=threads,
+                                                        n_svd_components=n_svd_components,
+                                                        force=force,
+                                                        )
+
     logger.info("=== t-SNE Embedding Completed ===")
+
     return early_filename, final_filename
 
 
@@ -880,6 +982,7 @@ def casm(fasta: str,
          iterations: int = 500,
          exaggeration: int = 6,
          metadata: str = None,
+         n_svd_components: int = 50,
          keep: bool = False,
          svg: bool = False,
          force: bool = False,
@@ -899,6 +1002,7 @@ def casm(fasta: str,
         iterations (int): Number of optimization iterations
         exaggeration (int): Early exaggeration parameter
         metadata (str): Path to protein metadata file
+        n_svd_components (int): SVD dimensions used for pre-reduction before t-SNE
         keep (bool): Keep intermediate files
         svg (bool): Generate plot in SVG format
         force (bool): Force overwrite existing files
@@ -922,35 +1026,50 @@ def casm(fasta: str,
     intermediate_results = {}
     results = {}
 
-    # Phase 1: Matrix construction
-    logger.info("=== Phase 1: Matrix Construction ===")
-    matrix_file, metadata_file = matrix(fasta=fasta,
-                                        output=output,
-                                        subset=subset,
-                                        subset_size=subset_size,
-                                        threads=threads,
-                                        force=force
-                                        )
-    intermediate_results['matrix_file'] = matrix_file
-    intermediate_results['metadata_file'] = metadata_file
+    # Phase 1: DIAMOND alignment
+    logger.info("=== Phase 1: DIAMOND Alignment ===")
+    if subset:
+        logger.info(f"Using provided subset: {subset}")
+        subset_fasta = subset
+        subset_size = count_fasta_sequences(subset_fasta)
+    else:
+        logger.info("Creating random subset from input FASTA")
+        subset_fasta = fasta_subsample(fasta, output, subset_size, force=force)
 
-    # Phase 2: t-SNE embedding
-    logger.info("=== Phase 2: t-SNE Embedding ===")
-    early_filename, final_filename = cluster(
-        matrix_path=matrix_file,
-        matrix_metadata_path=metadata_file,
-        output=output,
-        perplexity=perplexity,
-        iterations=iterations,
-        exaggeration=exaggeration,
-        threads=threads,
-        force=force
+    align_output = run_diamond_alignment(fasta, subset_fasta, subset_size, threads,
+                                         CASM_BLAST_OUTPUT_COLUMNS, output, force=force)
+
+    # Phase 2: Matrix construction. Kept in memory and handed straight to the
+    # embedding step below; only written to disk when `keep` is set, to avoid a
+    # slow compressed write immediately followed by a read of the same data.
+    logger.info("=== Phase 2: Matrix Construction ===")
+    matrix_obj, queries, targets, matrix_file, metadata_file = build_alignment_matrix_split(
+        align_output, output, force=force, save=keep
     )
+    if matrix_file:
+        intermediate_results['matrix_file'] = matrix_file
+    if metadata_file:
+        intermediate_results['metadata_file'] = metadata_file
+
+    # Phase 3: t-SNE embedding
+    logger.info("=== Phase 3: t-SNE Embedding ===")
+    prefix = determine_dataset_name(align_output, '.', 0)
+    early_filename, final_filename = _reduce_and_embed(matrix=matrix_obj,
+                                                        queries=queries,
+                                                        output=output,
+                                                        basename=prefix,
+                                                        perplexity=perplexity,
+                                                        iterations=iterations,
+                                                        exaggeration=exaggeration,
+                                                        threads=threads,
+                                                        n_svd_components=n_svd_components,
+                                                        force=force,
+                                                        )
     results['early_filename'] = early_filename
     results['final_filename'] = final_filename
 
-    # Phase 3: Plot generation
-    logger.info("=== Phase 3: Plot Generation ===")
+    # Phase 4: Plot generation
+    logger.info("=== Phase 4: Plot Generation ===")
     early_cluster_plot = casm_plot(
         clust_path=early_filename,
         output=output,

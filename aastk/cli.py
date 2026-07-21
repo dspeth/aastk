@@ -26,6 +26,14 @@ def __all_proteins(group, required=False):
     group.add_argument('-a', '--all_proteins', type=str, required=required,
                        help='Path to FASTA file containing all GlobDB protein sequences')
 
+def __all_sources(group, required=False):
+    group.add_argument('--all_sources', action='store_true', required=required,
+                       help='Import all available data sources (anvi\'o, TMHMM, taxonomy, culture collection, environment)')
+
+def __anvio(group, required=False):
+    group.add_argument('--anvio', action='store_true', required=required,
+                       help='Import protein sequences, annotations and CUGO data from anvi\'o SQLite shards')
+
 def __all_metadata(group, required=False):
     group.add_argument('--all_metadata', action='store_true', required=required,
                        help='Include all metadata in output file')
@@ -62,6 +70,10 @@ def __cluster_path(group, required=False):
     group.add_argument('-c', '--cluster_path', type=str, default=None, required=required,
                        help='Path to cluster TSV file')
 
+def __chunk_dir(group, required=False):
+    group.add_argument('--chunk_dir', type=str, required=required,
+                       help='Path to directory containing the chunk subfolders of gzipped SQLite shard databases')
+
 def __cog_gff(group, required=False):
     group.add_argument('-c', '--cog_gff', type=str, required=required,
                        help='Path to (.tar.gz) GFF directory containing COG annotations')
@@ -82,6 +94,10 @@ def __cugo_range(group, required=False):
     group.add_argument('-r', '--cugo_range', type=int, required=required,
                        help='CUGO range for genomic context analysis')
 
+def __culture_collection(group, required=False):
+    group.add_argument('--culture_collection', action='store_true', required=required,
+                       help='Import culture collection data')
+
 def __culture_collection_path(group, required=False):
     group.add_argument('-c', '--culture_collection_path', type=str, required=required,
                        help='Path to culture collection data TSV file')
@@ -101,6 +117,14 @@ def __dbmin(group, required=False):
 def __db_path(group, required=False):
     group.add_argument('-d', '--db_path', type=str, default='temp_genome_data.db', required=required,
                        help='Path to SQLite database')
+
+def __db_version(group, required=False):
+    group.add_argument('-g', '--db_version', type=str, required=required,
+                       help='GlobDB version number, without the leading "r" (example: 226)')
+
+def __environmental_data(group, required=False):
+    group.add_argument('--environmental_data', action='store_true', required=required,
+                       help='Import high and low level environment data')
 
 def __exaggeration(group, required=False):
     group.add_argument('-e', '--exaggeration', type=int, default=6, required=required,
@@ -130,16 +154,12 @@ def __flank_upper(group, required=False):
     group.add_argument('-u', '--flank_upper', type=int, required=required,
                        help='End of flanking window (inclusive)')
 
-def __globdb_version(group, required=False):
-    group.add_argument('-g', '--globdb_version', type=str, required=required,
-                       help='GlobDB version (example: r226)')
-
 def __help(group, required=False):
     group.add_argument('-h', '--help', action='help',
                        help='Display help text')
 
 def __high_level_environment_path(group, required=False):
-    group.add_argument('-h', '--high_level_environment_path', type=str, required=required,
+    group.add_argument('--high_level_environment_path', type=str, required=required,
                        help='Path to high level environment data TSV file')
 
 def __id_list(group, required=False):
@@ -167,7 +187,7 @@ def __include_taxonomy(group, required=False):
                        help='Include taxonomy metadata in output')
 
 def __iterations(group, required=False):
-    group.add_argument('-i', '--iterations', type=str, default=500, required=required,
+    group.add_argument('-i', '--iterations', type=int, default=500, required=required,
                        help='Number of tSNE embedding iterations (default: 500)')
 
 def __keep(group, required=False):
@@ -184,7 +204,7 @@ def __key_column(group, required=False):
 
 def __low_level_environment_path(group, required=False):
     group.add_argument('-l', '--low_level_environment_path', type=str, required=required,
-                       help='Path to high level environment data TSV file')
+                       help='Path to low level environment data TSV file')
 
 def __matched(group, required=False):
     group.add_argument('-m', '--matched', type=str, required=required,
@@ -218,6 +238,7 @@ def __metadata_matrix(group, required=False):
     group.add_argument('--metadata_matrix', type=str, required=required,
                        help='Path to alignment matrix metadata file')
 
+
 def __no_cluster(group, required=False):
     group.add_argument('-n', '--no_cluster', type=int, required=required,
                        help='Number of cluster of choice in TSV file')
@@ -229,6 +250,10 @@ def __output(group, required=False):
 def __params(group, required=False):
     group.add_argument('--params', action='store_true', required=required,
                        help='Select subset of matched sequences based on command line parameters')
+
+def __n_svd_components(group, required=False):
+    group.add_argument('--n_svd_components', type=int, default=50, required=required,
+                       help='Number of TruncatedSVD dimensions used to pre-reduce sparse matrices before t-SNE (default: 50)')
 
 def __perplexity(group, required=False):
     group.add_argument('-p', '--perplexity', type=int, default=50, required=required,
@@ -275,6 +300,7 @@ def __sql(group, required=False):
     group.add_argument('--sql', action='store_true', required=required,
                        help='Retrieve sequences from AASTK SQLite database')
 
+
 def __subset(group, required=False):
     group.add_argument('-s', '--subset', type=str, required=required,
                        help='Path to subset FASTA')
@@ -286,6 +312,10 @@ def __subset_size(group, required=False):
 def __svg(group, required=False):
     group.add_argument('--svg', action='store_true', required=required,
                        help='Generate plot in SVG format')
+
+def __taxonomy(group, required=False):
+    group.add_argument('--taxonomy', action='store_true', required=required,
+                       help='Import taxonomy data')
 
 def __taxonomy_path(group, required=False):
     group.add_argument('-t', '--taxonomy_path', type=str, default=None, required=required,
@@ -299,9 +329,13 @@ def __tmh(group, required=False):
     group.add_argument('--tmh', action='store_true', required=required,
                        help='Generate transmembrane helices plot')
 
-def __tmhmm_dir(group, required=False):
-    group.add_argument('-t', '--tmhmm_dir', type=str, required=required,
-                       help='Directory containing tmhmm files')
+def __tmhmm(group, required=False):
+    group.add_argument('--tmhmm', action='store_true', required=required,
+                       help='Import number of predicted transmembrane helices from tmhmm files')
+
+def __tmhmm_tar_path(group, required=False):
+    group.add_argument('-t', '--tmhmm_tar_path', type=str, required=required,
+                       help='Path to gzipped tar archive of tmhmm files')
 
 def __tmh_y_range(group, required=False):
     group.add_argument('-t', '--tmh_y_range', type=int, required=required,
@@ -414,6 +448,8 @@ def get_main_parser():
             __max_score_max(grp)
             __dbmin(grp)
             __bsr_cutoff(grp)
+            __threads(grp)
+            __filter_seqs(grp)
             __force(grp)
 
 
@@ -440,18 +476,23 @@ def get_main_parser():
     ### PARSER FOR CUGO FUNCTIONALITIES AND WORKFLOW ###
     with subparser(sub_parsers, 'database', 'Create AASTK SQLite database') as parser:
         with arg_group(parser, 'Required arguments') as grp:
-            __all_proteins(grp, required=True)
+            __db_version(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
-            __cog_gff(grp)
-            __kegg_gff(grp)
-            __pfam_gff(grp)
+            __anvio(grp)
+            __chunk_dir(grp)
+            __tmhmm(grp)
+            __tmhmm_tar_path(grp)
+            __taxonomy(grp)
             __taxonomy_path(grp)
+            __culture_collection(grp)
             __culture_collection_path(grp)
+            __environmental_data(grp)
             __high_level_environment_path(grp)
             __low_level_environment_path(grp)
-            __globdb_version(grp)
+            __all_sources(grp)
+            __threads(grp)
             __output(grp)
-            __tmhmm_dir(grp)
+            __force(grp)
 
     with subparser(sub_parsers, 'database_check', 'Checks for missing data in AASTK SQLite database') as parser:
         with arg_group(parser, 'Required arguments') as grp:
@@ -578,6 +619,7 @@ def get_main_parser():
             __iterations(grp)
             __exaggeration(grp)
             __threads(grp)
+            __n_svd_components(grp)
             __force(grp)
 
 
@@ -606,6 +648,7 @@ def get_main_parser():
             __iterations(grp)
             __exaggeration(grp)
             __metadata(grp)
+            __n_svd_components(grp)
             __force(grp)
             __keep(grp)
             __show(grp)
@@ -618,6 +661,8 @@ def get_main_parser():
             __no_cluster(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
+            __threads(grp)
+            __filter_seqs(grp)
             __force(grp)
 
     with subparser(sub_parsers, 'list_metadata', 'Display avaiilable metadata categories') as parser:

@@ -2,7 +2,7 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
-from .util import *
+from aastk.util import *
 
 
 def logger_setup(silent: bool = False, output_dir: str = None):
