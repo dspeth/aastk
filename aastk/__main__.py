@@ -315,6 +315,7 @@ def main():
                 threads=args.threads,
                 n_svd_components=args.n_svd_components,
                 force=args.force,
+                large=args.large
             )
 
 
@@ -345,7 +346,8 @@ def main():
                 keep=args.keep,
                 force=args.force,
                 svg=args.svg,
-                show_cluster_numbers=args.show
+                show_cluster_numbers=args.show,
+                large=args.large
             )
 
         elif args.subparser_name == 'casm_select':

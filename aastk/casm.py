@@ -829,7 +829,8 @@ def _reduce_and_embed(matrix,
                       exaggeration: int,
                       threads: int,
                       n_svd_components: int,
-                      force: bool):
+                      force: bool,
+                      large: bool):
     """
     Applies TruncatedSVD (if the matrix is sparse) followed by t-SNE embedding.
 
@@ -841,19 +842,24 @@ def _reduce_and_embed(matrix,
         early_filename (str), final_filename (str): Paths to early and final embedding TSV files
     """
     reduced_matrix = None
-    if scipy.sparse.issparse(matrix):
-        n_components = min(n_svd_components, matrix.shape[1] - 1)
-        logger.info(f"Sparse matrix: applying TruncatedSVD ({n_components} components)")
-        svd = TruncatedSVD(n_components=n_components, random_state=42)
-        reduced_matrix = svd.fit_transform(matrix)
+    dense_matrix = None
+    if large:
+        if scipy.sparse.issparse(matrix):
+            n_components = min(n_svd_components, matrix.shape[1] - 1)
+            logger.info(f"Sparse matrix: applying TruncatedSVD ({n_components} components)")
+            svd = TruncatedSVD(n_components=n_components, random_state=42)
+            reduced_matrix = svd.fit_transform(matrix)
 
-        logger.info(f"Reduced matrix shape: {reduced_matrix.shape}")
-        logger.info(f"Explained variance ratio: {svd.explained_variance_ratio_.sum():.3f}")
+            logger.info(f"Reduced matrix shape: {reduced_matrix.shape}")
+            logger.info(f"Explained variance ratio: {svd.explained_variance_ratio_.sum():.3f}")
 
-        del matrix
-        gc.collect()
+            del matrix
+            gc.collect()
+    else:
+        dense_matrix = matrix.todense(order='C')
 
-    embed_matrix = reduced_matrix if reduced_matrix is not None else matrix
+    embed_matrix = reduced_matrix if reduced_matrix is not None else dense_matrix
+    print(embed_matrix)
 
     return tsne_embedding(matrix=embed_matrix,
                           queries=queries,
@@ -876,6 +882,7 @@ def cluster(matrix_path: str,
          threads: int = 1,
          n_svd_components: int = 50,
          force: bool = False,
+         large: bool = False
          ):
     """
     Perform t-SNE embedding and DBSCAN clustering on alignment matrix.
@@ -918,6 +925,7 @@ def cluster(matrix_path: str,
                                                         threads=threads,
                                                         n_svd_components=n_svd_components,
                                                         force=force,
+                                                        large=large
                                                         )
 
     logger.info("=== t-SNE Embedding Completed ===")
@@ -979,7 +987,8 @@ def casm(fasta: str,
          keep: bool = False,
          svg: bool = False,
          force: bool = False,
-         show_cluster_numbers: bool = False
+         show_cluster_numbers: bool = False,
+         large: bool = False,
          ):
     """
     Run complete CASM analysis pipeline.
@@ -1057,6 +1066,7 @@ def casm(fasta: str,
                                                         threads=threads,
                                                         n_svd_components=n_svd_components,
                                                         force=force,
+                                                        large=large
                                                         )
     results['early_filename'] = early_filename
     results['final_filename'] = final_filename

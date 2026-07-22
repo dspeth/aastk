@@ -201,7 +201,9 @@ def __kegg_gff(group, required=False):
 def __key_column(group, required=False):
     group.add_argument('-k', '--key_column', type=int, default=0, required=required,
                        help='Column index in the BLAST tab file to pull unique IDs from (default: 0)')
-
+def __large(group, required=False):
+    group.add_argument('--large', action='store_true', required=required,
+                       help="Run CASM with TruncatedSVD on alignment score matrix for large input datasets")
 def __low_level_environment_path(group, required=False):
     group.add_argument('-l', '--low_level_environment_path', type=str, required=required,
                        help='Path to low level environment data TSV file')
@@ -621,6 +623,7 @@ def get_main_parser():
             __threads(grp)
             __n_svd_components(grp)
             __force(grp)
+            __large(grp)
 
 
     with subparser(sub_parsers, 'casm_plot', 'Plot CASM .tsv output files') as parser:
@@ -653,6 +656,7 @@ def get_main_parser():
             __keep(grp)
             __show(grp)
             __svg(grp)
+            __large(grp)
 
     with subparser(sub_parsers, 'casm_select', 'Pick CASM clusters to generate .faa file for further analysis') as parser:
         with arg_group(parser, 'Required arguments') as grp:
