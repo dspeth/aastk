@@ -234,15 +234,12 @@ def create_embedding_file(output_file: str,
     """
     logger.info(f"Embedded {len(queries)} proteins")
 
-    loci = [seqID.rsplit("_", 1)[1] for seqID in queries]
-    genome_ids = [seqID.rsplit("_", 1)[0] for seqID in queries]
-
     with open(output_file, "w", encoding="utf-8") as f:
-        base_cols = ["seqID", "locus_nr", "genome_ID"] + col_names + ["cluster"]
+        base_cols = ["seqID"] + col_names + ["cluster"]
 
         f.write("\t".join(base_cols) + "\n")
-        for q, c, l, g, emb in zip(queries, clusters, loci, genome_ids, embedding):
-            row = [q, l, g] + [f"{x:.6f}" for x in emb] + [str(c)]
+        for q, c, emb in zip(queries, clusters, embedding):
+            row = [q] + [f"{x:.6f}" for x in emb] + [str(c)]
             f.write("\t".join(row) + "\n")
 
 def create_embedding_dataframe(embedding: np.ndarray,
@@ -269,12 +266,8 @@ def create_embedding_dataframe(embedding: np.ndarray,
 
     logger.debug("Extracting locus and genome information from protein IDs")
 
-    # extract locus and genome info from protein IDs
-    df['locus_nr'] = df['seqID'].astype(str).str.rsplit("_", n=1).str[1]
-    df['genome_ID'] = df['seqID'].astype(str).str.rsplit("_", n=1).str[0]
-
     # reorder columns
-    base_cols = ['seqID', 'locus_nr', 'genome_ID'] + col_names + ['cluster']
+    base_cols = ['seqID'] + col_names + ['cluster']
     df = df[base_cols]
 
     logger.debug(f"Final dataframe shape: {df.shape}")
