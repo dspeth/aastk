@@ -8,6 +8,7 @@ from aastk.cugo import *
 from aastk.casm import *
 from aastk.database import *
 from aastk.plm_embedder import *
+from aastk.casm_plm import casm_plm
 from aastk.version import __version__, __copyright__, __author__
 import sys
 
@@ -362,8 +363,24 @@ def main():
                 fasta=args.fasta,
                 output=args.output,
                 model=args.model,
-                batch_size=args.batch_size,
+                max_residues_per_batch=args.max_residues_per_batch,
                 force=args.force
+            )
+
+        elif args.subparser_name == 'casm_plm':
+            casm_plm(
+                embeddings=args.embeddings,
+                output=args.output,
+                db_path=args.db_path,
+                threads=args.threads,
+                perplexity=args.perplexity,
+                iterations=args.iterations,
+                exaggeration=args.exaggeration,
+                metadata=args.metadata,
+                keep=args.keep,
+                force=args.force,
+                svg=args.svg,
+                show_cluster_numbers=args.show
             )
 
     except Exception as e:

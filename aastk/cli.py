@@ -34,9 +34,9 @@ def __annotation(group, required=False):
     group.add_argument('--annotation', type=str, default='COG_ID', required=required,
                        help='Annotation: COG_ID, KEGG_ID, Pfam_ID (default: COG_ID)')
 
-def __batch_size(group, required=False):
-    group.add_argument('--batch_size', type=int, default=1, required=required,
-                       help='Number of protein sequences to embed at once (default: 1)')
+def __max_residues_per_batch(group, required=False):
+    group.add_argument('--max_residues_per_batch', type=int, default=1, required=required,
+                       help='Maximum number of residues per batch (default: 3000)')
 
 def __bin_width(group, required=False):
     group.add_argument('-b', '--bin_width', type=int, default=50, required=required,
@@ -105,6 +105,10 @@ def __dbmin(group, required=False):
 def __db_path(group, required=False):
     group.add_argument('-d', '--db_path', type=str, default='temp_genome_data.db', required=required,
                        help='Path to SQLite database')
+
+def __embeddings(group, required=False):
+    group.add_argument('--embeddings', type=str, required=required,
+                       help='Path to HDF5 file containing mean-pooled PLM embeddings')
 
 def __exaggeration(group, required=False):
     group.add_argument('-e', '--exaggeration', type=int, default=6, required=required,
@@ -645,8 +649,25 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __plm_model(grp)
-            __batch_size(grp)
+            __max_residues_per_batch(grp)
             __force(grp)
+
+    with subparser(sub_parsers, 'casm_plm', 'Cluster proteins using PLM embeddings with CASM') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __embeddings(grp, required=True)
+
+        with arg_group(parser, 'Optional') as grp:
+            __threads(grp)
+            __output(grp)
+            __db_path(grp)
+            __perplexity(grp)
+            __iterations(grp)
+            __exaggeration(grp)
+            __metadata(grp)
+            __force(grp)
+            __keep(grp)
+            __show(grp)
+            __svg(grp)
 
 
     return main_parser

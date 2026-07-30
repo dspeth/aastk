@@ -17,7 +17,6 @@ MODEL_REGISTRY = {
     "prott5": "Rostlab/prot_t5_xl_half_uniref50-enc"
 }
 
-MAX_RESIDUES_PER_BATCH = 3000
 SEQUENCE_LENGTH_WARNING = 3000
 
 def resolve_output_path(
@@ -67,6 +66,12 @@ def prepare_sequence_prott5(sequence: str):
     sequence = "".join(sequence.split()).upper().replace("-", "")
     sequence = sequence.replace("U", "X").replace("Z", "X").replace("O", "X")
 
+    return sequence
+
+def add_spaces(sequence: str):
+    """
+    adds spaces between residues to fit ProtT5 formatting
+    """
     return " ".join(sequence)
 
 def h5_safe_id(protein_id: str):
@@ -90,8 +95,10 @@ def collect_fasta_records(fasta_path: Path):
 
     for header, sequence in stream_fasta(str(fasta_path)):
         protein_id = h5_safe_id(clean_fasta_header(header))
-        sequence_length = len(sequence)
-        tokenized_sequence = prepare_sequence_prott5(sequence)
+
+        cleaned_sequence = prepare_sequence_prott5(sequence)
+        sequence_length = len(cleaned_sequence)
+        model_ready_sequence = add_spaces(cleaned_sequence)
 
         if not protein_id:
             raise ValueError("FASTA contains an empty header")
@@ -99,7 +106,7 @@ def collect_fasta_records(fasta_path: Path):
         if protein_id in seen_ids:
             raise ValueError(f"Duplicate protein ID in FASTA: {protein_id}")
 
-        if not tokenized_sequence:
+        if not cleaned_sequence:
             raise ValueError(f"FASTA contains an empty sequence: {protein_id}")
 
         if sequence_length > SEQUENCE_LENGTH_WARNING:
@@ -108,7 +115,7 @@ def collect_fasta_records(fasta_path: Path):
             )
 
         seen_ids.add(protein_id)
-        records.append((protein_id, tokenized_sequence, sequence_length))
+        records.append((protein_id, model_ready_sequence, sequence_length))
 
     if not records:
         raise ValueError(f"FASTA contains no sequences: {fasta_path}")
@@ -142,13 +149,13 @@ def load_plm_model(model: str):
 
     return plm_model, tokenizer, device
 
-def batch_handling(records: list[tuple[str, str, int]], batch_size: int):
+def batch_handling(records: list[tuple[str, str, int]], max_residues_per_batch: int):
     """
     creating batches while limiting sequence/residue count
     """
 
-    if batch_size < 1:
-        raise ValueError("batch_size must be at least 1")
+    if max_residues_per_batch < 1:
+        raise ValueError("max_residues_per_batch must be at least 1 (default: 3000)")
 
     current_batch = []
     current_residues = 0
@@ -160,22 +167,23 @@ def batch_handling(records: list[tuple[str, str, int]], batch_size: int):
         sequence_length = record[2]
 
         # if sequence is longer than residue limit -> process alone
-        if sequence_length > MAX_RESIDUES_PER_BATCH:
+        if sequence_length > max_residues_per_batch:
             if current_batch:
                 yield current_batch
                 current_batch = []
                 current_residues = 0
 
+            logger.warning(f"Sequence {record[0]} has {sequence_length} residues and exceeds the limit of {max_residues_per_batch}. Processing it alone")
+
             yield [record]
             continue
 
-        batch_is_full = len(current_batch) >= batch_size
         residue_limit_reached = (
                 current_batch
-                and current_residues + sequence_length > MAX_RESIDUES_PER_BATCH
+                and current_residues + sequence_length > max_residues_per_batch
         )
 
-        if batch_is_full or residue_limit_reached:
+        if residue_limit_reached:
             yield current_batch
             current_batch = []
             current_residues = 0
@@ -219,7 +227,7 @@ def embed_current_batch(batch, plm_model, tokenizer, device):
 
     return embeddings
 
-def write_embeddings(records, output_path: Path, plm_model, tokenizer, device, batch_size: int):
+def write_embeddings(records, output_path: Path, plm_model, tokenizer, device, max_residues_per_batch: int):
     """
     writing mean-pooled protein embeddings to h5
     repeatedly call embed_current_batch
@@ -228,8 +236,12 @@ def write_embeddings(records, output_path: Path, plm_model, tokenizer, device, b
     embedding_count = 0
 
     with h5py.File(output_path, "w") as h5_file:
-        for batch_number, batch in enumerate(batch_handling(records, batch_size), start=1):
-            logger.info(f"Embedding batch {batch_number} with {len(batch)} sequence(s)")
+        batches = batch_handling(records, max_residues_per_batch)
+
+        for batch_number, batch in enumerate(batches, start=1):
+            batch_residues = sum(record[2] for record in batch)
+
+            logger.info(f"Embedding batch {batch_number} with {len(batch)} sequence(s) and {batch_residues} residue(s)")
 
             embeddings = embed_current_batch(
                 batch=batch,
@@ -249,7 +261,7 @@ def plm_embedder(
         fasta: str,
         model: str,
         output: str = None,
-        batch_size: int = 1,
+        max_residues_per_batch: int = 3000,
         force: bool = False):
     logger.info("Starting PLM embedder")
 
@@ -266,7 +278,7 @@ def plm_embedder(
         plm_model=plm_model,
         tokenizer=tokenizer,
         device=device,
-        batch_size=batch_size
+        max_residues_per_batch=max_residues_per_batch
     )
 
     logger.info("PLM embedder complete")
