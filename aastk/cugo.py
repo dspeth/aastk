@@ -243,6 +243,36 @@ def top_context(df: pd.DataFrame, top_n: int):
     return id_df, count_df
 
 
+def bin_by_size(context_path: str, flank_lower: int, flank_upper: int, bin_width: int):
+    # Load context data in long format
+    cont = pd.read_csv(context_path, sep='\t')
+
+    # Filter to position range
+    cont = cont[(cont['position'] >= flank_lower) & (cont['position'] <= flank_upper)]
+
+    # Convert aa_length to numeric
+    cont['aa_length'] = pd.to_numeric(cont['aa_length'], errors='coerce')
+
+    positions = sorted(cont['position'].unique())
+
+    # Determine bin edges for length histograms
+    all_lengths = cont['aa_length'].dropna()
+    max_len = all_lengths.max()
+    bin_edges = np.arange(0, max_len + bin_width, bin_width)
+    n_bins = len(bin_edges) - 1
+
+    # Create histogram data for each position
+    heat_data = np.zeros((n_bins, len(positions)))
+    position_counts = []
+
+    for col_idx, pos in enumerate(positions):
+        values = cont[cont['position'] == pos]['aa_length'].dropna()
+        hist, _ = np.histogram(values, bins=bin_edges)
+        heat_data[:, col_idx] = hist
+        position_counts.append(len(values))
+
+    return heat_data, bin_edges, positions, position_counts
+
 def plot_top_annotations_per_position(
         context_path: str,
         flank_lower: int,
@@ -384,32 +414,8 @@ def plot_size_per_position(context_path: str,
     """
     Creates 1D-density plot showing sequence length distribution across genomic positions.
     """
-    # Load context data in long format
-    cont = pd.read_csv(context_path, sep='\t')
-
-    # Filter to position range
-    cont = cont[(cont['position'] >= flank_lower) & (cont['position'] <= flank_upper)]
-
-    # Convert aa_length to numeric
-    cont['aa_length'] = pd.to_numeric(cont['aa_length'], errors='coerce')
-
-    positions = sorted(cont['position'].unique())
-
-    # Determine bin edges for length histograms
-    all_lengths = cont['aa_length'].dropna()
-    max_len = all_lengths.max()
-    bin_edges = np.arange(0, max_len + bin_width, bin_width)
+    heat_data, bin_edges, positions, position_counts = bin_by_size(context_path, flank_lower, flank_upper, bin_width)
     n_bins = len(bin_edges) - 1
-
-    # Create histogram data for each position
-    heat_data = np.zeros((n_bins, len(positions)))
-    position_counts = []
-
-    for col_idx, pos in enumerate(positions):
-        values = cont[cont['position'] == pos]['aa_length'].dropna()
-        hist, _ = np.histogram(values, bins=bin_edges)
-        heat_data[:, col_idx] = hist
-        position_counts.append(len(values))
 
     # Create figure if no axes provided
     if ax is None:
