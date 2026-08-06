@@ -20,8 +20,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logger = logging.getLogger(__name__)
 
-FILTER_BLAST_OUTPUT_COLUMNS = ['qseqid', 'sseqid', 'nident', 'length', 'qlen']
-
 # ======================================
 # CUGO context functions and CLI tool
 # ======================================

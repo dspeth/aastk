@@ -8,8 +8,17 @@ import random
 import subprocess
 import sqlite3
 from tqdm import tqdm
+import matplotlib
+import matplotlib.pyplot as plt
+from matplotlib.colors import Normalize
+from matplotlib.cm import ScalarMappable
+import pandas as pd
+
 
 logger = logging.getLogger(__name__)
+
+FILTER_BLAST_OUTPUT_COLUMNS = ['qseqid', 'sseqid', 'nident', 'length', 'qlen']
+
 
 
 def bin_mid(bin_series):
