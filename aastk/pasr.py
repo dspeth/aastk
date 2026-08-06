@@ -624,9 +624,9 @@ def pasr_plot(bsr_file: str,
     # ===============================
     if update:
         if svg:
-            out_graph = ensure_path(output_dir, f'{protein_name}_updated_bsr.svg', force=force)
+            out_graph = ensure_path(output_dir, f'{protein_name}_bsr_update.svg', force=force)
         else:
-            out_graph = ensure_path(output_dir, f'{protein_name}_updated_bsr.png', force=force)
+            out_graph = ensure_path(output_dir, f'{protein_name}_bsr_update.png', force=force)
     else:
         if svg:
             out_graph = ensure_path(output_dir, f'{protein_name}_bsr.svg', force=force)
