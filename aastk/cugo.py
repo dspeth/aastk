@@ -417,6 +417,23 @@ def plot_size_per_position(context_path: str,
     heat_data, bin_edges, positions, position_counts = bin_by_size(context_path, flank_lower, flank_upper, bin_width)
     n_bins = len(bin_edges) - 1
 
+    # create structured pd.DataFrame for retrieval of row with mode per column and the surrounding bins
+    dist_df = pd.DataFrame(heat_data, index=bin_edges[:-1], columns=positions)
+
+    # determine row index of max per column
+    pos = dist_df.apply(lambda c: c.argmax())
+    print(pos)
+
+    # create new df with sum of values from bin with mode and bin +/- 1 as well as total sum over entire column
+    summary_df = pd.DataFrame({
+        'sum': {col: dist_df[col].iloc[pos[col] - 1: pos[col] + 2].sum()
+                for col in dist_df.columns},
+        'total': {col: dist_df[col].sum() for col in dist_df.columns},
+    })
+
+    # calculate homogeneity index
+    summary_df['homogeneity'] = summary_df['sum'] / summary_df['total']
+
     # Create figure if no axes provided
     if ax is None:
         width = max(8, int((flank_upper - flank_lower + 1) * top_n * 0.6))
