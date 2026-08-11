@@ -273,6 +273,33 @@ def bin_by_size(context_path: str, flank_lower: int, flank_upper: int, bin_width
 
     return heat_data, bin_edges, positions, position_counts
 
+
+def compute_homogeneity_index(context_path: str,
+                               flank_lower: int,
+                               flank_upper: int,
+                               bin_width: int,
+                               window: int = 1) -> pd.DataFrame:
+    """
+    Computes per-position homogeneity index from binned length data.
+    """
+    heat_data, bin_edges, positions, position_counts = bin_by_size(
+        context_path, flank_lower, flank_upper, bin_width
+    )
+
+    dist_df = pd.DataFrame(heat_data, index=bin_edges[:-1], columns=positions)
+    mode_idx = dist_df.apply(lambda c: c.argmax())
+
+    summary_df = pd.DataFrame({
+        'sum': {col: dist_df[col].iloc[max(mode_idx[col] - window, 0):
+                                        mode_idx[col] + window + 1].sum()
+                for col in dist_df.columns},
+        'total': {col: dist_df[col].sum() for col in dist_df.columns},
+    })
+    summary_df['homogeneity'] = summary_df['sum'] / summary_df['total']
+
+    return summary_df
+
+
 def plot_top_annotations_per_position(
         context_path: str,
         flank_lower: int,
@@ -416,23 +443,6 @@ def plot_size_per_position(context_path: str,
     """
     heat_data, bin_edges, positions, position_counts = bin_by_size(context_path, flank_lower, flank_upper, bin_width)
     n_bins = len(bin_edges) - 1
-
-    # create structured pd.DataFrame for retrieval of row with mode per column and the surrounding bins
-    dist_df = pd.DataFrame(heat_data, index=bin_edges[:-1], columns=positions)
-
-    # determine row index of max per column
-    pos = dist_df.apply(lambda c: c.argmax())
-    print(pos)
-
-    # create new df with sum of values from bin with mode and bin +/- 1 as well as total sum over entire column
-    summary_df = pd.DataFrame({
-        'sum': {col: dist_df[col].iloc[pos[col] - 1: pos[col] + 2].sum()
-                for col in dist_df.columns},
-        'total': {col: dist_df[col].sum() for col in dist_df.columns},
-    })
-
-    # calculate homogeneity index
-    summary_df['homogeneity'] = summary_df['sum'] / summary_df['total']
 
     # Create figure if no axes provided
     if ax is None:
