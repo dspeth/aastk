@@ -295,6 +295,11 @@ def compute_homogeneity_index(context_path: str,
                 for col in dist_df.columns},
         'total': {col: dist_df[col].sum() for col in dist_df.columns},
     })
+
+    # for each position, compute sequence number at position divided by sequence number in position 0
+    summary_df['relative sequence frequency'] = summary_df['total'] / summary_df.loc[0, 'total']
+
+    # compute homogeneity index for each position
     summary_df['homogeneity'] = summary_df['sum'] / summary_df['total']
 
     return summary_df
@@ -771,7 +776,10 @@ def cugo(db_path: str,
          force: bool = False,
          bin_width: int = 10,
          y_range: int = None,
-         tmh_y_range: int = None):
+         tmh_y_range: int = None,
+         export: bool = False,
+         homogeneity_threshold: float = 0.75,
+         sequence_frequency_threshold: float = 0.75):
     """
     Complete CUGO workflow: generate context data and create comprehensive plots.
 
@@ -810,6 +818,14 @@ def cugo(db_path: str,
     if context_file is None:
         logger.error("Context generation failed - no plots will be created")
         return None, None
+
+    homogeneity_df = compute_homogeneity_index(context_file, flank_lower, flank_upper, bin_width)
+
+    export = True
+    if export is True:
+        for index, data in homogeneity_df.iterrows():
+            if data['relative sequence frequency'] >= sequence_frequency_threshold and data['homogeneity'] > homogeneity_threshold:
+                cugo_select(context_file, index, db_path, output_dir, threads, filter_seqs=True, force=force)
 
     # create comprehensive plots
     cugo_plot(
