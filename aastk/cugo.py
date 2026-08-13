@@ -778,6 +778,7 @@ def cugo(db_path: str,
          y_range: int = None,
          tmh_y_range: int = None,
          export: bool = False,
+         export_dir: str = None,
          homogeneity_threshold: float = 0.75,
          homogeneity_window: int = 1,
          sequence_frequency_threshold: float = 0.75):
@@ -799,6 +800,7 @@ def cugo(db_path: str,
         y_range: Y-axis range for size plots
         export: Whether to automatically export a FASTA file for each position whose
             homogeneity and relative sequence frequency pass their thresholds
+        export_dir: Directory for automatically exported FASTA files (default: output_dir)
         homogeneity_threshold: Minimum homogeneity index required for automatic export (default: 0.75)
         homogeneity_window: Number of size bins on either side of the modal bin counted as
             "homogeneous" when computing the homogeneity index (default: 1)
@@ -834,7 +836,7 @@ def cugo(db_path: str,
         for position, data in homogeneity_df.iterrows():
             if (data['relative sequence frequency'] >= sequence_frequency_threshold
                     and data['homogeneity'] > homogeneity_threshold):
-                cugo_select(context_file, position, db_path, output_dir, threads, filter_seqs=True, force=force)
+                cugo_select(context_file, position, db_path, export_dir or output_dir, threads, filter_seqs=True, force=force)
 
     # create comprehensive plots
     cugo_plot(

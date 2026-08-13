@@ -272,6 +272,7 @@ def main():
                 y_range=args.y_range,
                 tmh_y_range=args.tmh_y_range,
                 export=args.export,
+                export_dir=args.export_dir,
                 homogeneity_threshold=args.homogeneity_threshold,
                 homogeneity_window=args.homogeneity_window,
                 sequence_frequency_threshold=args.sequence_frequency_threshold

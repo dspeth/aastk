@@ -135,6 +135,10 @@ def __export(group, required=False):
                        help='Automatically export a FASTA file for each position whose homogeneity '
                             'and sequence frequency pass their thresholds')
 
+def __export_dir(group, required=False):
+    group.add_argument('--export_dir', type=str, default=None, required=required,
+                       help='Directory for automatically exported FASTA files (default: same as --output)')
+
 def __extracted(group, required=False):
     group.add_argument('-e', '--extracted', type=str, required=required,
                        help='Path to FASTA file containing extracted matching sequences')
@@ -597,6 +601,7 @@ def get_main_parser():
             __svg(grp)
             __force(grp)
             __export(grp)
+            __export_dir(grp)
             __homogeneity_threshold(grp)
             __homogeneity_window(grp)
             __sequence_frequency_threshold(grp)
