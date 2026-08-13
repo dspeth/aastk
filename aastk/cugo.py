@@ -779,6 +779,7 @@ def cugo(db_path: str,
          tmh_y_range: int = None,
          export: bool = False,
          homogeneity_threshold: float = 0.75,
+         homogeneity_window: int = 1,
          sequence_frequency_threshold: float = 0.75):
     """
     Complete CUGO workflow: generate context data and create comprehensive plots.
@@ -796,6 +797,13 @@ def cugo(db_path: str,
         fasta: Optional path to FASTA file
         bin_width: Bin width for size plots
         y_range: Y-axis range for size plots
+        export: Whether to automatically export a FASTA file for each position whose
+            homogeneity and relative sequence frequency pass their thresholds
+        homogeneity_threshold: Minimum homogeneity index required for automatic export (default: 0.75)
+        homogeneity_window: Number of size bins on either side of the modal bin counted as
+            "homogeneous" when computing the homogeneity index (default: 1)
+        sequence_frequency_threshold: Minimum sequence frequency, relative to position 0,
+            required for automatic export (default: 0.75)
 
     Returns:
         tuple: (context_file_path, plot_file_path)
@@ -819,13 +827,14 @@ def cugo(db_path: str,
         logger.error("Context generation failed - no plots will be created")
         return None, None
 
-    homogeneity_df = compute_homogeneity_index(context_file, flank_lower, flank_upper, bin_width)
-
-    export = True
-    if export is True:
-        for index, data in homogeneity_df.iterrows():
-            if data['relative sequence frequency'] >= sequence_frequency_threshold and data['homogeneity'] > homogeneity_threshold:
-                cugo_select(context_file, index, db_path, output_dir, threads, filter_seqs=True, force=force)
+    if export:
+        homogeneity_df = compute_homogeneity_index(
+            context_file, flank_lower, flank_upper, bin_width, window=homogeneity_window
+        )
+        for position, data in homogeneity_df.iterrows():
+            if (data['relative sequence frequency'] >= sequence_frequency_threshold
+                    and data['homogeneity'] > homogeneity_threshold):
+                cugo_select(context_file, position, db_path, output_dir, threads, filter_seqs=True, force=force)
 
     # create comprehensive plots
     cugo_plot(

@@ -130,6 +130,11 @@ def __exaggeration(group, required=False):
     group.add_argument('-e', '--exaggeration', type=int, default=6, required=required,
                        help='Exaggeration value for tSNE embedding (default: 6)')
 
+def __export(group, required=False):
+    group.add_argument('--export', action='store_true', required=required,
+                       help='Automatically export a FASTA file for each position whose homogeneity '
+                            'and sequence frequency pass their thresholds')
+
 def __extracted(group, required=False):
     group.add_argument('-e', '--extracted', type=str, required=required,
                        help='Path to FASTA file containing extracted matching sequences')
@@ -161,6 +166,15 @@ def __help(group, required=False):
 def __high_level_environment_path(group, required=False):
     group.add_argument('--high_level_environment_path', type=str, required=required,
                        help='Path to high level environment data TSV file')
+
+def __homogeneity_threshold(group, required=False):
+    group.add_argument('--homogeneity_threshold', type=float, default=0.75, required=required,
+                       help='Minimum homogeneity index required for automatic position FASTA export (default: 0.75)')
+
+def __homogeneity_window(group, required=False):
+    group.add_argument('--homogeneity_window', type=int, default=1, required=required,
+                       help='Number of size bins on either side of the modal bin counted as homogeneous '
+                            'when computing the homogeneity index (default: 1)')
 
 def __id_list(group, required=False):
     group.add_argument('-i', '--id_list', type=str, required=required,
@@ -289,6 +303,11 @@ def __sensitivity(group, required=False):
     group.add_argument('--sensitivity', required=required,
                        help='DIAMOND search sensitivity level: fast, sensitive, mid-sensitive, very-sensitive, '
                             'ultra-sensitive, or faster (default: fast)')
+
+def __sequence_frequency_threshold(group, required=False):
+    group.add_argument('--sequence_frequency_threshold', type=float, default=0.75, required=required,
+                       help='Minimum sequence frequency relative to position 0 required for automatic '
+                            'position FASTA export (default: 0.75)')
 
 def __show(group, required=False):
     group.add_argument('-s', '--show', action='store_true', required=required,
@@ -577,6 +596,10 @@ def get_main_parser():
             __threads(grp)
             __svg(grp)
             __force(grp)
+            __export(grp)
+            __homogeneity_threshold(grp)
+            __homogeneity_window(grp)
+            __sequence_frequency_threshold(grp)
 
 
     with subparser(sub_parsers, 'cugo_select', 'Retrieve protein IDs for select CUGO position') as parser:

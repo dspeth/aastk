@@ -270,7 +270,11 @@ def main():
                 force=args.force,
                 bin_width=args.bin_width,
                 y_range=args.y_range,
-                tmh_y_range=args.tmh_y_range
+                tmh_y_range=args.tmh_y_range,
+                export=args.export,
+                homogeneity_threshold=args.homogeneity_threshold,
+                homogeneity_window=args.homogeneity_window,
+                sequence_frequency_threshold=args.sequence_frequency_threshold
             )
 
         elif args.subparser_name == 'cugo_select':
