@@ -122,6 +122,10 @@ def __db_version(group, required=False):
     group.add_argument('-g', '--db_version', type=str, required=required,
                        help='GlobDB version number, without the leading "r" (example: 226)')
 
+def __density(group, required=False):
+    group.add_argument('--density', action='store_true', required=required,
+                       help='Plot a 2D density (hexbin) instead of a scatter plot')
+
 def __environmental_data(group, required=False):
     group.add_argument('--environmental_data', action='store_true', required=required,
                        help='Import high and low level environment data')
@@ -455,6 +459,7 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __svg(grp)
+            __density(grp)
             __force(grp)
             __update(grp)
             __yaml(grp)
@@ -475,6 +480,7 @@ def get_main_parser():
             __bsr_cutoff(grp)
             __threads(grp)
             __filter_seqs(grp)
+            __density(grp)
             __force(grp)
 
 
@@ -496,6 +502,7 @@ def get_main_parser():
             __sql(grp)
             __keep(grp)
             __svg(grp)
+            __density(grp)
             __force(grp)
 
     ### PARSER FOR CUGO FUNCTIONALITIES AND WORKFLOW ###

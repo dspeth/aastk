@@ -611,9 +611,14 @@ def pasr_plot(bsr_file: str,
              yaml_path: str,
              svg: bool = False,
              force: bool = False,
-             update: bool = False):
+             update: bool = False,
+             density: bool = False):
     """
     Creates a scatter plot of the BSR data flanked by histograms showing the distribution of datapoints alongside the axes.
+
+    Args:
+        density (bool): If true, plot a 2D density (hexbin) of the datapoints instead of a scatter plot.
+            Point-wise %identity coloring is not available in this mode; the colorbar shows point counts per bin instead.
     """
     logger = logging.getLogger(__name__)
 
@@ -622,16 +627,17 @@ def pasr_plot(bsr_file: str,
     # ===============================
     # Output file path setup
     # ===============================
+    suffix = '_density' if density else ''
     if update:
         if svg:
-            out_graph = ensure_path(output_dir, f'{protein_name}_bsr_update.svg', force=force)
+            out_graph = ensure_path(output_dir, f'{protein_name}_bsr_update{suffix}.svg', force=force)
         else:
-            out_graph = ensure_path(output_dir, f'{protein_name}_bsr_update.png', force=force)
+            out_graph = ensure_path(output_dir, f'{protein_name}_bsr_update{suffix}.png', force=force)
     else:
         if svg:
-            out_graph = ensure_path(output_dir, f'{protein_name}_bsr.svg', force=force)
+            out_graph = ensure_path(output_dir, f'{protein_name}_bsr{suffix}.svg', force=force)
         else:
-            out_graph = ensure_path(output_dir, f'{protein_name}_bsr.png', force=force)
+            out_graph = ensure_path(output_dir, f'{protein_name}_bsr{suffix}.png', force=force)
 
     logger.info(f"Creating BSR scatter plot for {protein_name}")
 
@@ -662,17 +668,27 @@ def pasr_plot(bsr_file: str,
         # ===============================
         # Layout
         # ===============================
-        fig, axs = plt.subplot_mosaic(
-            [['histx', '.'],
-             ['scatter', 'histy']],
-            figsize=(8, 8),
-            width_ratios=(4, 1),
-            height_ratios=(1, 4),
-            layout='constrained'
-        )
+        if density:
+            fig, axs = plt.subplot_mosaic(
+                [['histx', 'histx2', '.'],
+                 ['scatter', 'density', 'histy']],
+                figsize=(13, 8),
+                width_ratios=(4, 4, 1),
+                height_ratios=(1, 4),
+                layout='constrained'
+            )
+        else:
+            fig, axs = plt.subplot_mosaic(
+                [['histx', '.'],
+                 ['scatter', 'histy']],
+                figsize=(8, 8),
+                width_ratios=(4, 1),
+                height_ratios=(1, 4),
+                layout='constrained'
+            )
 
         # ===============================
-        # Scatter plot
+        # Scatter plot (colored by % identity)
         # ===============================
         scatter = axs['scatter'].scatter(
             bsr_df['max_score'],
@@ -694,9 +710,30 @@ def pasr_plot(bsr_file: str,
         cbar.set_label('% sequence identity')
 
         # ===============================
+        # Density plot (optional side panel)
+        # ===============================
+        if density:
+            hexbin = axs['density'].hexbin(
+                bsr_df['max_score'],
+                bsr_df['score'],
+                gridsize=50,
+                extent=(xlim[0], xlim[1], 0, (1.1 * score_max)),
+                cmap='viridis',
+                mincnt=1
+            )
+            axs['density'].set_xlabel('Calculated maximum score')
+            axs['density'].set_xlim(xlim)
+            axs['density'].set_ylim(bottom=0, top=(1.1 * score_max))
+            axs['density'].tick_params(labelleft=False)
+
+            density_cb_ax = inset_axes(axs['density'], width="5%", height="30%", loc='upper left', borderpad=1)
+            density_cbar = fig.colorbar(hexbin, cax=density_cb_ax)
+            density_cbar.set_label('Point count')
+
+        # ===============================
         # Histograms aligned with scatter
         # ===============================
-        # Top histogram
+        # Top histogram (above scatter)
         x_hist, x_edges = np.histogram(bsr_df['max_score'], bins=x_bins)
         axs['histx'].bar(
             x_edges[:-1],
@@ -709,7 +746,20 @@ def pasr_plot(bsr_file: str,
         axs['histx'].set_ylabel('Counts')
         axs['histx'].set_yticks([0, round(max(x_hist)/2), round(max(x_hist))])
         axs['histx'].tick_params(labelbottom=False)
-        axs['histx'].set_title(f'Protein Alignment Score Ratio for {protein_name}')
+
+        fig.suptitle(f'Protein Alignment Score Ratio for {protein_name}')
+
+        if density:
+            axs['histx2'].bar(
+                x_edges[:-1],
+                x_hist,
+                width=bin_width,
+                align='edge',
+                color='black'
+            )
+            axs['histx2'].set_xlim(xlim)
+            axs['histx2'].set_yticks([0, round(max(x_hist)/2), round(max(x_hist))])
+            axs['histx2'].tick_params(labelbottom=False, labelleft=False)
 
         # Right histogram
         y_hist, y_edges = np.histogram(bsr_df['score'], bins=y_bins)
@@ -740,16 +790,18 @@ def pasr_plot(bsr_file: str,
             dbmin = thresholds.get("dbmin", None)
             bsr_min = thresholds.get("bsr", None)
 
-            if max_score_min is not None:
-                axs['scatter'].axvline(max_score_min, color='black', linestyle='--', linewidth=1.0)
-            if max_score_max is not None:
-                axs['scatter'].axvline(max_score_max, color='black', linestyle='--', linewidth=1.0)
-            if dbmin is not None:
-                axs['scatter'].axhline(dbmin, color='black', linestyle='--', linewidth=1.0)
-            if bsr_min is not None:
-                x_vals = np.linspace(xlim[0], xlim[1], 500)
-                y_vals = bsr_min * x_vals
-                axs['scatter'].plot(x_vals, y_vals, color='black', linestyle='--', linewidth=1.0)
+            threshold_axes = [axs['scatter'], axs['density']] if density else [axs['scatter']]
+            for ax in threshold_axes:
+                if max_score_min is not None:
+                    ax.axvline(max_score_min, color='black', linestyle='--', linewidth=1.0)
+                if max_score_max is not None:
+                    ax.axvline(max_score_max, color='black', linestyle='--', linewidth=1.0)
+                if dbmin is not None:
+                    ax.axhline(dbmin, color='black', linestyle='--', linewidth=1.0)
+                if bsr_min is not None:
+                    x_vals = np.linspace(xlim[0], xlim[1], 500)
+                    y_vals = bsr_min * x_vals
+                    ax.plot(x_vals, y_vals, color='black', linestyle='--', linewidth=1.0)
 
         # ===============================
         # Save
@@ -904,7 +956,8 @@ def pasr_select(yaml_path: str,
                 threads: int = 1,
                 force: bool = False,
                 params: bool = False,
-                filter_seqs: bool = False):
+                filter_seqs: bool = False,
+                density: bool = False):
     """
     Subsets matched sequences based on YAML thresholds or provided parameters.
 
@@ -921,6 +974,7 @@ def pasr_select(yaml_path: str,
         force (bool): If true, existing files/directories in output path are overwritten.
         params (bool): Use provided parameters instead of YAML file (mutually exclusive with yaml_path).
         filter_seqs (bool): Additionally filter the selected sequences for improved homogeneity.
+        density (bool): If true, the regenerated plot uses a 2D density (hexbin) instead of a scatter plot.
     """
     # check if seqkit is in path
     check_dependency_availability('seqkit')
@@ -1075,7 +1129,8 @@ def pasr_select(yaml_path: str,
                                 output_dir=output_dir,
                                 yaml_path=yaml_for_plot,
                                 force=force,
-                                update=True
+                                update=True,
+                                density=density
                                 )
 
     if filter_seqs:
@@ -1109,6 +1164,7 @@ def pasr(seed_fasta: str,
          sql: bool = False,
          keep: bool = False,
          svg: bool = False,
+         density: bool = False,
          force: bool = False):
     """
     PASR workflow with configurable output directory.
@@ -1137,6 +1193,7 @@ def pasr(seed_fasta: str,
         update (bool): Creates updated matched_fasta and bsr plot using metadata yaml file
         yaml_path (str): Path to metadata yaml file
         svg (bool): If true, plots will be generated in SVG format
+        density (bool): If true, BSR plots use a 2D density (hexbin) instead of a scatter plot
         force (bool): If true, existing files/directories in output path are overwritten
     """
     # ===============================
@@ -1199,7 +1256,7 @@ def pasr(seed_fasta: str,
         # Visualization
         # ===============================
         logger.info("Creating BSR plot")
-        bsr_plot = pasr_plot(bsr_file, output_dir, yaml_path, svg=svg, force=force, update=False)
+        bsr_plot = pasr_plot(bsr_file, output_dir, yaml_path, svg=svg, force=force, update=False, density=density)
         results['bsr_plot'] = bsr_plot
 
         # ===============================
@@ -1207,7 +1264,7 @@ def pasr(seed_fasta: str,
         # ===============================
         if update:
             logger.info("Running update for specified data")
-            subset_fasta, update_stats_path, select_yaml, updated_plot = pasr_select(yaml_path, matched_fasta, bsr_file, output_dir, force=force)
+            subset_fasta, update_stats_path, select_yaml, updated_plot = pasr_select(yaml_path, matched_fasta, bsr_file, output_dir, force=force, density=density)
             results['subset_fasta'] = subset_fasta
             results['update_stats_path'] = update_stats_path
             results['updated_plot'] = updated_plot

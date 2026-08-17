@@ -142,7 +142,8 @@ def main():
                 yaml_path=args.yaml,
                 svg=args.svg,
                 force=args.force,
-                update=args.update
+                update=args.update,
+                density=args.density
             )
 
         elif args.subparser_name == 'pasr_select':
@@ -158,7 +159,8 @@ def main():
                 threads=args.threads,
                 force=args.force,
                 params=args.params,
-                filter_seqs=args.filter_seqs
+                filter_seqs=args.filter_seqs,
+                density=args.density
             )
 
         elif args.subparser_name == 'pasr':
@@ -177,6 +179,7 @@ def main():
                 sql=args.sql,
                 keep=args.keep,
                 svg=args.svg,
+                density=args.density,
                 force=args.force
             )
 
