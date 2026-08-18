@@ -200,9 +200,17 @@ def __include_high_level_environment(group, required=False):
     group.add_argument('--include_high_level_environment', action='store_true', required=required,
                        help='Include high level environment metadata in output')
 
+def __include_high_level_env_category(group, required=False):
+    group.add_argument('--include_high_level_env_category', action='store_true', required=required,
+                       help='Include derived dominant high level environment category in output')
+
 def __include_low_level_environment(group, required=False):
     group.add_argument('--include_low_level_environment', action='store_true', required=required,
                        help='Include low level environment metadata in output')
+
+def __include_low_level_env_category(group, required=False):
+    group.add_argument('--include_low_level_env_category', action='store_true', required=required,
+                       help='Include derived dominant low level environment category in output')
 
 def __include_taxonomy(group, required=False):
     group.add_argument('--include_taxonomy', action='store_true', required=required,
@@ -546,6 +554,8 @@ def get_main_parser():
             __include_culture_collection(grp)
             __include_high_level_environment(grp)
             __include_low_level_environment(grp)
+            __include_high_level_env_category(grp)
+            __include_low_level_env_category(grp)
             __include_taxonomy(grp)
             __all_metadata(grp)
             __force(grp)

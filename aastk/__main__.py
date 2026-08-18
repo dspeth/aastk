@@ -223,6 +223,8 @@ def main():
                 include_culture_collection=args.include_culture_collection,
                 include_high_level_environment=args.include_high_level_environment,
                 include_low_level_environment=args.include_low_level_environment,
+                include_high_level_env_category=args.include_high_level_env_category,
+                include_low_level_env_category=args.include_low_level_env_category,
                 all_metadata=args.all_metadata,
                 force=args.force
             )

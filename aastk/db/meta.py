@@ -12,9 +12,20 @@ from aastk.db.schema import (
     CULTURE_COLLECTION_COLUMNS,
     HIGH_LEVEL_ENV_COLUMNS,
     LOW_LEVEL_ENV_COLUMNS,
+    HIGH_LEVEL_ENV_VIEW,
+    LOW_LEVEL_ENV_VIEW,
+    HIGH_LEVEL_ENV_CATEGORY_COLUMN,
+    LOW_LEVEL_ENV_CATEGORY_COLUMN,
 )
 
 logger = logging.getLogger(__name__)
+
+GENOME_ID_MATCH = """
+    CASE
+        WHEN instr(p.seqID, '___') > 0
+        THEN substr(p.seqID, 1, instr(p.seqID, '___') - 1)
+        ELSE p.seqID
+    END"""
 
 
 def build_query(include_taxonomy: bool = False,
@@ -22,6 +33,8 @@ def build_query(include_taxonomy: bool = False,
                 include_culture_collection: bool = False,
                 include_high_level_environment: bool = False,
                 include_low_level_environment: bool = False,
+                include_high_level_env_category: bool = False,
+                include_low_level_env_category: bool = False,
                 batch_size: int = 1) -> str:
     select_cols = [f'p.{col}' for col in BASE_COLUMNS]
 
@@ -40,6 +53,12 @@ def build_query(include_taxonomy: bool = False,
     if include_low_level_environment:
         select_cols.extend([f'g.{col}' for col in LOW_LEVEL_ENV_COLUMNS])
 
+    if include_high_level_env_category:
+        select_cols.append(f'hlenv.{HIGH_LEVEL_ENV_CATEGORY_COLUMN}')
+
+    if include_low_level_env_category:
+        select_cols.append(f'llenv.{LOW_LEVEL_ENV_CATEGORY_COLUMN}')
+
     query = f"SELECT {', '.join(select_cols)} FROM protein_data p"
 
     needs_genome_join = (
@@ -48,13 +67,21 @@ def build_query(include_taxonomy: bool = False,
     )
 
     if needs_genome_join:
-        query += """
+        query += f"""
             LEFT JOIN genome_data g ON
-            CASE
-                WHEN instr(p.seqID, '___') > 0
-                THEN substr(p.seqID, 1, instr(p.seqID, '___') - 1)
-                ELSE p.seqID
-            END = g.genome_ID
+            {GENOME_ID_MATCH} = g.genome_ID
+            """
+
+    if include_high_level_env_category:
+        query += f"""
+            LEFT JOIN {HIGH_LEVEL_ENV_VIEW} hlenv ON
+            {GENOME_ID_MATCH} = hlenv.genome_ID
+            """
+
+    if include_low_level_env_category:
+        query += f"""
+            LEFT JOIN {LOW_LEVEL_ENV_VIEW} llenv ON
+            {GENOME_ID_MATCH} = llenv.genome_ID
             """
 
     if batch_size > 1:
@@ -70,7 +97,9 @@ def get_header(include_taxonomy: bool,
                include_annotation: bool,
                include_culture_collection: bool,
                include_high_level_environment: bool,
-               include_low_level_environment: bool):
+               include_low_level_environment: bool,
+               include_high_level_env_category: bool = False,
+               include_low_level_env_category: bool = False):
 
     header = BASE_COLUMNS.copy()
 
@@ -89,6 +118,12 @@ def get_header(include_taxonomy: bool,
     if include_low_level_environment:
         header.extend(LOW_LEVEL_ENV_COLUMNS)
 
+    if include_high_level_env_category:
+        header.append(HIGH_LEVEL_ENV_CATEGORY_COLUMN)
+
+    if include_low_level_env_category:
+        header.append(LOW_LEVEL_ENV_CATEGORY_COLUMN)
+
     return header
 
 
@@ -100,6 +135,8 @@ AVAILABILITY_CHECKS = {
     'culture_collection': ('genome_data', 'culture_collection'),
     'high_level_environment': ('genome_data', 'animal_associated'),
     'low_level_environment': ('genome_data', 'human'),
+    'high_level_env_category': (HIGH_LEVEL_ENV_VIEW, HIGH_LEVEL_ENV_CATEGORY_COLUMN),
+    'low_level_env_category': (LOW_LEVEL_ENV_VIEW, LOW_LEVEL_ENV_CATEGORY_COLUMN),
 }
 
 
@@ -108,13 +145,17 @@ def check_metadata_availability(db_path: str,
                                 include_annotation: bool,
                                 include_culture_collection: bool,
                                 include_high_level_environment: bool,
-                                include_low_level_environment: bool) -> list:
+                                include_low_level_environment: bool,
+                                include_high_level_env_category: bool = False,
+                                include_low_level_env_category: bool = False) -> list:
     requested = {
         'annotation': include_annotation,
         'taxonomy': include_taxonomy,
         'culture_collection': include_culture_collection,
         'high_level_environment': include_high_level_environment,
         'low_level_environment': include_low_level_environment,
+        'high_level_env_category': include_high_level_env_category,
+        'low_level_env_category': include_low_level_env_category,
     }
 
     unavailable = []
@@ -139,7 +180,9 @@ def process_batch(db_path: str,
                   include_annotation: bool,
                   include_culture_collection: bool,
                   include_high_level_environment: bool,
-                  include_low_level_environment: bool):
+                  include_low_level_environment: bool,
+                  include_high_level_env_category: bool = False,
+                  include_low_level_env_category: bool = False):
 
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -150,6 +193,8 @@ def process_batch(db_path: str,
         include_culture_collection=include_culture_collection,
         include_high_level_environment=include_high_level_environment,
         include_low_level_environment=include_low_level_environment,
+        include_high_level_env_category=include_high_level_env_category,
+        include_low_level_env_category=include_low_level_env_category,
         batch_size=len(batch)
     )
 
@@ -172,6 +217,8 @@ def meta(db_path: str,
          include_culture_collection: bool = False,
          include_high_level_environment: bool = False,
          include_low_level_environment: bool = False,
+         include_high_level_env_category: bool = False,
+         include_low_level_env_category: bool = False,
          all_metadata: bool = False,
          force: bool = False):
 
@@ -199,26 +246,29 @@ def meta(db_path: str,
         )
         return
 
-    # Enable everything if --all-metadata is set
     if all_metadata:
         include_annotation = True
         include_taxonomy = True
         include_culture_collection = True
         include_high_level_environment = True
         include_low_level_environment = True
+        include_high_level_env_category = True
+        include_low_level_env_category = True
 
-    # Ensure at least one metadata type is requested
     if not any([
         include_annotation,
         include_taxonomy,
         include_culture_collection,
         include_high_level_environment,
-        include_low_level_environment
+        include_low_level_environment,
+        include_high_level_env_category,
+        include_low_level_env_category
     ]):
         logger.error(
             "Must specify at least one metadata type "
             "(--taxonomy, --annotation, --culture-collection, "
-            "--high-level-environment, --low-level-environment, or --all-metadata)"
+            "--high-level-environment, --low-level-environment, "
+            "--high-level-env-category, --low-level-env-category, or --all-metadata)"
         )
         return
 
@@ -228,7 +278,9 @@ def meta(db_path: str,
         include_annotation,
         include_culture_collection,
         include_high_level_environment,
-        include_low_level_environment
+        include_low_level_environment,
+        include_high_level_env_category,
+        include_low_level_env_category
     )
     if unavailable:
         logger.error(
@@ -243,7 +295,9 @@ def meta(db_path: str,
         include_annotation,
         include_culture_collection,
         include_high_level_environment,
-        include_low_level_environment
+        include_low_level_environment,
+        include_high_level_env_category,
+        include_low_level_env_category
     )
 
     # Split seq_ids into batches
@@ -267,7 +321,9 @@ def meta(db_path: str,
                 include_annotation,
                 include_culture_collection,
                 include_high_level_environment,
-                include_low_level_environment
+                include_low_level_environment,
+                include_high_level_env_category,
+                include_low_level_env_category
             ): idx
             for idx, batch in enumerate(batches)
         }
@@ -346,4 +402,9 @@ def list_metadata():
     print("  • low-level environment data")
     for item in LOW_LEVEL_ENV_COLUMNS:
         print(f"      - {item}")
+    print()
+
+    print("  • derived environment category (dominant category, >=50%, else 'diverse')")
+    print(f"      - {HIGH_LEVEL_ENV_CATEGORY_COLUMN}")
+    print(f"      - {LOW_LEVEL_ENV_CATEGORY_COLUMN}")
     print()

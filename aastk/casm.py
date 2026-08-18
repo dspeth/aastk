@@ -1,5 +1,16 @@
 from aastk.util import *
-from aastk.db.schema import BASE_COLUMNS, ANNOTATION_COLUMNS, TAXONOMY_COLUMNS, CULTURE_COLLECTION_COLUMNS, HIGH_LEVEL_ENV_COLUMNS, LOW_LEVEL_ENV_COLUMNS
+from aastk.db.schema import (
+    BASE_COLUMNS,
+    ANNOTATION_COLUMNS,
+    TAXONOMY_COLUMNS,
+    CULTURE_COLLECTION_COLUMNS,
+    HIGH_LEVEL_ENV_COLUMNS,
+    LOW_LEVEL_ENV_COLUMNS,
+    HIGH_LEVEL_ENV_VIEW,
+    LOW_LEVEL_ENV_VIEW,
+    HIGH_LEVEL_ENV_CATEGORY_COLUMN,
+    LOW_LEVEL_ENV_CATEGORY_COLUMN,
+)
 from aastk.cugo import filter
 
 import logging
@@ -391,6 +402,11 @@ def tsne_embedding(matrix,
 
     return early_filename, final_filename
 
+ENV_CATEGORY_VIEWS = {
+    HIGH_LEVEL_ENV_CATEGORY_COLUMN: HIGH_LEVEL_ENV_VIEW,
+    LOW_LEVEL_ENV_CATEGORY_COLUMN: LOW_LEVEL_ENV_VIEW,
+}
+
 def fetch_protein_metadata(db_path: str,
                            protein_ids: list,
                            column: str,
@@ -399,7 +415,7 @@ def fetch_protein_metadata(db_path: str,
     valid_protein_cols = BASE_COLUMNS[1:] + ANNOTATION_COLUMNS
     valid_genome_cols = TAXONOMY_COLUMNS + CULTURE_COLLECTION_COLUMNS + LOW_LEVEL_ENV_COLUMNS + HIGH_LEVEL_ENV_COLUMNS
 
-    if column not in valid_protein_cols and column not in valid_genome_cols:
+    if column not in valid_protein_cols and column not in valid_genome_cols and column not in ENV_CATEGORY_VIEWS:
         logger.warning(f"No valid metadata columns requested")
         return pd.DataFrame({'seqID': protein_ids})
 
@@ -420,12 +436,27 @@ def fetch_protein_metadata(db_path: str,
             query = f"""
                 SELECT p.seqID, g.{column}
                 FROM protein_data p
-                LEFT JOIN genome_data g ON 
-                    CASE 
-                        WHEN instr(p.seqID, '___') > 0 
+                LEFT JOIN genome_data g ON
+                    CASE
+                        WHEN instr(p.seqID, '___') > 0
                         THEN substr(p.seqID, 1, instr(p.seqID, '___') - 1)
                         ELSE p.seqID
                     END = g.genome_ID
+                WHERE p.seqID IN ({placeholders})
+            """
+            batch_df = pd.read_sql_query(query, conn, params=batch)
+
+        elif column in ENV_CATEGORY_VIEWS:
+            view = ENV_CATEGORY_VIEWS[column]
+            query = f"""
+                SELECT p.seqID, v.{column}
+                FROM protein_data p
+                LEFT JOIN {view} v ON
+                    CASE
+                        WHEN instr(p.seqID, '___') > 0
+                        THEN substr(p.seqID, 1, instr(p.seqID, '___') - 1)
+                        ELSE p.seqID
+                    END = v.genome_ID
                 WHERE p.seqID IN ({placeholders})
             """
             batch_df = pd.read_sql_query(query, conn, params=batch)
@@ -1014,7 +1045,8 @@ def casm(fasta: str,
         sum_dict: Dictionary containing paths to all generated files
     """
     if (metadata is not None and metadata not in BASE_COLUMNS[1:] + ANNOTATION_COLUMNS +
-            TAXONOMY_COLUMNS + CULTURE_COLLECTION_COLUMNS + HIGH_LEVEL_ENV_COLUMNS + LOW_LEVEL_ENV_COLUMNS):
+            TAXONOMY_COLUMNS + CULTURE_COLLECTION_COLUMNS + HIGH_LEVEL_ENV_COLUMNS + LOW_LEVEL_ENV_COLUMNS +
+            [HIGH_LEVEL_ENV_CATEGORY_COLUMN, LOW_LEVEL_ENV_CATEGORY_COLUMN]):
         logger.error('Invalid metadata category. Please run "aastk list_metadata" to view available options.')
         raise ValueError(f'Invalid metadata category: {metadata}')
 
