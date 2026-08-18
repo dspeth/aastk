@@ -8,11 +8,10 @@ For a user-facing overview of the tools and their scientific purpose, see [READM
 ## Table of contents
 
 1. [Repository layout](#repository-layout)
-2. [Module responsibilities](#module-responsibilities)
-3. [Core design patterns](#core-design-patterns)
-4. [CLI conventions](#cli-conventions)
-5. [Adding a new tool](#adding-a-new-tool)
-6. [Versioning and releases](#versioning-and-releases)
+2. [Core design patterns](#core-design-patterns)
+3. [CLI conventions](#cli-conventions)
+4. [Adding a new tool](#adding-a-new-tool)
+5. [Versioning and releases](#versioning-and-releases)
 
 ---
 
@@ -21,40 +20,32 @@ For a user-facing overview of the tools and their scientific purpose, see [READM
 ```
 aastk/
 ├── aastk/
-│   ├── __init__.py       # empty; marks the package
+│   ├── __init__.py       # marks the package
 │   ├── __main__.py       # entry point: argument dispatch, print_help()
 │   ├── cli.py            # argparse definitions for every subcommand
-│   ├── log.py            # logger_setup() – dual console/file logging
+│   ├── log.py            # logging setup
 │   ├── util.py           # shared helpers used by all modules
 │   ├── version.py        # __version__, __author__, __copyright__
-│   ├── database.py       # SQLite schema, database construction, meta, export_fasta
-│   ├── pasr.py           # PASR workflow and subcommand functions
-│   ├── casm.py           # CASM workflow and subcommand functions
-│   └── cugo.py           # CUGO workflow and subcommand functions
+│   ├── module1/          # a tool implemented as a package rather than a
+│   │   ├── __init__.py   # single file, e.g. because it has several internal
+│   │   ├── ...           # components or pluggable sources
+│   │   └── sources/
+│   │       └── ...
+│   ├── module2.py         # a tool implemented as a single module
+│   └── module3.py
 ├── pyproject.toml        # build config, dependencies, entry point
 ├── meta.yaml             # conda recipe (bioconda)
 └── .github/workflows/
     └── release.yml       # automated PyPI publish on GitHub release
 ```
 
----
-
-## Module responsibilities
-
-| Module | Owns |
-|---|---|
-| `__main__.py` | `main()` dispatcher, `print_help()` |
-| `cli.py` | All `argparse` definitions; no business logic |
-| `log.py` | `logger_setup()` only |
-| `util.py` | Functions shared by ≥ 2 tool modules |
-| `database.py` | SQLite schema and population; `meta()` for metadata retrieval; `export_fasta()`. The database stores protein sequences (zlib-compressed), genomic context (CUGO assignments, strand, position), functional annotations (COG, KEGG, Pfam), transmembrane helix counts, and genome-level metadata (taxonomy, environment, culture collection). |
-| `pasr.py` | Protein Alignment Score Ratio: identifies homologous proteins in a large query dataset by aligning against a small seed set with DIAMOND and computing a score ratio relative to each sequence's theoretical maximum BLOSUM score. |
-| `casm.py` | Clustering Alignment Score Matrix: characterizes the structure of a protein superfamily by building an N×n alignment score matrix, reducing it to 2D with t-SNE (via openTSNE), and calling clusters with DBSCAN. |
-| `cugo.py` | Colocated Unidirectional Gene Organization: retrieves the genomic neighborhood of each query protein from the database (bounded by strand changes or contig ends) and visualizes consensus context across annotation, sequence length, and transmembrane helix dimensions. |
-
-The separation between `cli.py` and the tool modules is intentional: `cli.py` contains
-only argument definitions, and tool modules contain only logic. This makes it possible to
-call any subcommand function programmatically without touching argparse.
+A tool module may be a single `.py` file or a small package (directory with its own
+`__init__.py`), depending on its internal complexity. Both shapes follow the same
+conventions described below, and are exposed through `cli.py` and `__main__.py`
+identically. The separation between `cli.py` and the tool modules is intentional:
+`cli.py` contains only argument definitions, and tool modules contain only logic. This
+makes it possible to call any subcommand function programmatically without touching
+argparse.
 
 ---
 
@@ -96,8 +87,7 @@ all the way to the executor. Long-running operations expose progress via `tqdm`.
 The SQLite database is opened with `sqlite3.connect()`. Sequences are stored zlib-compressed
 (`compress_sequence` / `decompress_sequence` in `util.py`). Queries that touch many rows
 use batch fetching (typically 500–900 IDs per query) to bound memory usage. Never read
-the entire `protein_data` table into memory at once—use `stream_all_proteins()` from
-`database.py` when iterating over all sequences.
+an entire table into memory at once—stream and batch instead.
 
 ### Logging
 
@@ -167,7 +157,10 @@ Follow these steps to integrate a new top-level tool (e.g. `mytool`).
 
 ### 1. Create the module
 
-Create `aastk/mytool.py`. Structure it like the existing tool modules:
+Start with a single file, `aastk/mytool.py`. If the tool grows internal complexity—e.g.
+several pluggable sources or components that warrant their own files—convert it into a
+package (`aastk/mytool/__init__.py` plus submodules) instead. Either shape follows the
+same conventions:
 
 - One function per subcommand step (e.g. `step_a()`, `step_b()`).
 - One top-level orchestrator (e.g. `mytool()`) that calls the steps in sequence.
@@ -177,6 +170,9 @@ Create `aastk/mytool.py`. Structure it like the existing tool modules:
 - Use `logger.info()` for progress messages; `logger.error()` for failures.
 - Raise `RuntimeError` for unrecoverable errors (caught by the top-level handler in
   `__main__.py`).
+
+Don't start as a package "just in case"—convert only once a single file actually becomes
+unwieldy.
 
 ### 2. Add argument helpers to `cli.py`
 
