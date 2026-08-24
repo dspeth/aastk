@@ -60,6 +60,9 @@ def build(seed_fasta: str,
     else:
         raise FileNotFoundError(f"Seed FASTA file does not exist: {seed_fasta}")
 
+    if not is_fasta(seed_fasta):
+        raise ValueError(f"Not a valid FASTA file: {seed_fasta}")
+
     seed_fasta_filename = Path(seed_fasta).name
     protein_name = determine_dataset_name(seed_fasta_filename, '.', 0)
 
@@ -149,6 +152,9 @@ def search(db_path: str,
     """
     # check if diamond is in PATH
     check_dependency_availability('diamond')
+
+    if not (is_fasta(query_path) or is_fastq(query_path)):
+        raise ValueError(f"Not a valid FASTA/FASTQ file: {query_path}")
 
     # automatically name files
     protein_name = determine_dataset_name(db_path, '.', 0, '_seed_db')
@@ -359,23 +365,20 @@ def get_hit_seqs(blast_tab: str,
             logger.info(f"Retrieved {sequences_written} sequences to {out_fasta}")
 
         else:
-            file_type = determine_file_type(query_path)
-            logger.info(f"Determined input file type: {file_type}")
-
-            if file_type == "fasta":
+            if is_fasta(query_path):
                 logger.info(f"Processing FASTA format from {query_path}")
                 for header, sequence in write_fa_matches(query_path, matching_ids):
                     out.write(f"{header}\n{sequence}\n")
                     sequences_written += 1
 
-            elif file_type == "fastq":
+            elif is_fastq(query_path):
                 logger.info(f"Processing FASTQ format from {query_path}")
                 for header, sequence in write_fq_matches(query_path, matching_ids):
                     out.write(f"{header}\n{sequence}\n")
                     sequences_written += 1
 
             else:
-                raise ValueError(f"Unsupported file type: {file_type}")
+                raise ValueError(f"Unrecognized file type in {query_path}")
 
             logger.info(f"Successfully wrote {sequences_written} matching sequences to {out_fasta}")
 

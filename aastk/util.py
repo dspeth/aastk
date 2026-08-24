@@ -33,6 +33,8 @@ def compress_sequence(sequence: str) -> bytes:
 	return zlib.compress(sequence.encode('utf-8'), level=9)
 
 def count_fasta_sequences(fasta_path: str) -> int:
+	if not is_fasta(fasta_path):
+		raise ValueError(f"Not a valid FASTA file: {fasta_path}")
 	with open(fasta_path, 'r') as f:
 		return sum(1 for line in f if line.startswith('>'))
 
@@ -48,24 +50,13 @@ def determine_dataset_name(file: str, splitter: str, part: int, suffix: str = No
 
 	return dataset
 
-def determine_file_type(file_path):
-	"""
-	Determines the file type (fasta or fastq) based on the first character in the file.
-	Args:
-	- file_path: Path to the file to check.
-	Returns:
-	- A string, either "fasta" or "fastq", indicating the file type.
-	Raises:
-	- ValueError: If the file type cannot be determined.
-	"""
+def is_fasta(file_path) -> bool:
 	with open(file_path, 'r') as file:
-		first_char = file.read(1)
-		if first_char == '>':
-			return "fasta"
-		elif first_char == '@':
-			return "fastq"
-		else:
-			raise ValueError(f"Unrecognized file type in {file_path}")
+		return file.read(1) == '>'
+
+def is_fastq(file_path) -> bool:
+	with open(file_path, 'r') as file:
+		return file.read(1) == '@'
 
 def ensure_path(path: Optional[str] = None,
 				target: Optional[str] = None,
@@ -308,6 +299,9 @@ def read_fasta_to_dict(fasta: str):
 	Returns:
 		dict: Dictionary with headers as keys and sequences as values
 	"""
+	if not is_fasta(fasta):
+		raise ValueError(f"Not a valid FASTA file: {fasta}")
+
 	# Load matched FASTA
 	sequences = {}
 	current_header = None
@@ -387,6 +381,12 @@ def run_diamond_alignment(fasta: str,
 	else:
 		logger.error("Input seed FASTA not found")
 		raise FileNotFoundError(f"FASTA file does not exist: {fasta}")
+
+	if not is_fasta(fasta):
+		raise ValueError(f"Not a valid FASTA file: {fasta}")
+
+	if not is_fasta(align_subset):
+		raise ValueError(f"Not a valid FASTA file: {align_subset}")
 
 	logger.info(f"Starting DIAMOND alignment process")
 	logger.info(f"Query FASTA: {fasta}")
@@ -514,6 +514,9 @@ def write_fa_matches(seq_file, ids):
 	Yields:
 	- Header and sequence of matching sequences.
 	"""
+	if not is_fasta(seq_file):
+		raise ValueError(f"Not a valid FASTA file: {seq_file}")
+
 	matching = False
 	sequence = ""
 
@@ -548,6 +551,9 @@ def write_fq_matches(seq_file, ids):
 	Yields:
 	- Header and sequence of matching sequences (converted to fasta format).
 	"""
+	if not is_fastq(seq_file):
+		raise ValueError(f"Not a valid FASTQ file: {seq_file}")
+
 	matching = False
 	line_count = 0
 	sequence = ""
