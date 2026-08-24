@@ -8,8 +8,8 @@ from aastk.cugo import *
 from aastk.casm import *
 from aastk.db.build import database
 from aastk.db.check import database_check
-from aastk.db.meta import meta, list_metadata
-from aastk.db.export import export_fasta
+from aastk.db.meta import meta, list_metadata, parse_query
+from aastk.db.export import export_fasta, export_by_metadata
 from aastk.version import __version__, __copyright__, __author__
 import sys
 
@@ -56,6 +56,7 @@ def print_help():
     database       Construct an SQL database from amino acid fasta sequences and associated metadata
     database_check Check whether the SQL database is internally consistent
     export_fasta   Export a fasta file from the AASTK SQL database
+    export         Export sequences from the AASTK SQL database matching a metadata query
     ''' % __version__)
 
 
@@ -377,6 +378,17 @@ def main():
         elif args.subparser_name == 'export_fasta':
             export_fasta(
                 db_path=args.db_path,
+                output=args.output,
+                threads=args.threads,
+                force=args.force
+            )
+
+        elif args.subparser_name == 'export':
+            export_by_metadata(
+                db_path=args.db_path,
+                query=parse_query(args.metadata_query),
+                fasta=args.fasta,
+                id_list=args.id_list,
                 output=args.output,
                 threads=args.threads,
                 force=args.force

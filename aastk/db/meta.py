@@ -93,6 +93,81 @@ def build_query(include_taxonomy: bool = False,
     return query
 
 
+QUERY_COLUMNS = {
+    **{col: 'p' for col in ANNOTATION_COLUMNS},
+    **{col: 'g' for col in TAXONOMY_COLUMNS},
+    **{col: 'g' for col in CULTURE_COLLECTION_COLUMNS},
+    HIGH_LEVEL_ENV_CATEGORY_COLUMN: 'hlenv',
+    LOW_LEVEL_ENV_CATEGORY_COLUMN: 'llenv',
+}
+
+
+def parse_query(query: list) -> dict:
+    parsed = {}
+    for item in query:
+        if '=' not in item:
+            raise ValueError(f"Invalid query condition '{item}'. Expected format: column=value")
+
+        column, value = item.split('=', 1)
+        column = column.strip()
+        value = value.strip()
+
+        if column not in QUERY_COLUMNS:
+            raise ValueError(
+                f"Unknown metadata column '{column}'. Run 'aastk list_metadata' to view available options."
+            )
+
+        parsed.setdefault(column, []).append(value)
+
+    return parsed
+
+
+def build_metadata_query(query: dict, seq_id_batch: list = None) -> tuple[str, list]:
+    tables = {QUERY_COLUMNS[column] for column in query}
+
+    needs_genome_join = 'g' in tables
+    needs_hlenv_join = 'hlenv' in tables
+    needs_llenv_join = 'llenv' in tables
+
+    sql = "SELECT p.seqID, p.protein_seq FROM protein_data p"
+
+    if needs_genome_join:
+        sql += f"""
+            LEFT JOIN genome_data g ON
+            {GENOME_ID_MATCH} = g.genome_ID
+            """
+
+    if needs_hlenv_join:
+        sql += f"""
+            LEFT JOIN {HIGH_LEVEL_ENV_VIEW} hlenv ON
+            {GENOME_ID_MATCH} = hlenv.genome_ID
+            """
+
+    if needs_llenv_join:
+        sql += f"""
+            LEFT JOIN {LOW_LEVEL_ENV_VIEW} llenv ON
+            {GENOME_ID_MATCH} = llenv.genome_ID
+            """
+
+    conditions = []
+    params = []
+
+    for column, values in query.items():
+        table = QUERY_COLUMNS[column]
+        placeholders = ','.join('?' * len(values))
+        conditions.append(f"{table}.{column} IN ({placeholders})")
+        params.extend(values)
+
+    if seq_id_batch:
+        placeholders = ','.join('?' * len(seq_id_batch))
+        conditions.append(f"p.seqID IN ({placeholders})")
+        params.extend(seq_id_batch)
+
+    sql += " WHERE " + " AND ".join(conditions)
+
+    return sql, params
+
+
 def get_header(include_taxonomy: bool,
                include_annotation: bool,
                include_culture_collection: bool,

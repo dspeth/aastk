@@ -270,6 +270,12 @@ def __metadata_matrix(group, required=False):
     group.add_argument('--metadata_matrix', type=str, required=required,
                        help='Path to alignment matrix metadata file')
 
+def __metadata_query(group, required=False):
+    group.add_argument('-m', '--metadata_query', action='append', default=None, required=required,
+                       help='Metadata condition to restrict exported sequences to, format: column=value '
+                            '(repeatable; repeating the same column ORs its values, different columns are ANDed). '
+                            'Run "aastk list_metadata" to view available columns.')
+
 
 def __no_cluster(group, required=False):
     group.add_argument('-n', '--no_cluster', type=int, required=required,
@@ -720,6 +726,18 @@ def get_main_parser():
     with subparser(sub_parsers, 'export_fasta', 'Create FASTA file containing all GlobDB protein sequences') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __db_path(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
+            __threads(grp)
+            __force(grp)
+
+    with subparser(sub_parsers, 'export', 'Export sequences from the AASTK SQLite database matching a metadata query') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __db_path(grp, required=True)
+            __metadata_query(grp, required=True)
+        with mutex_group(parser, required=False) as grp:
+            __fasta(grp)
+            __id_list(grp)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __threads(grp)
