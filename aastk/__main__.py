@@ -10,6 +10,7 @@ from aastk.db.build import database
 from aastk.db.check import database_check
 from aastk.db.meta import meta, list_metadata, parse_query
 from aastk.db.export import export_fasta, export_by_metadata
+from aastk.db.gene_family import gene_family
 from aastk.version import __version__, __copyright__, __author__
 import sys
 
@@ -391,6 +392,13 @@ def main():
                 id_list=args.id_list,
                 output=args.output,
                 threads=args.threads,
+                force=args.force
+            )
+
+        elif args.subparser_name == 'gene_family':
+            gene_family(
+                master_sheet=args.master_sheet,
+                output_dir=args.output,
                 force=args.force
             )
 
