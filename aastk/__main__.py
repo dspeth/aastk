@@ -390,6 +390,9 @@ def main():
                 query=parse_query(args.metadata_query),
                 fasta=args.fasta,
                 id_list=args.id_list,
+                genome_id_list=args.genome_id_list,
+                taxonomy_list=args.taxonomy_list,
+                taxonomy_column=args.taxonomy_column,
                 output=args.output,
                 threads=args.threads,
                 force=args.force

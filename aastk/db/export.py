@@ -7,6 +7,7 @@ from tqdm import tqdm
 
 from aastk.util import ensure_path, decompress_sequence, determine_dataset_name, read_fasta_to_dict
 from aastk.db.meta import build_metadata_query
+from aastk.db.schema import TAXONOMY_COLUMNS
 
 logger = logging.getLogger(__name__)
 
@@ -95,8 +96,30 @@ def export_by_metadata(db_path: str,
                         output: str,
                         fasta: str = None,
                         id_list: str = None,
+                        genome_id_list: str = None,
+                        taxonomy_list: str = None,
+                        taxonomy_column: str = None,
                         threads: int = 1,
                         force: bool = False) -> str:
+    if bool(taxonomy_list) != bool(taxonomy_column):
+        raise ValueError("--taxonomy_list and --taxonomy_column must be provided together")
+
+    taxonomy_ranks = [col for col in TAXONOMY_COLUMNS if col != 'genome_ID']
+    if taxonomy_column and taxonomy_column not in taxonomy_ranks:
+        raise ValueError(
+            f"Invalid taxonomy_column '{taxonomy_column}'. Must be one of: {', '.join(taxonomy_ranks)}"
+        )
+
+    if genome_id_list:
+        with open(genome_id_list, 'r') as f:
+            genome_ids = [line.strip() for line in f if line.strip()]
+        query.setdefault('genome_ID', []).extend(genome_ids)
+
+    if taxonomy_list:
+        with open(taxonomy_list, 'r') as f:
+            taxon_values = [line.strip() for line in f if line.strip()]
+        query.setdefault(taxonomy_column, []).extend(taxon_values)
+
     dataset_name = determine_dataset_name(db_path, '.', 0)
     output_path = ensure_path(output, f'{dataset_name}_export.faa', force=force)
     query_info_path = ensure_path(output, f'{dataset_name}_export_query.json', force=force)

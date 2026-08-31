@@ -167,6 +167,10 @@ def __flank_upper(group, required=False):
     group.add_argument('-u', '--flank_upper', type=int, required=required,
                        help='End of flanking window (inclusive)')
 
+def __genome_id_list(group, required=False):
+    group.add_argument('-g', '--genome_id_list', type=str, required=required,
+                       help='Path to list of GlobDB genome IDs (one per line) to restrict exported sequences to')
+
 def __help(group, required=False):
     group.add_argument('-h', '--help', action='help',
                        help='Display help text')
@@ -363,6 +367,17 @@ def __svg(group, required=False):
 def __taxonomy(group, required=False):
     group.add_argument('--taxonomy', action='store_true', required=required,
                        help='Import taxonomy data')
+
+def __taxonomy_column(group, required=False):
+    group.add_argument('--taxonomy_column', type=str, required=required,
+                       help='Taxonomic rank the values in --taxonomy_list belong to '
+                            '(domain, phylum, class, order_tax, family, genus, or species; '
+                            'required together with --taxonomy_list)')
+
+def __taxonomy_list(group, required=False):
+    group.add_argument('--taxonomy_list', type=str, required=required,
+                       help='Path to list of taxon values (one per line) to restrict exported sequences to; '
+                            'requires --taxonomy_column')
 
 def __taxonomy_path(group, required=False):
     group.add_argument('-t', '--taxonomy_path', type=str, default=None, required=required,
@@ -743,6 +758,9 @@ def get_main_parser():
             __fasta(grp)
             __id_list(grp)
         with arg_group(parser, 'Optional') as grp:
+            __genome_id_list(grp)
+            __taxonomy_list(grp)
+            __taxonomy_column(grp)
             __output(grp)
             __threads(grp)
             __force(grp)
