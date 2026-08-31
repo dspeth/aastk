@@ -31,6 +31,36 @@ logger = logging.getLogger(__name__)
 
 CASM_BLAST_OUTPUT_COLUMNS = ["qseqid", "sseqid", "score"]
 
+
+def is_casm_matrix_metadata_json(file_path: str) -> bool:
+    try:
+        with open(file_path, 'r') as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return False
+    return (isinstance(data, dict)
+            and isinstance(data.get('queries'), list)
+            and isinstance(data.get('targets'), list))
+
+
+def is_casm_embedding_tsv(file_path: str) -> bool:
+    with open(file_path, 'r') as f:
+        header_line = f.readline().rstrip('\n\r')
+        first_data_line = f.readline()
+    header = header_line.split('\t')
+    if 'seqID' not in header or 'cluster' not in header:
+        return False
+    if first_data_line:
+        parts = first_data_line.rstrip('\n\r').split('\t')
+        if len(parts) != len(header):
+            return False
+        try:
+            int(parts[header.index('cluster')])
+        except ValueError:
+            return False
+    return True
+
+
 def build_alignment_matrix_split(align_file: str,
                                  output: str = None,
                                  force: bool = False,
@@ -55,6 +85,9 @@ def build_alignment_matrix_split(align_file: str,
         matrix_file (str): Path to matrix file (.npz), or None if save=False
         metadata_file (str): Path to .json file containing matrix metadata, or None if save=False
     """
+    if not is_blast_tab(align_file, len(CASM_BLAST_OUTPUT_COLUMNS), numeric_columns=[2]):
+        raise ValueError(f"Not a valid BLAST/DIAMOND tabular output file: {align_file}")
+
     logger.info(f"Building alignment matrix from: {align_file} (split parsing)")
 
     queries_set = set()
@@ -211,6 +244,9 @@ def load_alignment_matrix_from_file(matrix_path: str,
         queries (list): List of query protein IDs
         targets (list): List of reference protein IDs
     """
+    if not is_casm_matrix_metadata_json(metadata_path):
+        raise ValueError(f"Not a valid CASM matrix metadata JSON file: {metadata_path}")
+
     with open(metadata_path, "r") as file:
         metadata = json.load(file)
 
@@ -507,13 +543,13 @@ def plot_clusters(tsv_file: str,
         force (bool): Overwrite existing files if True
         show_cluster_numbers (bool): Display cluster number on cluster centers in output plot
     """
+    if not is_casm_embedding_tsv(tsv_file):
+        raise ValueError(f"Not a valid CASM embedding/clustering TSV file: {tsv_file}")
+
     # load clustering results from TSV file
     logger.info(f"Creating t-SNE plot from: {tsv_file}")
     df = pd.read_csv(tsv_file, sep='\t')
     logger.info(f"Loaded {len(df)} data points for plotting")
-
-    if 'seqID' not in df.columns:
-        raise KeyError("Expected column 'seqID' not found in TSV")
 
     df['seqID'] = df['seqID'].astype(str).str.strip()
     df['genome_ID'] = (
@@ -751,6 +787,9 @@ def casm_select(final_embedding_file: str,
     # ===========================
     # Prepare output filename
     # ===========================
+
+    if not is_casm_embedding_tsv(final_embedding_file):
+        raise ValueError(f"Not a valid CASM embedding/clustering TSV file: {final_embedding_file}")
 
     # generate output filename based on input file and cluster number
     prefix = determine_dataset_name(final_embedding_file, '.', 0, '_tsne_final_clust')

@@ -20,6 +20,31 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logger = logging.getLogger(__name__)
 
+CUGO_CONTEXT_BASE_COLUMNS = ['target_id', 'position', 'seqID', 'parent_ID',
+                             'aa_length', 'strand', 'CUGO_number', 'no_TMH']
+
+
+def is_cugo_context_tsv(file_path: str) -> bool:
+    with open(file_path, 'r') as f:
+        header_line = f.readline().rstrip('\n\r')
+        first_data_line = f.readline()
+    header = header_line.split('\t')
+    if not all(col in header for col in CUGO_CONTEXT_BASE_COLUMNS):
+        return False
+    if not any(col in header for col in ANNOTATION_COLUMNS):
+        return False
+    if first_data_line:
+        parts = first_data_line.rstrip('\n\r').split('\t')
+        if len(parts) != len(header):
+            return False
+        row = dict(zip(header, parts))
+        try:
+            int(row['position'])
+        except ValueError:
+            return False
+    return True
+
+
 # ======================================
 # CUGO context functions and CLI tool
 # ======================================
@@ -203,6 +228,8 @@ def context(fasta: str,
 # FUNCTION DEFINITIONS FOR CUGO PLOTTING
 # ======================================
 def load_cugo_context(path: str):
+    if not is_cugo_context_tsv(path):
+        raise ValueError(f"Not a valid CUGO context TSV file: {path}")
     return pd.read_csv(path, sep='\t', na_values='', keep_default_na=False)
 
 def extract_flanking_window(df: pd.DataFrame, lower: int, upper: int):
@@ -244,6 +271,9 @@ def top_context(df: pd.DataFrame, top_n: int):
 
 
 def bin_by_size(context_path: str, flank_lower: int, flank_upper: int, bin_width: int):
+    if not is_cugo_context_tsv(context_path):
+        raise ValueError(f"Not a valid CUGO context TSV file: {context_path}")
+
     # Load context data in long format
     cont = pd.read_csv(context_path, sep='\t')
 
@@ -319,6 +349,9 @@ def plot_top_annotations_per_position(
     Creates scatter plot showing top annotation categories at each genomic position.
     """
     title = f'Top {annotation}s per position'
+
+    if not is_cugo_context_tsv(context_path):
+        raise ValueError(f"Not a valid CUGO context TSV file: {context_path}")
 
     # Load context data
     cont = pd.read_csv(context_path, sep='\t', dtype=str)
@@ -514,6 +547,9 @@ def plot_tmh_per_position(context_path: str,
     """
     Creates 1D-density plot showing transmembrane helix count distribution across genomic positions.
     """
+    if not is_cugo_context_tsv(context_path):
+        raise ValueError(f"Not a valid CUGO context TSV file: {context_path}")
+
     # Load context data in long format
     cont = pd.read_csv(context_path, sep='\t')
 
@@ -871,6 +907,9 @@ def cugo_select(context_path: str,
              threads: int,
              filter_seqs: bool = False,
              force: bool = False):
+    if not is_cugo_context_tsv(context_path):
+        raise ValueError(f"Not a valid CUGO context TSV file: {context_path}")
+
     dataset_name = determine_dataset_name(context_path, '.', 0, '_context')
     output_path = ensure_path(output, f'{dataset_name}_{position}.faa', force=force)
 

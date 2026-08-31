@@ -30,6 +30,68 @@ BLOSUM_DIAGONALS = {
     }
 }
 
+BLAST_TAB_COLUMNS = 15
+BLAST_TAB_NUMERIC_COLUMNS = [2, 3, 12, 14]  # pident, qlen, evalue, score
+
+BSR_TSV_COLUMNS = ["qseqid", "sseqid", "pident", "qlen", "score", "max_score", "BSR"]
+
+
+def is_max_score_tsv(file_path: str) -> bool:
+    with open(file_path, 'r') as f:
+        header = f.readline().rstrip('\n\r')
+        first_data_line = f.readline()
+    if header != "Protein_id\tmax_score":
+        return False
+    if first_data_line:
+        parts = first_data_line.rstrip('\n\r').split('\t')
+        if len(parts) != 2:
+            return False
+        try:
+            float(parts[1])
+        except ValueError:
+            return False
+    return True
+
+
+def is_column_info_json(file_path: str) -> bool:
+    try:
+        with open(file_path, 'r') as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return False
+    required = ('score', 'qlen', 'pident')
+    return isinstance(data, dict) and all(isinstance(data.get(k), int) for k in required)
+
+
+def is_bsr_tsv(file_path: str) -> bool:
+    with open(file_path, 'r') as f:
+        header = f.readline().rstrip('\n\r').split('\t')
+        first_data_line = f.readline()
+    if header != BSR_TSV_COLUMNS:
+        return False
+    if first_data_line:
+        parts = first_data_line.rstrip('\n\r').split('\t')
+        if len(parts) != len(BSR_TSV_COLUMNS):
+            return False
+        try:
+            float(parts[2])
+            int(parts[3])
+            float(parts[4])
+            float(parts[5])
+            float(parts[6])
+        except ValueError:
+            return False
+    return True
+
+
+def is_pasr_threshold_yaml(file_path: str) -> bool:
+    try:
+        with open(file_path) as f:
+            data = yaml.safe_load(f)
+    except (yaml.YAMLError, OSError):
+        return False
+    return isinstance(data, dict) and 'max_score_min' in data and 'max_score_max' in data
+
 # ===============================
 # aastk build CLI FUNCTION
 # ===============================
@@ -306,6 +368,9 @@ def get_hit_seqs(blast_tab: str,
     # check if seqkit is in path
     check_dependency_availability('seqkit')
 
+    if not is_blast_tab(blast_tab, BLAST_TAB_COLUMNS, BLAST_TAB_NUMERIC_COLUMNS):
+        raise ValueError(f"Not a valid BLAST/DIAMOND tabular output file: {blast_tab}")
+
     protein_name = determine_dataset_name(blast_tab, '.', 0, '_hits')
 
     # ===============================
@@ -492,6 +557,12 @@ def bsr(blast_tab: str,
     Returns:
         bsr_output (str): Path to the output file with BSR values.
     """
+    if not is_blast_tab(blast_tab, BLAST_TAB_COLUMNS, BLAST_TAB_NUMERIC_COLUMNS):
+        raise ValueError(f"Not a valid BLAST/DIAMOND tabular output file: {blast_tab}")
+
+    if not is_max_score_tsv(max_scores_path):
+        raise ValueError(f"Not a valid max scores TSV file: {max_scores_path}")
+
     protein_name = determine_dataset_name(blast_tab, '.', 0, '_hits')
 
     # ===============================
@@ -508,23 +579,13 @@ def bsr(blast_tab: str,
     # ===============================================================================================
     # retrieve indices for essential columns from column info file if path is provided
     if column_info_path and Path(column_info_path).exists():
-        try:
-            with open(column_info_path, 'r') as f:
-                column_info = json.load(f)
-                if 'score' in column_info:
-                    raw_score_column = column_info['score']
-                else:
-                    raise ValueError("Column 'score' not found in column info file")
-                if 'qlen' in column_info:
-                    qlen_column = column_info['qlen']
-                else:
-                    raise ValueError("Column 'qlen' not found in column info file")
-                if 'pident' in column_info:
-                    pident_column = column_info['pident']
-                else:
-                    raise ValueError("Column 'pident' not found in column info file")
-        except (json.JSONDecodeError, IOError) as e:
-            logger.warning(f"Error reading column info file: {e}")
+        if not is_column_info_json(column_info_path):
+            raise ValueError(f"Not a valid column info JSON file: {column_info_path}")
+        with open(column_info_path, 'r') as f:
+            column_info = json.load(f)
+            raw_score_column = column_info['score']
+            qlen_column = column_info['qlen']
+            pident_column = column_info['pident']
     # if no column info file is provided we use the input score column index
     elif score_column:
         raw_score_column = score_column - 1
@@ -624,6 +685,12 @@ def pasr_plot(bsr_file: str,
             Point-wise %identity coloring is not available in this mode; the colorbar shows point counts per bin instead.
     """
     logger = logging.getLogger(__name__)
+
+    if not is_bsr_tsv(bsr_file):
+        raise ValueError(f"Not a valid BSR TSV file: {bsr_file}")
+
+    if update and not is_pasr_threshold_yaml(yaml_path):
+        raise ValueError(f"Not a valid PASR threshold YAML file: {yaml_path}")
 
     protein_name = determine_dataset_name(bsr_file, '.', 0, '_bsr')
 
@@ -982,6 +1049,9 @@ def pasr_select(yaml_path: str,
     # check if seqkit is in path
     check_dependency_availability('seqkit')
 
+    if not is_bsr_tsv(bsr_table):
+        raise ValueError(f"Not a valid BSR TSV file: {bsr_table}")
+
     logger.info("Starting sequence subsetting based on thresholds")
 
     protein_name = determine_dataset_name(bsr_table, '.', 0, '_bsr')
@@ -1034,6 +1104,9 @@ def pasr_select(yaml_path: str,
             )
 
     else:
+        if not is_pasr_threshold_yaml(yaml_path):
+            raise ValueError(f"Not a valid PASR threshold YAML file: {yaml_path}")
+
         # load thresholds from YAML file
         logger.info(f"Loading thresholds from YAML file: {yaml_path}")
         try:

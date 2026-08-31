@@ -58,6 +58,22 @@ def is_fastq(file_path) -> bool:
 	with open(file_path, 'r') as file:
 		return file.read(1) == '@'
 
+def is_blast_tab(file_path: str, n_columns: int, numeric_columns: list = None) -> bool:
+	with open(file_path, 'r') as file:
+		first_line = file.readline()
+	if not first_line or first_line.startswith('>') or first_line.startswith('@'):
+		return False
+	fields = first_line.rstrip('\n\r').split('\t')
+	if len(fields) != n_columns or any(field == '' for field in fields):
+		return False
+	if numeric_columns:
+		for idx in numeric_columns:
+			try:
+				float(fields[idx])
+			except ValueError:
+				return False
+	return True
+
 def ensure_path(path: Optional[str] = None,
 				target: Optional[str] = None,
 				suffix: Optional[str] = None,
