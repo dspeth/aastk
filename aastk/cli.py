@@ -180,8 +180,9 @@ def __high_level_environment_path(group, required=False):
                        help='Path to high level environment data TSV file')
 
 def __homogeneity_threshold(group, required=False):
-    group.add_argument('--homogeneity_threshold', type=float, default=0.75, required=required,
-                       help='Minimum homogeneity index required for automatic position FASTA export (default: 0.75)')
+    group.add_argument('--homogeneity_threshold', type=float, required=required,
+                       help='Minimum homogeneity index required for automatic position FASTA export '
+                            '(required when --export is set; suggested value: 0.75)')
 
 def __homogeneity_window(group, required=False):
     group.add_argument('--homogeneity_window', type=int, default=1, required=required,
@@ -335,9 +336,9 @@ def __sensitivity(group, required=False):
                             'ultra-sensitive, or faster (default: fast)')
 
 def __sequence_frequency_threshold(group, required=False):
-    group.add_argument('--sequence_frequency_threshold', type=float, default=0.75, required=required,
+    group.add_argument('--sequence_frequency_threshold', type=float, required=required,
                        help='Minimum sequence frequency relative to position 0 required for automatic '
-                            'position FASTA export (default: 0.75)')
+                            'position FASTA export (required when --export is set; suggested value: 0.75)')
 
 def __show(group, required=False):
     group.add_argument('-s', '--show', action='store_true', required=required,

@@ -815,9 +815,9 @@ def cugo(db_path: str,
          tmh_y_range: int = None,
          export: bool = False,
          export_dir: str = None,
-         homogeneity_threshold: float = 0.75,
+         homogeneity_threshold: float = None,
          homogeneity_window: int = 1,
-         sequence_frequency_threshold: float = 0.75):
+         sequence_frequency_threshold: float = None):
     """
     Complete CUGO workflow: generate context data and create comprehensive plots.
 
@@ -837,17 +837,24 @@ def cugo(db_path: str,
         export: Whether to automatically export a FASTA file for each position whose
             homogeneity and relative sequence frequency pass their thresholds
         export_dir: Directory for automatically exported FASTA files (default: output_dir)
-        homogeneity_threshold: Minimum homogeneity index required for automatic export (default: 0.75)
+        homogeneity_threshold: Minimum homogeneity index required for automatic export
+            (required when export=True; suggested value: 0.75)
         homogeneity_window: Number of size bins on either side of the modal bin counted as
             "homogeneous" when computing the homogeneity index (default: 1)
         sequence_frequency_threshold: Minimum sequence frequency, relative to position 0,
-            required for automatic export (default: 0.75)
+            required for automatic export (required when export=True; suggested value: 0.75)
 
     Returns:
         tuple: (context_file_path, plot_file_path)
     """
     if annotation not in ANNOTATION_COLUMNS:
         raise ValueError(f'Invalid annotation. Please select one of the following annotations: {",".join(annotation_columns)}')
+
+    if export and (homogeneity_threshold is None or sequence_frequency_threshold is None):
+        raise ValueError(
+            "homogeneity_threshold and sequence_frequency_threshold are required when export=True "
+            "(suggested value for both: 0.75)"
+        )
 
     # generate context data
     context_file = context(
