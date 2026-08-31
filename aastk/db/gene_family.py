@@ -1,5 +1,6 @@
 import csv
 import logging
+from pathlib import Path
 
 import yaml
 
@@ -110,6 +111,7 @@ def build_validation_yaml(row: dict, output_dir: str, force: bool = False):
 
 
 def gene_family(master_sheet: str, output_dir: str, force: bool = False) -> list:
+    output_dir = output_dir or str(Path.cwd())
     logger.info(f"Reading GlobDB protein master sheet: {master_sheet}")
 
     written = []
