@@ -8,8 +8,9 @@ from aastk.cugo import *
 from aastk.casm import *
 from aastk.db.build import database
 from aastk.db.check import database_check
-from aastk.db.meta import meta, list_metadata
-from aastk.db.export import export_fasta
+from aastk.db.meta import meta, list_metadata, parse_query
+from aastk.db.export import export_fasta, export_by_metadata
+from aastk.db.gene_family import gene_family
 from aastk.version import __version__, __copyright__, __author__
 import sys
 
@@ -56,6 +57,7 @@ def print_help():
     database       Construct an SQL database from amino acid fasta sequences and associated metadata
     database_check Check whether the SQL database is internally consistent
     export_fasta   Export a fasta file from the AASTK SQL database
+    export         Export sequences from the AASTK SQL database matching a metadata query
     ''' % __version__)
 
 
@@ -142,7 +144,8 @@ def main():
                 yaml_path=args.yaml,
                 svg=args.svg,
                 force=args.force,
-                update=args.update
+                update=args.update,
+                density=args.density
             )
 
         elif args.subparser_name == 'pasr_select':
@@ -158,7 +161,8 @@ def main():
                 threads=args.threads,
                 force=args.force,
                 params=args.params,
-                filter_seqs=args.filter_seqs
+                filter_seqs=args.filter_seqs,
+                density=args.density
             )
 
         elif args.subparser_name == 'pasr':
@@ -177,6 +181,7 @@ def main():
                 sql=args.sql,
                 keep=args.keep,
                 svg=args.svg,
+                density=args.density,
                 force=args.force
             )
 
@@ -220,6 +225,8 @@ def main():
                 include_culture_collection=args.include_culture_collection,
                 include_high_level_environment=args.include_high_level_environment,
                 include_low_level_environment=args.include_low_level_environment,
+                include_high_level_env_category=args.include_high_level_env_category,
+                include_low_level_env_category=args.include_low_level_env_category,
                 all_metadata=args.all_metadata,
                 force=args.force
             )
@@ -270,7 +277,12 @@ def main():
                 force=args.force,
                 bin_width=args.bin_width,
                 y_range=args.y_range,
-                tmh_y_range=args.tmh_y_range
+                tmh_y_range=args.tmh_y_range,
+                export=args.export,
+                export_dir=args.export_dir,
+                homogeneity_threshold=args.homogeneity_threshold,
+                homogeneity_window=args.homogeneity_window,
+                sequence_frequency_threshold=args.sequence_frequency_threshold
             )
 
         elif args.subparser_name == 'cugo_select':
@@ -315,6 +327,7 @@ def main():
                 threads=args.threads,
                 n_svd_components=args.n_svd_components,
                 force=args.force,
+                large=args.large
             )
 
 
@@ -345,7 +358,8 @@ def main():
                 keep=args.keep,
                 force=args.force,
                 svg=args.svg,
-                show_cluster_numbers=args.show
+                show_cluster_numbers=args.show,
+                large=args.large
             )
 
         elif args.subparser_name == 'casm_select':
@@ -367,6 +381,27 @@ def main():
                 db_path=args.db_path,
                 output=args.output,
                 threads=args.threads,
+                force=args.force
+            )
+
+        elif args.subparser_name == 'export':
+            export_by_metadata(
+                db_path=args.db_path,
+                query=parse_query(args.metadata_query),
+                fasta=args.fasta,
+                id_list=args.id_list,
+                genome_id_list=args.genome_id_list,
+                taxonomy_list=args.taxonomy_list,
+                taxonomy_column=args.taxonomy_column,
+                output=args.output,
+                threads=args.threads,
+                force=args.force
+            )
+
+        elif args.subparser_name == 'gene_family':
+            gene_family(
+                master_sheet=args.master_sheet,
+                output_dir=args.output,
                 force=args.force
             )
 

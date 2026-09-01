@@ -122,6 +122,10 @@ def __db_version(group, required=False):
     group.add_argument('-g', '--db_version', type=str, required=required,
                        help='GlobDB version number, without the leading "r" (example: 226)')
 
+def __density(group, required=False):
+    group.add_argument('--density', action='store_true', required=required,
+                       help='Plot a 2D density (hexbin) instead of a scatter plot')
+
 def __environmental_data(group, required=False):
     group.add_argument('--environmental_data', action='store_true', required=required,
                        help='Import high and low level environment data')
@@ -129,6 +133,15 @@ def __environmental_data(group, required=False):
 def __exaggeration(group, required=False):
     group.add_argument('-e', '--exaggeration', type=int, default=6, required=required,
                        help='Exaggeration value for tSNE embedding (default: 6)')
+
+def __export(group, required=False):
+    group.add_argument('--export', action='store_true', required=required,
+                       help='Automatically export a FASTA file for each position whose homogeneity '
+                            'and sequence frequency pass their thresholds')
+
+def __export_dir(group, required=False):
+    group.add_argument('--export_dir', type=str, default=None, required=required,
+                       help='Directory for automatically exported FASTA files (default: same as --output)')
 
 def __extracted(group, required=False):
     group.add_argument('-e', '--extracted', type=str, required=required,
@@ -154,6 +167,10 @@ def __flank_upper(group, required=False):
     group.add_argument('-u', '--flank_upper', type=int, required=required,
                        help='End of flanking window (inclusive)')
 
+def __genome_id_list(group, required=False):
+    group.add_argument('-g', '--genome_id_list', type=str, required=required,
+                       help='Path to list of GlobDB genome IDs (one per line) to restrict exported sequences to')
+
 def __help(group, required=False):
     group.add_argument('-h', '--help', action='help',
                        help='Display help text')
@@ -161,6 +178,16 @@ def __help(group, required=False):
 def __high_level_environment_path(group, required=False):
     group.add_argument('--high_level_environment_path', type=str, required=required,
                        help='Path to high level environment data TSV file')
+
+def __homogeneity_threshold(group, required=False):
+    group.add_argument('--homogeneity_threshold', type=float, required=required,
+                       help='Minimum homogeneity index required for automatic position FASTA export '
+                            '(required when --export is set; suggested value: 0.75)')
+
+def __homogeneity_window(group, required=False):
+    group.add_argument('--homogeneity_window', type=int, default=1, required=required,
+                       help='Number of size bins on either side of the modal bin counted as homogeneous '
+                            'when computing the homogeneity index (default: 1)')
 
 def __id_list(group, required=False):
     group.add_argument('-i', '--id_list', type=str, required=required,
@@ -178,9 +205,17 @@ def __include_high_level_environment(group, required=False):
     group.add_argument('--include_high_level_environment', action='store_true', required=required,
                        help='Include high level environment metadata in output')
 
+def __include_high_level_env_category(group, required=False):
+    group.add_argument('--include_high_level_env_category', action='store_true', required=required,
+                       help='Include derived dominant high level environment category in output')
+
 def __include_low_level_environment(group, required=False):
     group.add_argument('--include_low_level_environment', action='store_true', required=required,
                        help='Include low level environment metadata in output')
+
+def __include_low_level_env_category(group, required=False):
+    group.add_argument('--include_low_level_env_category', action='store_true', required=required,
+                       help='Include derived dominant low level environment category in output')
 
 def __include_taxonomy(group, required=False):
     group.add_argument('--include_taxonomy', action='store_true', required=required,
@@ -201,10 +236,16 @@ def __kegg_gff(group, required=False):
 def __key_column(group, required=False):
     group.add_argument('-k', '--key_column', type=int, default=0, required=required,
                        help='Column index in the BLAST tab file to pull unique IDs from (default: 0)')
-
+def __large(group, required=False):
+    group.add_argument('--large', action='store_true', required=required,
+                       help="Run CASM with TruncatedSVD on alignment score matrix for large input datasets")
 def __low_level_environment_path(group, required=False):
     group.add_argument('-l', '--low_level_environment_path', type=str, required=required,
                        help='Path to low level environment data TSV file')
+
+def __master_sheet(group, required=False):
+    group.add_argument('-m', '--master_sheet', type=str, required=required,
+                       help='Path to GlobDB protein master sheet TSV file')
 
 def __matched(group, required=False):
     group.add_argument('-m', '--matched', type=str, required=required,
@@ -237,6 +278,12 @@ def __metadata(group, required=False):
 def __metadata_matrix(group, required=False):
     group.add_argument('--metadata_matrix', type=str, required=required,
                        help='Path to alignment matrix metadata file')
+
+def __metadata_query(group, required=False):
+    group.add_argument('-m', '--metadata_query', action='append', default=None, required=required,
+                       help='Metadata condition to restrict exported sequences to, format: column=value '
+                            '(repeatable; repeating the same column ORs its values, different columns are ANDed). '
+                            'Run "aastk list_metadata" to view available columns.')
 
 
 def __no_cluster(group, required=False):
@@ -288,6 +335,11 @@ def __sensitivity(group, required=False):
                        help='DIAMOND search sensitivity level: fast, sensitive, mid-sensitive, very-sensitive, '
                             'ultra-sensitive, or faster (default: fast)')
 
+def __sequence_frequency_threshold(group, required=False):
+    group.add_argument('--sequence_frequency_threshold', type=float, required=required,
+                       help='Minimum sequence frequency relative to position 0 required for automatic '
+                            'position FASTA export (required when --export is set; suggested value: 0.75)')
+
 def __show(group, required=False):
     group.add_argument('-s', '--show', action='store_true', required=required,
                        help='Show cluster number at cluster centers in output plots')
@@ -316,6 +368,17 @@ def __svg(group, required=False):
 def __taxonomy(group, required=False):
     group.add_argument('--taxonomy', action='store_true', required=required,
                        help='Import taxonomy data')
+
+def __taxonomy_column(group, required=False):
+    group.add_argument('--taxonomy_column', type=str, required=required,
+                       help='Taxonomic rank the values in --taxonomy_list belong to '
+                            '(domain, phylum, class, order_tax, family, genus, or species; '
+                            'required together with --taxonomy_list)')
+
+def __taxonomy_list(group, required=False):
+    group.add_argument('--taxonomy_list', type=str, required=required,
+                       help='Path to list of taxon values (one per line) to restrict exported sequences to; '
+                            'requires --taxonomy_column')
 
 def __taxonomy_path(group, required=False):
     group.add_argument('-t', '--taxonomy_path', type=str, default=None, required=required,
@@ -430,6 +493,7 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __svg(grp)
+            __density(grp)
             __force(grp)
             __update(grp)
             __yaml(grp)
@@ -450,6 +514,7 @@ def get_main_parser():
             __bsr_cutoff(grp)
             __threads(grp)
             __filter_seqs(grp)
+            __density(grp)
             __force(grp)
 
 
@@ -471,6 +536,7 @@ def get_main_parser():
             __sql(grp)
             __keep(grp)
             __svg(grp)
+            __density(grp)
             __force(grp)
 
     ### PARSER FOR CUGO FUNCTIONALITIES AND WORKFLOW ###
@@ -514,6 +580,8 @@ def get_main_parser():
             __include_culture_collection(grp)
             __include_high_level_environment(grp)
             __include_low_level_environment(grp)
+            __include_high_level_env_category(grp)
+            __include_low_level_env_category(grp)
             __include_taxonomy(grp)
             __all_metadata(grp)
             __force(grp)
@@ -575,6 +643,11 @@ def get_main_parser():
             __threads(grp)
             __svg(grp)
             __force(grp)
+            __export(grp)
+            __export_dir(grp)
+            __homogeneity_threshold(grp)
+            __homogeneity_window(grp)
+            __sequence_frequency_threshold(grp)
 
 
     with subparser(sub_parsers, 'cugo_select', 'Retrieve protein IDs for select CUGO position') as parser:
@@ -621,6 +694,7 @@ def get_main_parser():
             __threads(grp)
             __n_svd_components(grp)
             __force(grp)
+            __large(grp)
 
 
     with subparser(sub_parsers, 'casm_plot', 'Plot CASM .tsv output files') as parser:
@@ -653,6 +727,7 @@ def get_main_parser():
             __keep(grp)
             __show(grp)
             __svg(grp)
+            __large(grp)
 
     with subparser(sub_parsers, 'casm_select', 'Pick CASM clusters to generate .faa file for further analysis') as parser:
         with arg_group(parser, 'Required arguments') as grp:
@@ -674,6 +749,28 @@ def get_main_parser():
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __threads(grp)
+            __force(grp)
+
+    with subparser(sub_parsers, 'export', 'Export sequences from the AASTK SQLite database matching a metadata query') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __db_path(grp, required=True)
+            __metadata_query(grp, required=True)
+        with mutex_group(parser, required=False) as grp:
+            __fasta(grp)
+            __id_list(grp)
+        with arg_group(parser, 'Optional') as grp:
+            __genome_id_list(grp)
+            __taxonomy_list(grp)
+            __taxonomy_column(grp)
+            __output(grp)
+            __threads(grp)
+            __force(grp)
+
+    with subparser(sub_parsers, 'gene_family', 'Generate per-gene-family info/synteny/validation YAML files from a GlobDB protein master sheet') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __master_sheet(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
             __force(grp)
 
 

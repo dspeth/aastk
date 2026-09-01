@@ -20,8 +20,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logger = logging.getLogger(__name__)
 
-FILTER_BLAST_OUTPUT_COLUMNS = ['qseqid', 'sseqid', 'nident', 'length', 'qlen']
-
 # ======================================
 # CUGO context functions and CLI tool
 # ======================================
@@ -205,6 +203,8 @@ def context(fasta: str,
 # FUNCTION DEFINITIONS FOR CUGO PLOTTING
 # ======================================
 def load_cugo_context(path: str):
+    if not is_cugo_context_tsv(path):
+        raise ValueError(f"Not a valid CUGO context TSV file: {path}")
     return pd.read_csv(path, sep='\t', na_values='', keep_default_na=False)
 
 def extract_flanking_window(df: pd.DataFrame, lower: int, upper: int):
@@ -245,6 +245,71 @@ def top_context(df: pd.DataFrame, top_n: int):
     return id_df, count_df
 
 
+def bin_by_size(context_path: str, flank_lower: int, flank_upper: int, bin_width: int):
+    if not is_cugo_context_tsv(context_path):
+        raise ValueError(f"Not a valid CUGO context TSV file: {context_path}")
+
+    # Load context data in long format
+    cont = pd.read_csv(context_path, sep='\t')
+
+    # Filter to position range
+    cont = cont[(cont['position'] >= flank_lower) & (cont['position'] <= flank_upper)]
+
+    # Convert aa_length to numeric
+    cont['aa_length'] = pd.to_numeric(cont['aa_length'], errors='coerce')
+
+    positions = sorted(cont['position'].unique())
+
+    # Determine bin edges for length histograms
+    all_lengths = cont['aa_length'].dropna()
+    max_len = all_lengths.max()
+    bin_edges = np.arange(0, max_len + bin_width, bin_width)
+    n_bins = len(bin_edges) - 1
+
+    # Create histogram data for each position
+    heat_data = np.zeros((n_bins, len(positions)))
+    position_counts = []
+
+    for col_idx, pos in enumerate(positions):
+        values = cont[cont['position'] == pos]['aa_length'].dropna()
+        hist, _ = np.histogram(values, bins=bin_edges)
+        heat_data[:, col_idx] = hist
+        position_counts.append(len(values))
+
+    return heat_data, bin_edges, positions, position_counts
+
+
+def compute_homogeneity_index(context_path: str,
+                               flank_lower: int,
+                               flank_upper: int,
+                               bin_width: int,
+                               window: int = 1) -> pd.DataFrame:
+    """
+    Computes per-position homogeneity index from binned length data.
+    """
+    heat_data, bin_edges, positions, position_counts = bin_by_size(
+        context_path, flank_lower, flank_upper, bin_width
+    )
+
+    dist_df = pd.DataFrame(heat_data, index=bin_edges[:-1], columns=positions)
+    mode_idx = dist_df.apply(lambda c: c.argmax())
+
+    summary_df = pd.DataFrame({
+        'sum': {col: dist_df[col].iloc[max(mode_idx[col] - window, 0):
+                                        mode_idx[col] + window + 1].sum()
+                for col in dist_df.columns},
+        'total': {col: dist_df[col].sum() for col in dist_df.columns},
+    })
+
+    # for each position, compute sequence number at position divided by sequence number in position 0
+    summary_df['relative sequence frequency'] = summary_df['total'] / summary_df.loc[0, 'total']
+
+    # compute homogeneity index for each position
+    summary_df['homogeneity'] = summary_df['sum'] / summary_df['total']
+
+    return summary_df
+
+
 def plot_top_annotations_per_position(
         context_path: str,
         flank_lower: int,
@@ -259,6 +324,9 @@ def plot_top_annotations_per_position(
     Creates scatter plot showing top annotation categories at each genomic position.
     """
     title = f'Top {annotation}s per position'
+
+    if not is_cugo_context_tsv(context_path):
+        raise ValueError(f"Not a valid CUGO context TSV file: {context_path}")
 
     # Load context data
     cont = pd.read_csv(context_path, sep='\t', dtype=str)
@@ -386,32 +454,8 @@ def plot_size_per_position(context_path: str,
     """
     Creates 1D-density plot showing sequence length distribution across genomic positions.
     """
-    # Load context data in long format
-    cont = pd.read_csv(context_path, sep='\t')
-
-    # Filter to position range
-    cont = cont[(cont['position'] >= flank_lower) & (cont['position'] <= flank_upper)]
-
-    # Convert aa_length to numeric
-    cont['aa_length'] = pd.to_numeric(cont['aa_length'], errors='coerce')
-
-    positions = sorted(cont['position'].unique())
-
-    # Determine bin edges for length histograms
-    all_lengths = cont['aa_length'].dropna()
-    max_len = all_lengths.max()
-    bin_edges = np.arange(0, max_len + bin_width, bin_width)
+    heat_data, bin_edges, positions, position_counts = bin_by_size(context_path, flank_lower, flank_upper, bin_width)
     n_bins = len(bin_edges) - 1
-
-    # Create histogram data for each position
-    heat_data = np.zeros((n_bins, len(positions)))
-    position_counts = []
-
-    for col_idx, pos in enumerate(positions):
-        values = cont[cont['position'] == pos]['aa_length'].dropna()
-        hist, _ = np.histogram(values, bins=bin_edges)
-        heat_data[:, col_idx] = hist
-        position_counts.append(len(values))
 
     # Create figure if no axes provided
     if ax is None:
@@ -478,6 +522,9 @@ def plot_tmh_per_position(context_path: str,
     """
     Creates 1D-density plot showing transmembrane helix count distribution across genomic positions.
     """
+    if not is_cugo_context_tsv(context_path):
+        raise ValueError(f"Not a valid CUGO context TSV file: {context_path}")
+
     # Load context data in long format
     cont = pd.read_csv(context_path, sep='\t')
 
@@ -740,7 +787,12 @@ def cugo(db_path: str,
          force: bool = False,
          bin_width: int = 10,
          y_range: int = None,
-         tmh_y_range: int = None):
+         tmh_y_range: int = None,
+         export: bool = False,
+         export_dir: str = None,
+         homogeneity_threshold: float = None,
+         homogeneity_window: int = 1,
+         sequence_frequency_threshold: float = None):
     """
     Complete CUGO workflow: generate context data and create comprehensive plots.
 
@@ -757,12 +809,27 @@ def cugo(db_path: str,
         fasta: Optional path to FASTA file
         bin_width: Bin width for size plots
         y_range: Y-axis range for size plots
+        export: Whether to automatically export a FASTA file for each position whose
+            homogeneity and relative sequence frequency pass their thresholds
+        export_dir: Directory for automatically exported FASTA files (default: output_dir)
+        homogeneity_threshold: Minimum homogeneity index required for automatic export
+            (required when export=True; suggested value: 0.75)
+        homogeneity_window: Number of size bins on either side of the modal bin counted as
+            "homogeneous" when computing the homogeneity index (default: 1)
+        sequence_frequency_threshold: Minimum sequence frequency, relative to position 0,
+            required for automatic export (required when export=True; suggested value: 0.75)
 
     Returns:
         tuple: (context_file_path, plot_file_path)
     """
     if annotation not in ANNOTATION_COLUMNS:
         raise ValueError(f'Invalid annotation. Please select one of the following annotations: {",".join(annotation_columns)}')
+
+    if export and (homogeneity_threshold is None or sequence_frequency_threshold is None):
+        raise ValueError(
+            "homogeneity_threshold and sequence_frequency_threshold are required when export=True "
+            "(suggested value for both: 0.75)"
+        )
 
     # generate context data
     context_file = context(
@@ -779,6 +846,15 @@ def cugo(db_path: str,
     if context_file is None:
         logger.error("Context generation failed - no plots will be created")
         return None, None
+
+    if export:
+        homogeneity_df = compute_homogeneity_index(
+            context_file, flank_lower, flank_upper, bin_width, window=homogeneity_window
+        )
+        for position, data in homogeneity_df.iterrows():
+            if (data['relative sequence frequency'] >= sequence_frequency_threshold
+                    and data['homogeneity'] > homogeneity_threshold):
+                cugo_select(context_file, position, db_path, export_dir or output_dir, threads, filter_seqs=True, force=force)
 
     # create comprehensive plots
     cugo_plot(
@@ -813,6 +889,9 @@ def cugo_select(context_path: str,
              threads: int,
              filter_seqs: bool = False,
              force: bool = False):
+    if not is_cugo_context_tsv(context_path):
+        raise ValueError(f"Not a valid CUGO context TSV file: {context_path}")
+
     dataset_name = determine_dataset_name(context_path, '.', 0, '_context')
     output_path = ensure_path(output, f'{dataset_name}_{position}.faa', force=force)
 
@@ -834,121 +913,6 @@ def cugo_select(context_path: str,
     else:
         return select_fasta
 
-def filter(fasta: str,
-           db_path: str,
-           output: str,
-           threads: int,
-           sql: bool = False,
-           svg: bool = False,
-           force: bool = False):
-    if sql and not db_path:
-        raise ValueError('SQL mode requires db_path')
 
-    prefix = determine_dataset_name(fasta, '.', 0)
-    output_path = ensure_path(output, f'{prefix}_filtered.faa', force=force)
-
-    if svg:
-        plot_path = ensure_path(output, f'{prefix}_filtered.svg', force=force)
-    else:
-        plot_path = ensure_path(output, f'{prefix}_filtered.png', force=force)
-
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
-
-    subset = fasta_subsample(fasta, output, 100, force=force)
-
-    align_output = run_diamond_alignment(fasta, subset, None, threads, FILTER_BLAST_OUTPUT_COLUMNS, output, force)
-
-    alignment_df = pd.read_csv(align_output, sep='\t', names=FILTER_BLAST_OUTPUT_COLUMNS)
-
-    alignment_df['unaligned_length'] = alignment_df['qlen'] - alignment_df['length']
-
-    means = alignment_df.groupby('qseqid').mean(numeric_only=True)
-    means.rename(columns={'nident': 'mean100_nident', 'length': 'mean100_length', 'qlen': 'mean100_qlen', 'unaligned_length': 'mean100_unaligned_length'}, inplace=True)
-
-    mean_avg_length = means.loc[:, 'mean100_length'].mean()
-
-    # first pass filter histogram
-    binwidth = 10
-    ax1.hist(means['mean100_length'], bins=range(round(min(means['mean100_length'])), round(max(means['mean100_length'])), binwidth))
-    ax1.axvline(x=(mean_avg_length + 150), color='black', linestyle='dashed', linewidth=1)
-    ax1.axvline(x=(mean_avg_length - 150), color='black', linestyle='dashed', linewidth=1)
-    ax1.set_xlabel('avg. alignment length')
-    ax1.set_title(label='First pass:\nmean avg. align. length\n+/- 150', fontdict={'fontsize': 10})
-
-    count = 0
-    for qseqid in means.index:
-        avg_length = means.loc[qseqid, 'mean100_length']
-        avg_length_deviation = avg_length - mean_avg_length
-        if abs(avg_length_deviation) >= 150:
-            means.drop(qseqid, inplace=True)
-            count += 1
-
-
-
-    remaining = len(means.index)
-    logger.info(f"First pass: dropped {count} sequences. Remaining sequences: {remaining}")
-
-    updated_mean_avg_length = means.loc[:, 'mean100_length'].mean()
-    updated_std_avg_length = means.loc[:, 'mean100_length'].std()
-    lower_bound = updated_mean_avg_length - 3 * updated_std_avg_length
-    upper_bound = updated_mean_avg_length + 3 * updated_std_avg_length
-
-    # second pass filter histogram
-    ax2.hist(means['mean100_length'], bins=range(round(min(means['mean100_length'])), round(max(means['mean100_length'])), binwidth))
-    ax2.axvline(x=lower_bound, color='black', linestyle='dashed', linewidth=1)
-    ax2.axvline(x=upper_bound, color='black', linestyle='dashed', linewidth=1)
-    ax2.set_xlabel('avg. alignment length')
-    ax2.set_title('Second pass:\nmean avg. align. length\n+/- 3 SD', fontdict={'fontsize': 10})
-
-    count = 0
-    for qseqid in means.index:
-        avg_length = means.loc[qseqid, 'mean100_length']
-
-        if avg_length < lower_bound or avg_length > upper_bound:
-            means.drop(qseqid, inplace=True)
-            count += 1
-
-    remaining = len(means.index)
-    logger.info(f"Second pass: dropped {count} sequences. Remaining sequences: {remaining}")
-
-    penultimate_mean_avg_length = means.loc[:, 'mean100_length'].mean()
-    boundary = 0.5 * penultimate_mean_avg_length
-
-    ax3.hist(means['mean100_unaligned_length'],
-             bins=range(round(min(means['mean100_unaligned_length'])), round(max(means['mean100_unaligned_length'])), binwidth))
-    ax3.axvline(x=boundary, color='black', linestyle='dashed', linewidth=1)
-    ax3.set_xlabel("avg. unaligned length")
-    ax3.set_title('Third pass:\nmean unaligned length >\n0.5 * mean align. length', fontdict={'fontsize': 10})
-
-    count = 0
-    for qseqid in means.index:
-        mean_unaligned_length = means.loc[qseqid, 'mean100_unaligned_length']
-        boundary = 0.5 * penultimate_mean_avg_length
-
-        if abs(mean_unaligned_length) > boundary:
-            means.drop(qseqid, inplace=True)
-            count += 1
-
-    remaining = len(means.index)
-    logger.info(f"Third pass: dropped {count} sequences. Remaining sequences: {remaining}")
-
-    seq_ids = means.index.dropna().unique().tolist()
-    seq_ids = [str(seq_id) for seq_id in seq_ids]
-
-    if sql:
-        _ = retrieve_sequences_from_db(seq_ids, output_path, db_path)
-    else:
-        sequences_written = 0
-        with open(output_path, 'w') as f:
-            for header, sequence in write_fa_matches(fasta, seq_ids):
-                f.write(f"{header}\n{sequence}\n")
-                sequences_written += 1
-        logger.info(f"Retrieved {sequences_written} sequences to {output_path}")
-
-    plt.subplots_adjust(wspace=1.2)
-    #fig.suptitle('Distribution of sequences during filtering with cutoffs')
-    plt.savefig(plot_path, dpi=300)
-
-    return output_path
 
 

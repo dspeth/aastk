@@ -96,3 +96,8 @@ LOW_LEVEL_ENV_COLUMNS = [
     'desert', 'forest', 'rhizosphere', 'soil_agricultural', 'soil_other',
     'soil_unspecified', 'tundra_wetland', 'unassigned_low_level'
 ]
+
+HIGH_LEVEL_ENV_VIEW = 'genome_high_level_env'
+LOW_LEVEL_ENV_VIEW = 'genome_low_level_env'
+HIGH_LEVEL_ENV_CATEGORY_COLUMN = 'high_level_env_category'
+LOW_LEVEL_ENV_CATEGORY_COLUMN = 'low_level_env_category'

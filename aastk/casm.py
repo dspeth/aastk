@@ -1,5 +1,16 @@
 from aastk.util import *
-from aastk.db.schema import BASE_COLUMNS, ANNOTATION_COLUMNS, TAXONOMY_COLUMNS, CULTURE_COLLECTION_COLUMNS, HIGH_LEVEL_ENV_COLUMNS, LOW_LEVEL_ENV_COLUMNS
+from aastk.db.schema import (
+    BASE_COLUMNS,
+    ANNOTATION_COLUMNS,
+    TAXONOMY_COLUMNS,
+    CULTURE_COLLECTION_COLUMNS,
+    HIGH_LEVEL_ENV_COLUMNS,
+    LOW_LEVEL_ENV_COLUMNS,
+    HIGH_LEVEL_ENV_VIEW,
+    LOW_LEVEL_ENV_VIEW,
+    HIGH_LEVEL_ENV_CATEGORY_COLUMN,
+    LOW_LEVEL_ENV_CATEGORY_COLUMN,
+)
 from aastk.cugo import filter
 
 import logging
@@ -19,6 +30,7 @@ import gc
 logger = logging.getLogger(__name__)
 
 CASM_BLAST_OUTPUT_COLUMNS = ["qseqid", "sseqid", "score"]
+
 
 def build_alignment_matrix_split(align_file: str,
                                  output: str = None,
@@ -44,6 +56,9 @@ def build_alignment_matrix_split(align_file: str,
         matrix_file (str): Path to matrix file (.npz), or None if save=False
         metadata_file (str): Path to .json file containing matrix metadata, or None if save=False
     """
+    if not is_blast_tab(align_file, len(CASM_BLAST_OUTPUT_COLUMNS), numeric_columns=[2]):
+        raise ValueError(f"Not a valid BLAST/DIAMOND tabular output file: {align_file}")
+
     logger.info(f"Building alignment matrix from: {align_file} (split parsing)")
 
     queries_set = set()
@@ -200,6 +215,9 @@ def load_alignment_matrix_from_file(matrix_path: str,
         queries (list): List of query protein IDs
         targets (list): List of reference protein IDs
     """
+    if not is_casm_matrix_metadata_json(metadata_path):
+        raise ValueError(f"Not a valid CASM matrix metadata JSON file: {metadata_path}")
+
     with open(metadata_path, "r") as file:
         metadata = json.load(file)
 
@@ -234,15 +252,12 @@ def create_embedding_file(output_file: str,
     """
     logger.info(f"Embedded {len(queries)} proteins")
 
-    loci = [seqID.rsplit("_", 1)[1] for seqID in queries]
-    genome_ids = [seqID.rsplit("_", 1)[0] for seqID in queries]
-
     with open(output_file, "w", encoding="utf-8") as f:
-        base_cols = ["seqID", "locus_nr", "genome_ID"] + col_names + ["cluster"]
+        base_cols = ["seqID"] + col_names + ["cluster"]
 
         f.write("\t".join(base_cols) + "\n")
-        for q, c, l, g, emb in zip(queries, clusters, loci, genome_ids, embedding):
-            row = [q, l, g] + [f"{x:.6f}" for x in emb] + [str(c)]
+        for q, c, emb in zip(queries, clusters, embedding):
+            row = [q] + [f"{x:.6f}" for x in emb] + [str(c)]
             f.write("\t".join(row) + "\n")
 
 def create_embedding_dataframe(embedding: np.ndarray,
@@ -269,12 +284,8 @@ def create_embedding_dataframe(embedding: np.ndarray,
 
     logger.debug("Extracting locus and genome information from protein IDs")
 
-    # extract locus and genome info from protein IDs
-    df['locus_nr'] = df['seqID'].astype(str).str.rsplit("_", n=1).str[1]
-    df['genome_ID'] = df['seqID'].astype(str).str.rsplit("_", n=1).str[0]
-
     # reorder columns
-    base_cols = ['seqID', 'locus_nr', 'genome_ID'] + col_names + ['cluster']
+    base_cols = ['seqID'] + col_names + ['cluster']
     df = df[base_cols]
 
     logger.debug(f"Final dataframe shape: {df.shape}")
@@ -398,6 +409,11 @@ def tsne_embedding(matrix,
 
     return early_filename, final_filename
 
+ENV_CATEGORY_VIEWS = {
+    HIGH_LEVEL_ENV_CATEGORY_COLUMN: HIGH_LEVEL_ENV_VIEW,
+    LOW_LEVEL_ENV_CATEGORY_COLUMN: LOW_LEVEL_ENV_VIEW,
+}
+
 def fetch_protein_metadata(db_path: str,
                            protein_ids: list,
                            column: str,
@@ -406,7 +422,7 @@ def fetch_protein_metadata(db_path: str,
     valid_protein_cols = BASE_COLUMNS[1:] + ANNOTATION_COLUMNS
     valid_genome_cols = TAXONOMY_COLUMNS + CULTURE_COLLECTION_COLUMNS + LOW_LEVEL_ENV_COLUMNS + HIGH_LEVEL_ENV_COLUMNS
 
-    if column not in valid_protein_cols and column not in valid_genome_cols:
+    if column not in valid_protein_cols and column not in valid_genome_cols and column not in ENV_CATEGORY_VIEWS:
         logger.warning(f"No valid metadata columns requested")
         return pd.DataFrame({'seqID': protein_ids})
 
@@ -427,12 +443,27 @@ def fetch_protein_metadata(db_path: str,
             query = f"""
                 SELECT p.seqID, g.{column}
                 FROM protein_data p
-                LEFT JOIN genome_data g ON 
-                    CASE 
-                        WHEN instr(p.seqID, '___') > 0 
+                LEFT JOIN genome_data g ON
+                    CASE
+                        WHEN instr(p.seqID, '___') > 0
                         THEN substr(p.seqID, 1, instr(p.seqID, '___') - 1)
                         ELSE p.seqID
                     END = g.genome_ID
+                WHERE p.seqID IN ({placeholders})
+            """
+            batch_df = pd.read_sql_query(query, conn, params=batch)
+
+        elif column in ENV_CATEGORY_VIEWS:
+            view = ENV_CATEGORY_VIEWS[column]
+            query = f"""
+                SELECT p.seqID, v.{column}
+                FROM protein_data p
+                LEFT JOIN {view} v ON
+                    CASE
+                        WHEN instr(p.seqID, '___') > 0
+                        THEN substr(p.seqID, 1, instr(p.seqID, '___') - 1)
+                        ELSE p.seqID
+                    END = v.genome_ID
                 WHERE p.seqID IN ({placeholders})
             """
             batch_df = pd.read_sql_query(query, conn, params=batch)
@@ -483,13 +514,13 @@ def plot_clusters(tsv_file: str,
         force (bool): Overwrite existing files if True
         show_cluster_numbers (bool): Display cluster number on cluster centers in output plot
     """
+    if not is_casm_embedding_tsv(tsv_file):
+        raise ValueError(f"Not a valid CASM embedding/clustering TSV file: {tsv_file}")
+
     # load clustering results from TSV file
     logger.info(f"Creating t-SNE plot from: {tsv_file}")
     df = pd.read_csv(tsv_file, sep='\t')
     logger.info(f"Loaded {len(df)} data points for plotting")
-
-    if 'seqID' not in df.columns:
-        raise KeyError("Expected column 'seqID' not found in TSV")
 
     df['seqID'] = df['seqID'].astype(str).str.strip()
     df['genome_ID'] = (
@@ -728,6 +759,9 @@ def casm_select(final_embedding_file: str,
     # Prepare output filename
     # ===========================
 
+    if not is_casm_embedding_tsv(final_embedding_file):
+        raise ValueError(f"Not a valid CASM embedding/clustering TSV file: {final_embedding_file}")
+
     # generate output filename based on input file and cluster number
     prefix = determine_dataset_name(final_embedding_file, '.', 0, '_tsne_final_clust')
     cluster_fasta = ensure_path(output, f"{prefix}_cluster_{no_cluster}.faa", force=force)
@@ -836,7 +870,8 @@ def _reduce_and_embed(matrix,
                       exaggeration: int,
                       threads: int,
                       n_svd_components: int,
-                      force: bool):
+                      force: bool,
+                      large: bool):
     """
     Applies TruncatedSVD (if the matrix is sparse) followed by t-SNE embedding.
 
@@ -848,19 +883,24 @@ def _reduce_and_embed(matrix,
         early_filename (str), final_filename (str): Paths to early and final embedding TSV files
     """
     reduced_matrix = None
-    if scipy.sparse.issparse(matrix):
-        n_components = min(n_svd_components, matrix.shape[1] - 1)
-        logger.info(f"Sparse matrix: applying TruncatedSVD ({n_components} components)")
-        svd = TruncatedSVD(n_components=n_components, random_state=42)
-        reduced_matrix = svd.fit_transform(matrix)
+    dense_matrix = None
+    if large:
+        if scipy.sparse.issparse(matrix):
+            n_components = min(n_svd_components, matrix.shape[1] - 1)
+            logger.info(f"Sparse matrix: applying TruncatedSVD ({n_components} components)")
+            svd = TruncatedSVD(n_components=n_components, random_state=42)
+            reduced_matrix = svd.fit_transform(matrix)
 
-        logger.info(f"Reduced matrix shape: {reduced_matrix.shape}")
-        logger.info(f"Explained variance ratio: {svd.explained_variance_ratio_.sum():.3f}")
+            logger.info(f"Reduced matrix shape: {reduced_matrix.shape}")
+            logger.info(f"Explained variance ratio: {svd.explained_variance_ratio_.sum():.3f}")
 
-        del matrix
-        gc.collect()
+            del matrix
+            gc.collect()
+    else:
+        dense_matrix = matrix.todense(order='C')
 
-    embed_matrix = reduced_matrix if reduced_matrix is not None else matrix
+    embed_matrix = reduced_matrix if reduced_matrix is not None else dense_matrix
+    print(embed_matrix)
 
     return tsne_embedding(matrix=embed_matrix,
                           queries=queries,
@@ -883,6 +923,7 @@ def cluster(matrix_path: str,
          threads: int = 1,
          n_svd_components: int = 50,
          force: bool = False,
+         large: bool = False
          ):
     """
     Perform t-SNE embedding and DBSCAN clustering on alignment matrix.
@@ -925,6 +966,7 @@ def cluster(matrix_path: str,
                                                         threads=threads,
                                                         n_svd_components=n_svd_components,
                                                         force=force,
+                                                        large=large
                                                         )
 
     logger.info("=== t-SNE Embedding Completed ===")
@@ -986,7 +1028,8 @@ def casm(fasta: str,
          keep: bool = False,
          svg: bool = False,
          force: bool = False,
-         show_cluster_numbers: bool = False
+         show_cluster_numbers: bool = False,
+         large: bool = False,
          ):
     """
     Run complete CASM analysis pipeline.
@@ -1012,7 +1055,8 @@ def casm(fasta: str,
         sum_dict: Dictionary containing paths to all generated files
     """
     if (metadata is not None and metadata not in BASE_COLUMNS[1:] + ANNOTATION_COLUMNS +
-            TAXONOMY_COLUMNS + CULTURE_COLLECTION_COLUMNS + HIGH_LEVEL_ENV_COLUMNS + LOW_LEVEL_ENV_COLUMNS):
+            TAXONOMY_COLUMNS + CULTURE_COLLECTION_COLUMNS + HIGH_LEVEL_ENV_COLUMNS + LOW_LEVEL_ENV_COLUMNS +
+            [HIGH_LEVEL_ENV_CATEGORY_COLUMN, LOW_LEVEL_ENV_CATEGORY_COLUMN]):
         logger.error('Invalid metadata category. Please run "aastk list_metadata" to view available options.')
         raise ValueError(f'Invalid metadata category: {metadata}')
 
@@ -1064,6 +1108,7 @@ def casm(fasta: str,
                                                         threads=threads,
                                                         n_svd_components=n_svd_components,
                                                         force=force,
+                                                        large=large
                                                         )
     results['early_filename'] = early_filename
     results['final_filename'] = final_filename
