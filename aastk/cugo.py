@@ -20,31 +20,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logger = logging.getLogger(__name__)
 
-CUGO_CONTEXT_BASE_COLUMNS = ['target_id', 'position', 'seqID', 'parent_ID',
-                             'aa_length', 'strand', 'CUGO_number', 'no_TMH']
-
-
-def is_cugo_context_tsv(file_path: str) -> bool:
-    with open(file_path, 'r') as f:
-        header_line = f.readline().rstrip('\n\r')
-        first_data_line = f.readline()
-    header = header_line.split('\t')
-    if not all(col in header for col in CUGO_CONTEXT_BASE_COLUMNS):
-        return False
-    if not any(col in header for col in ANNOTATION_COLUMNS):
-        return False
-    if first_data_line:
-        parts = first_data_line.rstrip('\n\r').split('\t')
-        if len(parts) != len(header):
-            return False
-        row = dict(zip(header, parts))
-        try:
-            int(row['position'])
-        except ValueError:
-            return False
-    return True
-
-
 # ======================================
 # CUGO context functions and CLI tool
 # ======================================

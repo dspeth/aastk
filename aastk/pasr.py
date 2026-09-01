@@ -33,65 +33,6 @@ BLOSUM_DIAGONALS = {
 BLAST_TAB_COLUMNS = 15
 BLAST_TAB_NUMERIC_COLUMNS = [2, 3, 12, 14]  # pident, qlen, evalue, score
 
-BSR_TSV_COLUMNS = ["qseqid", "sseqid", "pident", "qlen", "score", "max_score", "BSR"]
-
-
-def is_max_score_tsv(file_path: str) -> bool:
-    with open(file_path, 'r') as f:
-        header = f.readline().rstrip('\n\r')
-        first_data_line = f.readline()
-    if header != "Protein_id\tmax_score":
-        return False
-    if first_data_line:
-        parts = first_data_line.rstrip('\n\r').split('\t')
-        if len(parts) != 2:
-            return False
-        try:
-            float(parts[1])
-        except ValueError:
-            return False
-    return True
-
-
-def is_column_info_json(file_path: str) -> bool:
-    try:
-        with open(file_path, 'r') as f:
-            data = json.load(f)
-    except (json.JSONDecodeError, OSError):
-        return False
-    required = ('score', 'qlen', 'pident')
-    return isinstance(data, dict) and all(isinstance(data.get(k), int) for k in required)
-
-
-def is_bsr_tsv(file_path: str) -> bool:
-    with open(file_path, 'r') as f:
-        header = f.readline().rstrip('\n\r').split('\t')
-        first_data_line = f.readline()
-    if header != BSR_TSV_COLUMNS:
-        return False
-    if first_data_line:
-        parts = first_data_line.rstrip('\n\r').split('\t')
-        if len(parts) != len(BSR_TSV_COLUMNS):
-            return False
-        try:
-            float(parts[2])
-            int(parts[3])
-            float(parts[4])
-            float(parts[5])
-            float(parts[6])
-        except ValueError:
-            return False
-    return True
-
-
-def is_pasr_threshold_yaml(file_path: str) -> bool:
-    try:
-        with open(file_path) as f:
-            data = yaml.safe_load(f)
-    except (yaml.YAMLError, OSError):
-        return False
-    return isinstance(data, dict) and 'max_score_min' in data and 'max_score_max' in data
-
 # ===============================
 # aastk build CLI FUNCTION
 # ===============================

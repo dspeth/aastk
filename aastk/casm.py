@@ -32,35 +32,6 @@ logger = logging.getLogger(__name__)
 CASM_BLAST_OUTPUT_COLUMNS = ["qseqid", "sseqid", "score"]
 
 
-def is_casm_matrix_metadata_json(file_path: str) -> bool:
-    try:
-        with open(file_path, 'r') as f:
-            data = json.load(f)
-    except (json.JSONDecodeError, OSError):
-        return False
-    return (isinstance(data, dict)
-            and isinstance(data.get('queries'), list)
-            and isinstance(data.get('targets'), list))
-
-
-def is_casm_embedding_tsv(file_path: str) -> bool:
-    with open(file_path, 'r') as f:
-        header_line = f.readline().rstrip('\n\r')
-        first_data_line = f.readline()
-    header = header_line.split('\t')
-    if 'seqID' not in header or 'cluster' not in header:
-        return False
-    if first_data_line:
-        parts = first_data_line.rstrip('\n\r').split('\t')
-        if len(parts) != len(header):
-            return False
-        try:
-            int(parts[header.index('cluster')])
-        except ValueError:
-            return False
-    return True
-
-
 def build_alignment_matrix_split(align_file: str,
                                  output: str = None,
                                  force: bool = False,

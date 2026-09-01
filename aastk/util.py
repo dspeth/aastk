@@ -7,6 +7,8 @@ import zlib
 import random
 import subprocess
 import sqlite3
+import json
+import yaml
 from tqdm import tqdm
 import matplotlib
 import matplotlib.pyplot as plt
@@ -14,11 +16,17 @@ from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable
 import pandas as pd
 
+from aastk.db.schema import ANNOTATION_COLUMNS
+
 
 logger = logging.getLogger(__name__)
 
 FILTER_BLAST_OUTPUT_COLUMNS = ['qseqid', 'sseqid', 'nident', 'length', 'qlen']
 
+CUGO_CONTEXT_BASE_COLUMNS = ['target_id', 'position', 'seqID', 'parent_ID',
+							 'aa_length', 'strand', 'CUGO_number', 'no_TMH']
+
+BSR_TSV_COLUMNS = ["qseqid", "sseqid", "pident", "qlen", "score", "max_score", "BSR"]
 
 
 def bin_mid(bin_series):
@@ -49,30 +57,6 @@ def determine_dataset_name(file: str, splitter: str, part: int, suffix: str = No
 		dataset = dataset.removesuffix(suffix)
 
 	return dataset
-
-def is_fasta(file_path) -> bool:
-	with open(file_path, 'r') as file:
-		return file.read(1) == '>'
-
-def is_fastq(file_path) -> bool:
-	with open(file_path, 'r') as file:
-		return file.read(1) == '@'
-
-def is_blast_tab(file_path: str, n_columns: int, numeric_columns: list = None) -> bool:
-	with open(file_path, 'r') as file:
-		first_line = file.readline()
-	if not first_line or first_line.startswith('>') or first_line.startswith('@'):
-		return False
-	fields = first_line.rstrip('\n\r').split('\t')
-	if len(fields) != n_columns or any(field == '' for field in fields):
-		return False
-	if numeric_columns:
-		for idx in numeric_columns:
-			try:
-				float(fields[idx])
-			except ValueError:
-				return False
-	return True
 
 def ensure_path(path: Optional[str] = None,
 				target: Optional[str] = None,
@@ -292,6 +276,130 @@ def filter(fasta: str,
 
     return output_path
 
+def is_blast_tab(file_path: str, n_columns: int, numeric_columns: list = None) -> bool:
+	with open(file_path, 'r') as file:
+		first_line = file.readline()
+	if not first_line or first_line.startswith('>') or first_line.startswith('@'):
+		return False
+	fields = first_line.rstrip('\n\r').split('\t')
+	if len(fields) != n_columns or any(field == '' for field in fields):
+		return False
+	if numeric_columns:
+		for idx in numeric_columns:
+			try:
+				float(fields[idx])
+			except ValueError:
+				return False
+	return True
+
+def is_bsr_tsv(file_path: str) -> bool:
+	with open(file_path, 'r') as f:
+		header = f.readline().rstrip('\n\r').split('\t')
+		first_data_line = f.readline()
+	if header != BSR_TSV_COLUMNS:
+		return False
+	if first_data_line:
+		parts = first_data_line.rstrip('\n\r').split('\t')
+		if len(parts) != len(BSR_TSV_COLUMNS):
+			return False
+		try:
+			float(parts[2])
+			int(parts[3])
+			float(parts[4])
+			float(parts[5])
+			float(parts[6])
+		except ValueError:
+			return False
+	return True
+
+def is_casm_embedding_tsv(file_path: str) -> bool:
+	with open(file_path, 'r') as f:
+		header_line = f.readline().rstrip('\n\r')
+		first_data_line = f.readline()
+	header = header_line.split('\t')
+	if 'seqID' not in header or 'cluster' not in header:
+		return False
+	if first_data_line:
+		parts = first_data_line.rstrip('\n\r').split('\t')
+		if len(parts) != len(header):
+			return False
+		try:
+			int(parts[header.index('cluster')])
+		except ValueError:
+			return False
+	return True
+
+def is_casm_matrix_metadata_json(file_path: str) -> bool:
+	try:
+		with open(file_path, 'r') as f:
+			data = json.load(f)
+	except (json.JSONDecodeError, OSError):
+		return False
+	return (isinstance(data, dict)
+			and isinstance(data.get('queries'), list)
+			and isinstance(data.get('targets'), list))
+
+def is_column_info_json(file_path: str) -> bool:
+	try:
+		with open(file_path, 'r') as f:
+			data = json.load(f)
+	except (json.JSONDecodeError, OSError):
+		return False
+	required = ('score', 'qlen', 'pident')
+	return isinstance(data, dict) and all(isinstance(data.get(k), int) for k in required)
+
+def is_cugo_context_tsv(file_path: str) -> bool:
+	with open(file_path, 'r') as f:
+		header_line = f.readline().rstrip('\n\r')
+		first_data_line = f.readline()
+	header = header_line.split('\t')
+	if not all(col in header for col in CUGO_CONTEXT_BASE_COLUMNS):
+		return False
+	if not any(col in header for col in ANNOTATION_COLUMNS):
+		return False
+	if first_data_line:
+		parts = first_data_line.rstrip('\n\r').split('\t')
+		if len(parts) != len(header):
+			return False
+		row = dict(zip(header, parts))
+		try:
+			int(row['position'])
+		except ValueError:
+			return False
+	return True
+
+def is_fasta(file_path) -> bool:
+	with open(file_path, 'r') as file:
+		return file.read(1) == '>'
+
+def is_fastq(file_path) -> bool:
+	with open(file_path, 'r') as file:
+		return file.read(1) == '@'
+
+def is_max_score_tsv(file_path: str) -> bool:
+	with open(file_path, 'r') as f:
+		header = f.readline().rstrip('\n\r')
+		first_data_line = f.readline()
+	if header != "Protein_id\tmax_score":
+		return False
+	if first_data_line:
+		parts = first_data_line.rstrip('\n\r').split('\t')
+		if len(parts) != 2:
+			return False
+		try:
+			float(parts[1])
+		except ValueError:
+			return False
+	return True
+
+def is_pasr_threshold_yaml(file_path: str) -> bool:
+	try:
+		with open(file_path) as f:
+			data = yaml.safe_load(f)
+	except (yaml.YAMLError, OSError):
+		return False
+	return isinstance(data, dict) and 'max_score_min' in data and 'max_score_max' in data
+
 def parse_protein_identifier(id: str):
 	"""
 	Parse protein identifier to retrieve genome identifier
@@ -337,7 +445,6 @@ def read_fasta_to_dict(fasta: str):
 
 	return sequences
 
-
 def retrieve_sequences_from_db(seq_ids: list,
 							   output_path: str,
 							   db_path: str):
@@ -351,8 +458,8 @@ def retrieve_sequences_from_db(seq_ids: list,
 	# query database for sequences
 	placeholders = ','.join('?' * len(seq_ids))
 	cursor = conn.execute(f"""
-			SELECT seqID, protein_seq 
-			FROM protein_data 
+			SELECT seqID, protein_seq
+			FROM protein_data
 			WHERE seqID IN ({placeholders}) AND protein_seq IS NOT NULL
 		""", seq_ids)
 
@@ -555,7 +662,6 @@ def write_fa_matches(seq_file, ids):
 		if matching:
 			yield header, sequence
 
-
 def write_fq_matches(seq_file, ids):
 	"""
 	Generator function to process FASTQ file and yield matching sequences in fasta format.
@@ -590,4 +696,3 @@ def write_fq_matches(seq_file, ids):
 				line_count = 0  # Reset after each fastq record
 				if matching:
 					yield header, sequence
-
