@@ -34,10 +34,6 @@ def __annotation(group, required=False):
     group.add_argument('--annotation', type=str, default='COG_ID', required=required,
                        help='Annotation: COG_ID, KEGG_ID, Pfam_ID (default: COG_ID)')
 
-def __batch_size(group, required=False):
-    group.add_argument('--batch_size', type=int, default=None, required=required,
-                       help='Number of protein sequences to embed at once')
-
 def __bin_width(group, required=False):
     group.add_argument('-b', '--bin_width', type=int, default=50, required=required,
                        help='Bin width for amino acid sequence size plotting (default: 50)')
@@ -242,10 +238,6 @@ def __perplexity(group, required=False):
     group.add_argument('-p', '--perplexity', type=int, default=50, required=required,
                        help='Perplexity value for tSNE embedding (default: 50)')
 
-def __plm_model(group, required=False):
-    group.add_argument('--model', type=str, default='prott5', required=required,
-                       help='Protein Language Model to use (default: prott5)')
-
 def __pfam_gff(group, required=False):
     group.add_argument('-p', '--pfam_gff', type=str, required=required,
                        help='Path to (.tar.gz) GFF directory containing Pfam annotations')
@@ -261,6 +253,10 @@ def __protein_ids(group, required=False):
 def __query(group, required=False):
     group.add_argument('-q', '--query', type=str, default=None, required=required,
                        help='Path to DIAMOND query FASTA file')
+
+def __ref_db(group, required=False):
+    group.add_argument('--ref_db', type=str, required=required,
+                       help='Path to reference database containing faa and yaml files per marker')
 
 def __score_column(group, required=False):
     group.add_argument('-s', '--score_column', type=int, default=None, required=required,
@@ -648,20 +644,12 @@ def get_main_parser():
             __query(grp)
             __genome(grp)
         with arg_group(parser, 'Required arguments') as grp:
-            __db_path(grp, required=True)
+            __ref_db(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
             __output(grp)
             __force(grp)
             __keep(grp)
 
-    with subparser(sub_parsers, 'plm_embedder', 'Generate protein language model embeddings from protein FASTA') as parser:
-        with arg_group(parser, 'Required arguments') as grp:
-            __fasta(grp, required=True)
-        with arg_group(parser, 'Optional') as grp:
-            __output(grp)
-            __plm_model(grp)
-            __batch_size(grp)
-            __force(grp)
 
 
     return main_parser

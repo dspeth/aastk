@@ -5,6 +5,8 @@ import logging
 import gzip
 import pandas as pd
 import yaml as yaml_lib
+import shutil
+import zipfile
 
 import pyrodigal
 
@@ -56,9 +58,11 @@ def clean_fasta_header(header: str):
     """
     return header.split()[0]
 
-def check_fasta_protein(path: str):
+def is_fasta_protein(path: str):
+    """
+    check if the first record of a protein FASTA file contains the expected content
+    """
     for header, sequence in stream_fasta(path):
-        # only checks the first record
         if not header:
             raise ValueError("Protein FASTA contains an empty header")
 
@@ -73,9 +77,12 @@ def check_fasta_protein(path: str):
 
     raise ValueError("Protein FASTA contains no sequences")
 
-def check_fasta_genome(path: str, acgt_threshold: float = 0.8):
+def is_fasta_genome(path: str, acgt_threshold: float = 0.8):
+    """
+    check if the first record of a FASTA file contains the expected content
+    the percentage of A, C, G and T has to be above the set amount
+    """
     for header, sequence in stream_fasta(path):
-        # only checks the first record
         if not header:
             raise ValueError("Genome FASTA contains an empty header")
 
@@ -104,7 +111,7 @@ def clean_protein_query(query: str, output: str, force: bool = False):
     creates a clean, unzipped protein fasta file with a cleaned up header
     """
 
-    check_fasta_protein(query)
+    is_fasta_protein(query)
 
     query_name = determine_dataset_name(query, ".", 0)
     output_path = ensure_path(output, f"{query_name}_query.faa", force=force)
@@ -126,8 +133,10 @@ def clean_protein_query(query: str, output: str, force: bool = False):
 def call_genes_with_pyrodigal(genome: str, output: str, force: bool = False):
     """
     uses pyrodigal to do gene calling and predict amino acid sequences for the input genome/contig
+    writes results to a protein FASTA file
+    writes a gff file with additional gene prediction information
     """
-    check_fasta_genome(genome)
+    is_fasta_genome(genome)
 
     genome_name = determine_dataset_name(genome, ".", 0)
     output_path = ensure_path(output, f"{genome_name}_genes.faa", force=force)
@@ -174,6 +183,134 @@ def call_genes_with_pyrodigal(genome: str, output: str, force: bool = False):
 
     return output_path
 
+def collect_db_fastas(ref_db: str):
+    """
+    collect all fasta files from ref_db
+    marker name taken from subdirectory name
+    """
+    path = Path(ref_db)
+
+    if path.is_file():
+        raise ValueError("Database path is a singular file (should be directory). Type \"aastk annotate --help\" for further information.")
+
+    if not path.is_dir():
+        raise ValueError(f"Database path does not exist: {ref_db}")
+
+    fasta_files = {}
+
+    for marker_dir in sorted(path.iterdir()):
+        if not marker_dir.is_dir():
+            continue
+
+        marker_name = marker_dir.name
+        fasta_path = marker_dir / "sequences.faa"
+
+        if not fasta_path.is_file():
+            logger.warning(f"No sequences.faa found for marker: {marker_name}")
+            continue
+
+        is_fasta_protein(str(fasta_path))
+
+        fasta_files[marker_name] = str(fasta_path)
+
+    if not fasta_files:
+        raise ValueError(f"No sequences.faa file found in database directory: {ref_db}")
+
+    return fasta_files
+
+def collect_yaml_files(ref_db: str):
+    """
+    collects all YAML files from ref_db
+    marker name taken from subdirectory name
+    uses function load_yaml_content to check for proper structure
+    """
+
+    path = Path(ref_db)
+
+    if path.is_file():
+        raise ValueError("Database path is a singular file (should be directory). Type \"aastk annotate --help\" for further information.")
+
+    if not path.is_dir():
+        raise ValueError(f"Database path does not exist: {ref_db}")
+
+    yaml_files = {}
+
+    for marker_dir in sorted(path.iterdir()):
+        if not marker_dir.is_dir():
+            continue
+
+        marker_name = marker_dir.name
+        yaml_path = marker_dir / "info.yaml"
+
+        if not yaml_path.is_file():
+            logger.warning(f"No info.yaml found for marker: {marker_name}")
+            continue
+
+        load_yaml_content(str(yaml_path), expected_marker=marker_name)
+
+        yaml_files[marker_name] = str(yaml_path)
+
+    if not yaml_files:
+        raise ValueError(f"No info.yaml file found in database directory: {ref_db}")
+
+    return yaml_files
+
+def check_db_yaml_matching(db_markers: set[str], yaml_markers: set[str]):
+    """
+    checks if every db marker has a matching yaml file and vice versa
+    """
+
+    missing_yamls = db_markers - yaml_markers
+    missing_dbs = yaml_markers - db_markers
+
+    if missing_yamls:
+        missing_yamls_print = ", ".join(sorted(missing_yamls))
+
+        raise ValueError(
+            f"Missing YAML file(s) for: {missing_yamls_print}"
+        )
+
+    if missing_dbs:
+        missing_dbs_print = ", ".join(sorted(missing_dbs))
+
+        raise ValueError(
+            f"YAML file(s) without matching db FASTA: {missing_dbs_print}"
+        )
+
+def concatenate_db_input(db_fastas: dict[str, str], output: str, force: bool = False):
+    """
+    concatenates all db input files into a single fasta (necessary for DIAMOND search)
+    keeps the headers/IDs from the input (checks for duplicates)
+    creates a metadata dataframe to keep track which IDs belong to which marker
+    """
+    output_path = ensure_path(output, "combined_db.faa", force = force)
+
+    rows = []
+
+    with open(output_path, "w") as out:
+        for marker, fasta_path in sorted(db_fastas.items()):
+            for header, sequence in stream_fasta(fasta_path):
+                db_seq_id = clean_fasta_header(header)
+
+                out.write(f">{db_seq_id}\n")
+                out.write(f"{sequence}\n")
+
+                rows.append({
+                    "db_seq_ID": db_seq_id,
+                    "marker": marker
+                })
+
+    db_metadata = pd.DataFrame(rows)
+
+    duplicate_ids = db_metadata[db_metadata["db_seq_ID"].duplicated(keep=False)]
+
+    if not duplicate_ids.empty:
+        raise ValueError(f"Duplicate IDs found in database: {duplicate_ids}")
+
+    logger.info(f"Concatenated {len(db_fastas)} database FASTA file(s)")
+
+    return output_path, db_metadata
+
 def clean_yaml_value(value):
     if value == "xxx":
         return pd.NA
@@ -181,6 +318,9 @@ def clean_yaml_value(value):
     return value
 
 def load_yaml_content(yaml_path: str, expected_marker: str):
+    """
+    reads a YAML file and loads all the parameters that are necessary for classification
+    """
     with open(yaml_path) as f:
         params = yaml_lib.safe_load(f)
 
@@ -222,7 +362,7 @@ def classify_by_yaml_cutoffs(
         max_score_upper: int):
 
     """
-    classify hits based off of the cut-offs in the yaml file
+    classify hits based off of the cut-offs in the respective YAML file
     possible classifications: too_short, correct_length, too_long, below_cutoff
     """
 
@@ -255,7 +395,7 @@ def classify_by_yaml_cutoffs(
 
 def create_output_rows(query_path: str):
     """
-    creates one output row per protein sequence in the query fasta (hit and non-hit)
+    creates one output row per protein sequence in the query FASTA (hit and non-hit)
     """
 
     rows = []
@@ -269,6 +409,246 @@ def create_output_rows(query_path: str):
         })
 
     return pd.DataFrame(rows)
+
+def classification_output(
+        query_path: str,
+        bsr_path: str,
+        yaml_files: dict[str, str],
+        db_metadata: pd.DataFrame,
+        output: str,
+        force: bool = False):
+    """
+    classifies BSR hits based on marker-specific cutoffs from the respective YAML files
+    keeps the highest-scoring hit per protein and marker
+    adds marker annotation and metadata to accepted hits
+    creates annotate.tsv containing all query proteins, including proteins without accepted hits
+    """
+
+    cutoffs_by_marker = {
+        marker: load_yaml_content(yaml_path, expected_marker=marker) for marker, yaml_path in yaml_files.items()
+    }
+
+    query_df = create_output_rows(query_path)
+
+    bsr_df = pd.read_csv(bsr_path, sep="\t")
+
+    required_bsr_columns = [
+        "qseqid",
+        "sseqid",
+        "pident",
+        "qlen",
+        "score",
+        "max_score",
+        "BSR"
+    ]
+
+    output_column_order = [
+        "prot_ID",
+        "sequence_length",
+        "annotation",
+        "classification",
+        "gene_family",
+        "description",
+        "COG",
+        "KEGG",
+        "PFAM",
+        "db_seq_ID",
+        "pident",
+        "qlen",
+        "score",
+        "max_score",
+        "BSR",
+    ]
+
+    if bsr_df.empty:
+        result_df = query_df.copy()
+
+        for column in output_column_order:
+            if column not in result_df.columns:
+                result_df[column] = pd.NA
+
+        logger.warning("No hits were found, writing output without annotations")
+
+    else:
+        for column in required_bsr_columns:
+            if column not in bsr_df.columns:
+                raise ValueError(f"Required column {column} not found in BSR table")
+
+        bsr_df = bsr_df.rename(columns={
+            "qseqid": "prot_ID",
+            "sseqid": "db_seq_ID",
+        })
+
+        db_marker_df = db_metadata[["db_seq_ID", "marker"]].drop_duplicates()
+
+        bsr_df = bsr_df.merge(db_marker_df, on="db_seq_ID", how="left")
+
+        missing_marker = bsr_df[bsr_df["marker"].isna()]
+
+        if not missing_marker.empty:
+            raise ValueError(
+                "Some BSR hits could not be assigned to a marker"
+            )
+
+        bsr_df["classification"] = bsr_df.apply(
+            lambda row: classify_by_yaml_cutoffs(
+                max_score=row["max_score"],
+                hit_score=row["score"],
+                bsr_cutoff=cutoffs_by_marker[row["marker"]]["bsr_cutoff"],
+                max_score_lower=cutoffs_by_marker[row["marker"]]["max_score_lower"],
+                max_score_upper=cutoffs_by_marker[row["marker"]]["max_score_upper"]
+            ),
+            axis=1
+        )
+
+        bsr_df = bsr_df.sort_values(
+            by=["prot_ID", "marker", "score"],
+            ascending=[True, True, False])
+
+        bsr_df = bsr_df.drop_duplicates(
+            subset=["prot_ID", "marker"],
+            keep="first"
+        )
+
+        metadata_columns = [
+            "annotation",
+            "gene_family",
+            "description",
+            "COG",
+            "KEGG",
+            "PFAM",
+        ]
+
+        for column in metadata_columns:
+            bsr_df[column] = pd.NA
+
+        # True/False values depending on classification
+        accepted_hit_filter = bsr_df["classification"] != "below_cutoff"
+
+        bsr_df.loc[accepted_hit_filter, "annotation"] = bsr_df.loc[
+            accepted_hit_filter, "marker"
+        ]
+
+        for column in ["gene_family", "description", "COG", "KEGG", "PFAM"]:
+            bsr_df.loc[accepted_hit_filter, column] = bsr_df.loc[
+                accepted_hit_filter, "marker"
+            ]. apply(
+                lambda marker: cutoffs_by_marker[marker][column]
+            )
+
+        accepted_hits_df = bsr_df[
+            bsr_df["classification"] != "below_cutoff"
+        ].copy()
+
+        marker_counts_per_prot_id = accepted_hits_df.groupby("prot_ID")["marker"].nunique()#
+
+        for prot_id in marker_counts_per_prot_id[marker_counts_per_prot_id > 1].index:
+            logger.warning(f"More than one marker hit found for prot_ID {prot_id}")
+
+        result_df = query_df.merge(
+            accepted_hits_df,
+            on="prot_ID",
+            how="left"
+        )
+
+    result_df = result_df[output_column_order]
+
+    output_path = ensure_path(output, "annotate.tsv", force=force)
+
+    result_df.to_csv(output_path, sep="\t", index=False)
+
+    logger.info(f"Classification complete! Results saved to: {output_path}")
+
+    return output_path
+
+def annotate_plot_by_marker(
+        bsr_path: str,
+        yaml_files: dict[str, str],
+        db_metadata: pd.DataFrame,
+        output: str,
+        svg: bool = False,
+        force: bool = False):
+    """
+    creates one plot per marker
+    creates a zip archive containing all plots
+    """
+
+    plot_dir = Path(output or ".") / "annotate_plots"
+    plot_dir.mkdir(parents=True, exist_ok=True)
+
+    bsr_df = pd.read_csv(bsr_path, sep="\t")
+
+    try:
+
+        if bsr_df.empty:
+            logger.warning("No hits found in BSR table. Skipping all annotate plots.")
+            return None
+
+        required_bsr_columns = [
+            "qseqid",
+            "sseqid",
+            "pident",
+            "qlen",
+            "score",
+            "max_score",
+            "BSR"
+        ]
+
+        for column in required_bsr_columns:
+            if column not in bsr_df.columns:
+                raise ValueError(f"Required column {column} not found in BSR table")
+
+        bsr_df = bsr_df.rename(columns={
+            "qseqid": "prot_ID",
+            "sseqid": "db_seq_ID"
+        })
+
+        db_marker_df = db_metadata[["db_seq_ID", "marker"]].drop_duplicates()
+
+        bsr_df = bsr_df.merge(db_marker_df, on="db_seq_ID", how="left")
+
+        missing_marker = bsr_df[bsr_df["marker"].isna()]
+
+        if not missing_marker.empty:
+            raise ValueError("Some BSR hits could not be assigned to a marker")
+
+        plot_paths = []
+
+        for marker, yaml_path in yaml_files.items():
+            marker_bsr_df = bsr_df[bsr_df["marker"] == marker].copy()
+
+            plot_path = annotate_plot_helper(
+                bsr_df=marker_bsr_df,
+                yaml_path=yaml_path,
+                output=str(plot_dir),
+                marker=marker,
+                svg=svg,
+                force=force
+            )
+
+            if plot_path is not None:
+                plot_paths.append(plot_path)
+
+        logger.info(f"Created {len(plot_paths)} annotate plot(s)")
+
+        zip_path = ensure_path(
+            output,
+            "annotate_plots.zip",
+            force=force
+        )
+
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            for plot_path in plot_paths:
+                plot_path = Path(plot_path)
+                zip_file.write(plot_path, arcname=plot_path.name)
+
+    finally:
+        if plot_dir.exists():
+            shutil.rmtree(plot_dir)
+
+    logger.info(f"Annotate plots saved to: {zip_path}")
+
+    return zip_path
 
 def annotate_plot_helper(
         bsr_df: pd.DataFrame,
@@ -284,7 +664,6 @@ def annotate_plot_helper(
 
     cutoffs = load_yaml_content(yaml_path, expected_marker=marker)
 
-    gene_family = cutoffs["gene_family"]
     bsr_cutoff = cutoffs["bsr_cutoff"]
     max_score_lower = cutoffs["max_score_lower"]
     max_score_upper = cutoffs["max_score_upper"]
@@ -391,377 +770,37 @@ def annotate_plot_helper(
 
     return output_path
 
-def collect_db_fastas(db_path: str):
-    """
-    collect all fasta files from db_path
-    expected folder structure:
-    db_path/
-        marker1/
-            sequences.faa
-            info.yaml
-            & other stuff
-        marker2/
-            sequences.faa
-            info.yaml
-            & other stuff
-    marker name taken from subdirectory name
-    """
-    path = Path(db_path)
-
-    if path.is_file():
-        raise ValueError("Database path is a singular file (should be directory). Type \"aastk annotate --help\" for further information.")
-
-    if not path.is_dir():
-        raise ValueError(f"Database path does not exist: {db_path}")
-
-    fasta_files = {}
-
-    for marker_dir in sorted(path.iterdir()):
-        if not marker_dir.is_dir():
-            continue
-
-        marker_name = marker_dir.name
-        fasta_path = marker_dir / "sequences.faa"
-
-        if not fasta_path.is_file():
-            logger.warning(f"No sequences.faa found for marker: {marker_name}")
-            continue
-
-        check_fasta_protein(str(fasta_path))
-
-        fasta_files[marker_name] = str(fasta_path)
-
-    if not fasta_files:
-        raise ValueError(f"No sequences.faa file found in database directory: {db_path}")
-
-    return fasta_files
-
-def collect_yaml_files(db_path: str):
-    """
-    collects all yaml files from db_path
-    expected folder structure:
-    db_path/
-        marker1/
-            sequences.faa
-            info.yaml
-            & other stuff
-        marker2/
-            sequences.faa
-            info.yaml
-            & other stuff
-    marker name taken from subdirectory name
-    """
-
-    path = Path(db_path)
-
-    if path.is_file():
-        raise ValueError("Database path is a singular file (should be directory). Type \"aastk annotate --help\" for further information.")
-
-    if not path.is_dir():
-        raise ValueError(f"Database path does not exist: {db_path}")
-
-    yaml_files = {}
-
-    for marker_dir in sorted(path.iterdir()):
-        if not marker_dir.is_dir():
-            continue
-
-        marker_name = marker_dir.name
-        yaml_path = marker_dir / "info.yaml"
-
-        if not yaml_path.is_file():
-            logger.warning(f"No info.yaml found for marker: {marker_name}")
-            continue
-
-        load_yaml_content(str(yaml_path), expected_marker=marker_name)
-
-        yaml_files[marker_name] = str(yaml_path)
-
-    if not yaml_files:
-        raise ValueError(f"No info.yaml file found in database directory: {db_path}")
-
-    return yaml_files
-
-def check_db_yaml_matching(db_markers: set[str], yaml_markers: set[str]):
-    """
-    checks if every db marker has a matching yaml file and vice versa
-    """
-
-    missing_yamls = db_markers - yaml_markers
-    missing_dbs = yaml_markers - db_markers
-
-    if missing_yamls:
-        missing_yamls_print = ", ".join(sorted(missing_yamls))
-
-        raise ValueError(
-            f"Missing YAML file(s) for: {missing_yamls_print}"
-        )
-
-    if missing_dbs:
-        missing_dbs_print = ", ".join(sorted(missing_dbs))
-
-        raise ValueError(
-            f"YAML file(s) without matching db FASTA: {missing_dbs_print}"
-        )
-
-def concatenate_db_input(db_fastas: dict[str, str], output: str, force: bool = False):
-    """
-    concatenates all db input files into a single fasta (necessary for DIAMOND search)
-    keeps the headers/IDs from the input (checks for duplicates)
-    creates a metadata dataframe to keep track which IDs belong to which marker
-    """
-    output_path = ensure_path(output, "combined_db.faa", force = force)
-
-    rows = []
-
-    with open(output_path, "w") as out:
-        for marker, fasta_path in sorted(db_fastas.items()):
-            for header, sequence in stream_fasta(fasta_path):
-                db_seq_id = clean_fasta_header(header)
-
-                out.write(f">{db_seq_id}\n")
-                out.write(f"{sequence}\n")
-
-                rows.append({
-                    "db_seq_ID": db_seq_id,
-                    "marker": marker
-                })
-
-    db_metadata = pd.DataFrame(rows)
-
-    duplicate_ids = db_metadata[db_metadata["db_seq_ID"].duplicated(keep=False)]
-
-    if not duplicate_ids.empty:
-        raise ValueError(f"Duplicate IDs found in database: {duplicate_ids}")
-
-    logger.info(f"Concatenated {len(db_fastas)} database FASTA file(s)")
-
-    return output_path, db_metadata
-
-def classification_output(
-        query_path: str,
-        bsr_path: str,
-        yaml_files: dict[str, str],
-        db_metadata: pd.DataFrame,
-        output: str,
-        force: bool = False):
-    """
-    classifies hits based off of marker-specific YAML cutoffs
-    creates one output file that includes hits and non-hits
-    """
-
-    cutoffs_by_marker = {
-        marker: load_yaml_content(yaml_path, expected_marker=marker) for marker, yaml_path in yaml_files.items()
-    }
-
-    query_df = create_output_rows(query_path)
-
-    bsr_df = pd.read_csv(bsr_path, sep="\t")
-
-    required_bsr_columns = [
-        "qseqid",
-        "sseqid",
-        "pident",
-        "qlen",
-        "score",
-        "max_score",
-        "BSR"
-    ]
-
-    if bsr_df.empty:
-        result_df = query_df.copy()
-        result_df["annotation"] = pd.NA
-        result_df["classification"] = pd.NA
-
-        logger.warning("No hits were found, writing empty file")
-
-    else:
-        for column in required_bsr_columns:
-            if column not in bsr_df.columns:
-                raise ValueError(f"Required column {column} not found in BSR table")
-
-        bsr_df = bsr_df.rename(columns={
-            "qseqid": "prot_ID",
-            "sseqid": "db_seq_ID",
-        })
-
-        db_marker_df = db_metadata[["db_seq_ID", "marker"]].drop_duplicates()
-
-        bsr_df = bsr_df.merge(db_marker_df, on="db_seq_ID", how="left")
-
-        missing_marker = bsr_df[bsr_df["marker"].isna()]
-
-        if not missing_marker.empty:
-            raise ValueError(
-                "Some BSR hits could not be assigned to a marker"
-            )
-
-        bsr_df["classification"] = bsr_df.apply(
-            lambda row: classify_by_yaml_cutoffs(
-                max_score=row["max_score"],
-                hit_score=row["score"],
-                bsr_cutoff=cutoffs_by_marker[row["marker"]]["bsr_cutoff"],
-                max_score_lower=cutoffs_by_marker[row["marker"]]["max_score_lower"],
-                max_score_upper=cutoffs_by_marker[row["marker"]]["max_score_upper"]
-            ),
-            axis=1
-        )
-
-        bsr_df = bsr_df.sort_values(
-            by=["prot_ID", "marker", "score"],
-            ascending=[True, True, False])
-
-        bsr_df = bsr_df.drop_duplicates(
-            subset=["prot_ID", "marker"],
-            keep="first"
-        )
-
-        metadata_columns = [
-            "annotation",
-            "gene_family",
-            "description",
-            "COG",
-            "KEGG",
-            "PFAM",
-        ]
-
-        for column in metadata_columns:
-            bsr_df[column] = pd.NA
-
-        # True/False values depending on classification
-        accepted_hit_filter = bsr_df["classification"] != "below_cutoff"
-
-        bsr_df.loc[accepted_hit_filter, "annotation"] = bsr_df.loc[
-            accepted_hit_filter, "marker"
-        ]
-
-        for column in ["gene_family", "description", "COG", "KEGG", "PFAM"]:
-            bsr_df.loc[accepted_hit_filter, column] = bsr_df.loc[
-                accepted_hit_filter, "marker"
-            ]. apply(
-                lambda marker: cutoffs_by_marker[marker][column]
-            )
-
-        accepted_hits_df = bsr_df[
-            bsr_df["classification"] != "below_cutoff"
-        ].copy()
-
-        marker_counts_per_prot_id = accepted_hits_df.groupby("prot_ID")["marker"].nunique()#
-
-        for prot_id in marker_counts_per_prot_id[marker_counts_per_prot_id > 1].index:
-            logger.warning(f"More than one marker hit found for prot_ID {prot_id}")
-
-        result_df = query_df.merge(
-            accepted_hits_df,
-            on="prot_ID",
-            how="left"
-        )
-
-    column_order = [
-        "prot_ID",
-        "sequence_length",
-        "annotation",
-        "classification",
-        "gene_family",
-        "description",
-        "COG",
-        "KEGG",
-        "PFAM",
-        "db_seq_ID",
-        "pident",
-        "qlen",
-        "score",
-        "max_score",
-        "BSR",
-    ]
-
-    result_df = result_df[column_order]
-
-    output_path = ensure_path(output, "annotate.tsv", force=force)
-
-    result_df.to_csv(output_path, sep="\t", index=False)
-
-    logger.info(f"Classification complete! Results saved to: {output_path}")
-
-    return output_path
-
-def annotate_plot_by_marker(
-        bsr_path: str,
-        yaml_files: dict[str, str],
-        db_metadata: pd.DataFrame,
-        output: str,
-        svg: bool = False,
-        force: bool = False):
-    """
-    creates a dictionary for all plots
-    creates one plot per marker
-    """
-
-    plot_dir = Path(output) / "annotate_plots"
-    plot_dir.mkdir(parents=True, exist_ok=True)
-
-    bsr_df = pd.read_csv(bsr_path, sep="\t")
-
-    if bsr_df.empty:
-        logger.warning("No hits found in BSR table. Skipping all annotate plots.")
-        return []
-
-    required_bsr_columns = [
-        "qseqid",
-        "sseqid",
-        "pident",
-        "qlen",
-        "score",
-        "max_score",
-        "BSR"
-    ]
-
-    for column in required_bsr_columns:
-        if column not in bsr_df.columns:
-            raise ValueError(f"Required column {column} not found in BSR table")
-
-    bsr_df = bsr_df.rename(columns={
-        "qseqid": "prot_ID",
-        "sseqid": "db_seq_ID"
-    })
-
-    db_marker_df = db_metadata[["db_seq_ID", "marker"]].drop_duplicates()
-
-    bsr_df = bsr_df.merge(db_marker_df, on="db_seq_ID", how="left")
-
-    missing_marker = bsr_df[bsr_df["marker"].isna()]
-
-    if not missing_marker.empty:
-        raise ValueError("Some BSR hits could not be assigned to a marker")
-
-    plot_paths = []
-
-    for marker, yaml_path in yaml_files.items():
-        marker_bsr_df = bsr_df[bsr_df["marker"] == marker].copy()
-
-        plot_path = annotate_plot_helper(
-            bsr_df=marker_bsr_df,
-            yaml_path=yaml_path,
-            output=str(plot_dir),
-            marker=marker,
-            svg=svg,
-            force=force
-        )
-
-        if plot_path is not None:
-            plot_paths.append(plot_path)
-
-    logger.info(f"Created {len(plot_paths)} annotate plot(s)")
-
-    return plot_paths
-
 def annotate(
-        db_path: str,
+        ref_db: str,
         output: str,
         query: str | None = None,
         genome: str | None = None,
         keep: bool = False,
         force: bool = False):
+    """
+    Args:
+        ref_db (str): Path to database directory containing marker-specific FASTA and YAML files, expected folder structure:
+            ref_db/
+                marker1/
+                    sequences.faa
+                    info.yaml
+                    & other stuff
+                marker2/
+                    sequences.faa
+                    info.yaml
+                    & other stuff
+        output (str): Output directory (default: current directory)
+        query (str): Path to protein query FASTA, mutually exclusive with genome
+        genome (str): Path to genome/contig FASTA for gene prediction with Pyrodigal, mutually exclusive with query
+        keep (bool): If true, intermediate files generated during the workflow are retained
+        force (bool): If true, existing files/directories in the output path are overwritten
+
+    Returns:
+        query protein FASTA file (--query: clean copy of input, --genome: pyrodigal output)
+        annotate.tsv contains classifications
+        annotate_plots.zip contains all plots per marker
+    """
+
 
     logger.info("Starting annotate workflow")
 
@@ -789,8 +828,8 @@ def annotate(
         logger.info(f"Uniform query protein FASTA saved in: {query_path}")
 
         # collect marker-specific files
-        db_fastas = collect_db_fastas(db_path)
-        yaml_files = collect_yaml_files(db_path)
+        db_fastas = collect_db_fastas(ref_db)
+        yaml_files = collect_yaml_files(ref_db)
 
         check_db_yaml_matching(
             db_markers=set(db_fastas.keys()),
@@ -798,16 +837,16 @@ def annotate(
         )
 
         # concatenate DB FASTAS
-        combined_db_path, db_metadata = concatenate_db_input(
+        combined_ref_db, db_metadata = concatenate_db_input(
             db_fastas=db_fastas,
             output=output,
             force=force,
         )
-        intermediate_results["combined_db"] = combined_db_path
+        intermediate_results["combined_db"] = combined_ref_db
 
         # build the DIAMOND DB from combined DB FASTA
         diamond_db = build(
-            seed_fasta=combined_db_path,
+            seed_fasta=combined_ref_db,
             threads=1,
             output=output,
             force=force
@@ -857,14 +896,14 @@ def annotate(
         )
         results["annotate.tsv"] = annotate_tsv
 
-        annotate_plot_paths = annotate_plot_by_marker(
+        annotate_plot_zip = annotate_plot_by_marker(
             bsr_path=bsr_path,
             yaml_files=yaml_files,
             db_metadata=db_metadata,
             output=output,
             force=force
         )
-        results["annotate_plots"] = annotate_plot_paths
+        results["annotate_plots"] = annotate_plot_zip
 
         logger.info("Annotate workflow completed")
 

@@ -8,7 +8,6 @@ from aastk.cugo import *
 from aastk.casm import *
 from aastk.database import *
 from aastk.annotate import *
-from aastk.plm_embedder import *
 from aastk.version import __version__, __copyright__, __author__
 import sys
 
@@ -30,6 +29,7 @@ def print_help():
     cugo           Retrieve, calculate, and visualise consensus genomic context of protein data sets
                       Runs the subcommands: context, cugo_plot
     meta           Retrieve protein metadata from AASTK SQLite database
+    annotate       Annotate query proteins or genomes against a known reference family based on cutoff values retrieved via pasr
 
   Helper tools:
     pasr_select    Select target sequences from pasr run based on bsr and score cutoffs
@@ -361,20 +361,12 @@ def main():
             annotate(
                 query=args.query,
                 genome=args.genome,
-                db_path=args.db_path,
+                ref_db=args.ref_db,
                 output=args.output,
                 keep=args.keep,
                 force=args.force
             )
 
-        elif args.subparser_name == 'plm_embedder':
-            plm_embedder(
-                fasta=args.fasta,
-                output=args.output,
-                model=args.model,
-                batch_size=args.batch_size,
-                force=args.force
-            )
 
 
     except Exception as e:
