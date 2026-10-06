@@ -335,12 +335,6 @@ def plot_top_annotations_per_position(
 
     positions = sorted(cont['position'].unique())
 
-    # Load annotation color mapping
-    script_dir = Path(__file__).resolve().parent
-    yaml_dir = script_dir / "yaml"
-    annotation_lower = annotation.lower().replace('_id', '')
-    color_yaml_path = yaml_dir / f'{annotation_lower}_colors.yaml'
-
     # dynamically color by first 6 digits of md5 hash
     unique_annotations = cont[f'{annotation}'].dropna().unique()
     annotation_color_map = {
