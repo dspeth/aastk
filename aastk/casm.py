@@ -900,7 +900,6 @@ def _reduce_and_embed(matrix,
         dense_matrix = matrix.todense(order='C')
 
     embed_matrix = reduced_matrix if reduced_matrix is not None else dense_matrix
-    print(embed_matrix)
 
     return tsne_embedding(matrix=embed_matrix,
                           queries=queries,
