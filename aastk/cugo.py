@@ -122,7 +122,7 @@ def context(fasta: str,
             force: bool = False,
             ):
     if annotation not in ANNOTATION_COLUMNS:
-        raise ValueError(f'Invalid annotation. Please select one of the following annotations: {",".join(annotation_columns)}')
+        raise ValueError(f'Invalid annotation. Please select one of the following annotations: {",".join(ANNOTATION_COLUMNS)}')
 
     if fasta:
         protein_name = determine_dataset_name(fasta, '.', 0)
@@ -633,7 +633,7 @@ def cugo_plot(context_path: str,
         force: Whether to overwrite existing files
     """
     if annotation not in ANNOTATION_COLUMNS:
-        raise ValueError(f'Invalid annotation. Please select one of the following annotations: {",".join(annotation_columns)}')
+        raise ValueError(f'Invalid annotation. Please select one of the following annotations: {",".join(ANNOTATION_COLUMNS)}')
 
     if not (all_plots or cugo or size or tmh):
         raise ValueError(f'No output plot format chosen please select: --all, --cugo, --size, --tmh')
@@ -817,7 +817,7 @@ def cugo(db_path: str,
         tuple: (context_file_path, plot_file_path)
     """
     if annotation not in ANNOTATION_COLUMNS:
-        raise ValueError(f'Invalid annotation. Please select one of the following annotations: {",".join(annotation_columns)}')
+        raise ValueError(f'Invalid annotation. Please select one of the following annotations: {",".join(ANNOTATION_COLUMNS)}')
 
     if export and (homogeneity_threshold is None or sequence_frequency_threshold is None):
         raise ValueError(
