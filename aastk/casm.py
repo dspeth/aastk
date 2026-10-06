@@ -1078,9 +1078,12 @@ def casm(fasta: str,
     else:
         logger.info("Creating random subset from input FASTA")
         subset_fasta = fasta_subsample(fasta, output, subset_size, force=force)
+        intermediate_results['subset_fasta'] = subset_fasta
 
     align_output = run_diamond_alignment(fasta, subset_fasta, subset_size, threads,
                                          CASM_BLAST_OUTPUT_COLUMNS, output, force=force)
+    intermediate_results['align_output'] = align_output
+    intermediate_results['subset_dmnd'] = str(Path(output or '.') / f"{determine_dataset_name(fasta, '.', 0)}_subset_dmnd.dmnd")
 
     # Phase 2: Matrix construction. Kept in memory and handed straight to the
     # embedding step below; only written to disk when `keep` is set, to avoid a
@@ -1089,10 +1092,6 @@ def casm(fasta: str,
     matrix_obj, queries, targets, matrix_file, metadata_file = build_alignment_matrix_split(
         align_output, output, force=force, save=keep
     )
-    if matrix_file:
-        intermediate_results['matrix_file'] = matrix_file
-    if metadata_file:
-        intermediate_results['metadata_file'] = metadata_file
 
     # Phase 3: t-SNE embedding
     logger.info("=== Phase 3: t-SNE Embedding ===")
