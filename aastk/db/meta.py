@@ -316,10 +316,9 @@ def meta(db_path: str,
             force=force
         )
     else:
-        logger.error(
+        raise ValueError(
             "No valid input file found. Please specify path to protein FASTA file OR sequence ID list (one ID per line)."
         )
-        return
 
     if all_metadata:
         include_annotation = True
@@ -339,13 +338,12 @@ def meta(db_path: str,
         include_high_level_env_category,
         include_low_level_env_category
     ]):
-        logger.error(
+        raise ValueError(
             "Must specify at least one metadata type "
             "(--taxonomy, --annotation, --culture-collection, "
             "--high-level-environment, --low-level-environment, "
             "--high-level-env-category, --low-level-env-category, or --all-metadata)"
         )
-        return
 
     unavailable = check_metadata_availability(
         db_path,
@@ -358,10 +356,9 @@ def meta(db_path: str,
         include_low_level_env_category
     )
     if unavailable:
-        logger.error(
+        raise ValueError(
             f"Requested metadata not available in database: {', '.join(unavailable)}"
         )
-        return
 
     BATCH_SIZE = 500
 
@@ -383,6 +380,7 @@ def meta(db_path: str,
 
     found_ids = set()
     missing_ids = set()
+    failed_ids = set()
     batch_results = {}
 
     # Process batches in parallel
@@ -413,6 +411,7 @@ def meta(db_path: str,
                 batch, result_dict = future.result()
                 batch_results[batch_idx] = (batch, result_dict)
             except Exception as e:
+                failed_ids.update(batches[batch_idx])
                 logger.error(
                     f"Error processing batch {batch_idx}: {e}"
                 )
@@ -440,6 +439,21 @@ def meta(db_path: str,
     if missing_ids:
         logger.warning(
             f"{len(missing_ids)} sequence IDs were not found in the database"
+        )
+
+    if failed_ids:
+        failed_ids_path = ensure_path(
+            output,
+            f'{dataset_name}_metadata_failed_ids.txt',
+            force=force
+        )
+        with open(failed_ids_path, 'w') as f:
+            for seq_id in seq_ids:
+                if seq_id in failed_ids:
+                    f.write(f"{seq_id}\n")
+        raise RuntimeError(
+            f"Database query failed for {len(failed_ids)} sequence IDs; "
+            f"they are missing from {output_path} and listed in {failed_ids_path}"
         )
 
 
