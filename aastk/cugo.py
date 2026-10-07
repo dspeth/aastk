@@ -245,16 +245,7 @@ def top_context(df: pd.DataFrame, top_n: int):
     return id_df, count_df
 
 
-def bin_by_size(context_path: str, flank_lower: int, flank_upper: int, bin_width: int):
-    if not is_cugo_context_tsv(context_path):
-        raise ValueError(f"Not a valid CUGO context TSV file: {context_path}")
-
-    # Load context data in long format
-    cont = pd.read_csv(context_path, sep='\t')
-
-    # Filter to position range
-    cont = cont[(cont['position'] >= flank_lower) & (cont['position'] <= flank_upper)]
-
+def bin_by_size(cont: pd.DataFrame, bin_width: int):
     # Convert aa_length to numeric
     cont['aa_length'] = pd.to_numeric(cont['aa_length'], errors='coerce')
 
@@ -287,9 +278,8 @@ def compute_homogeneity_index(context_path: str,
     """
     Computes per-position homogeneity index from binned length data.
     """
-    heat_data, bin_edges, positions, position_counts = bin_by_size(
-        context_path, flank_lower, flank_upper, bin_width
-    )
+    cont = load_context_data(context_path, flank_lower, flank_upper)
+    heat_data, bin_edges, positions, position_counts = bin_by_size(cont, bin_width)
 
     dist_df = pd.DataFrame(heat_data, index=bin_edges[:-1], columns=positions)
     mode_idx = dist_df.apply(lambda c: c.argmax())
@@ -309,6 +299,33 @@ def compute_homogeneity_index(context_path: str,
 
     return summary_df
 
+def load_context_data(context_path: str,
+                      flank_lower: int,
+                      flank_upper: int):
+    cont = pd.read_csv(context_path, sep='\t', dtype=str)
+    cont['position'] = pd.to_numeric(cont['position'], errors='coerce')
+    cont = cont[(cont['position'] >= flank_lower) & (cont['position'] <= flank_upper)]
+
+    return cont
+
+def retrieve_top_annotations_per_position(cont: pd.DataFrame, top_n: int, positions: list, annotation: str):
+    top_ids = [[] for _ in range(top_n)]
+    top_counts = [[] for _ in range(top_n)]
+
+    for pos in positions:
+        pos_data = cont[cont['position'] == pos]
+        counts = pos_data[f'{annotation}'].value_counts(dropna=False)  # include NA
+        for i in range(top_n):
+            if i < len(counts):
+                annotation_id = counts.index[i]
+                top_ids[i].append(annotation_id)
+                top_counts[i].append(counts.iloc[i])
+            else:
+                # Only append nothing if no real data in this rank
+                top_ids[i].append(None)
+                top_counts[i].append(None)
+
+    return top_ids, top_counts
 
 def plot_top_annotations_per_position(
         context_path: str,
@@ -329,9 +346,7 @@ def plot_top_annotations_per_position(
         raise ValueError(f"Not a valid CUGO context TSV file: {context_path}")
 
     # Load context data
-    cont = pd.read_csv(context_path, sep='\t', dtype=str)
-    cont['position'] = pd.to_numeric(cont['position'], errors='coerce')
-    cont = cont[(cont['position'] >= flank_lower) & (cont['position'] <= flank_upper)]
+    cont = load_context_data(context_path, flank_lower, flank_upper)
 
     positions = sorted(cont['position'].unique())
 
@@ -454,7 +469,8 @@ def plot_size_per_position(context_path: str,
     """
     Creates 1D-density plot showing sequence length distribution across genomic positions.
     """
-    heat_data, bin_edges, positions, position_counts = bin_by_size(context_path, flank_lower, flank_upper, bin_width)
+    cont = load_context_data(context_path.context_path, flank_lower, flank_upper)
+    heat_data, bin_edges, positions, position_counts = bin_by_size(cont, bin_width)
     n_bins = len(bin_edges) - 1
 
     # Create figure if no axes provided
@@ -525,11 +541,7 @@ def plot_tmh_per_position(context_path: str,
     if not is_cugo_context_tsv(context_path):
         raise ValueError(f"Not a valid CUGO context TSV file: {context_path}")
 
-    # Load context data in long format
-    cont = pd.read_csv(context_path, sep='\t')
-
-    # Filter to position range
-    cont = cont[(cont['position'] >= flank_lower) & (cont['position'] <= flank_upper)]
+    cont = load_context_data(context_path, flank_lower, flank_upper)
 
     # Convert no_TMH to numeric
     cont['no_TMH'] = pd.to_numeric(cont['no_TMH'], errors='coerce')
@@ -881,6 +893,39 @@ def cugo(db_path: str,
 
     return context_file, plot_file
 
+def cugo_arrow_plot(context_path: str,
+                    flank_lower: int,
+                    flank_upper: int,
+                    bin_width: int = 50):
+    # arrow style without broad head
+    # color by annotation
+    # label at 45° sloping downward to accommodate shorter genes
+    # Load context data
+    cont = load_context_data(context_path, flank_lower, flank_upper)
+
+    # get bin with highest number of sequences for each position
+    heat_data, bin_edges, positions, position_counts = bin_by_size(cont, bin_width)
+    size_mode_idx = heat_data.argmax(axis=0)
+    size_mode_lower = bin_edges[size_mode_idx]
+    size_mode_upper = bin_edges[size_mode_idx + 1]
+    arrow_lengths = [int((size_mode_lower[i] + size_mode_upper[i]) / 2) for i in range(len(size_mode_idx))]
+
+    positions = sorted(cont['position'].unique())
+
+    # get top annotation per position
+    # check if we need to identify annotation type like this or if this will be input from the
+    # top function anyway
+    annotation = None
+    for label in cont.columns:
+        if label in ANNOTATION_COLUMNS:
+            annotation = label
+
+    if annotation is None:
+        raise ValueError(f"No annotation found for {context_path}")
+
+    # get top annotation per position
+    top_ids, top_counts = retrieve_top_annotations_per_position(cont, 1, positions, annotation)
+    pass
 
 def cugo_select(context_path: str,
              position: int,
