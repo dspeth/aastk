@@ -867,10 +867,29 @@ def cugo(db_path: str,
         homogeneity_df = compute_homogeneity_index(
             context_file, flank_lower, flank_upper, bin_width, window=homogeneity_window
         )
+        homogeneous_positions = set()
         for position, data in homogeneity_df.iterrows():
             if (data['relative sequence frequency'] >= sequence_frequency_threshold
                     and data['homogeneity'] > homogeneity_threshold):
+                homogeneous_positions.add(position)
                 cugo_select(context_file, position, db_path, export_dir or output_dir, threads, filter_seqs=True, force=force)
+
+        # create gene arrow plot for homogeneous positions
+        if homogeneous_positions:
+            homogeneous_lower = min(homogeneous_positions)
+            homogeneous_upper = max(homogeneous_positions)
+            cugo_arrow_plot(
+                context_path=context_file,
+                flank_lower=homogeneous_lower,
+                flank_upper=homogeneous_upper,
+                output=output_dir,
+                annotation=annotation,
+                bin_width=bin_width,
+                svg=svg,
+                force=force
+            )
+        else:
+            logger.warning("No homogeneous positions found - no arrow plot will be created")
 
     # create comprehensive plots
     cugo_plot(
@@ -900,10 +919,20 @@ def cugo(db_path: str,
 def cugo_arrow_plot(context_path: str,
                     flank_lower: int,
                     flank_upper: int,
-                    bin_width: int = 50):
+                    output: str,
+                    annotation: str,
+                    bin_width: int = 50,
+                    svg: bool = False,
+                    force: bool = False):
     # arrow style without broad head
     # color by annotation
     # label at 45° sloping downward to accommodate shorter genes
+    dataset_name = determine_dataset_name(context_path, '.', 0, '_context')
+    if svg:
+        arrow_plot_path = ensure_path(output, f'{dataset_name}_cugo_arrow.svg', force=force)
+    else:
+        arrow_plot_path = ensure_path(output, f'{dataset_name}_cugo_arrow.png', force=force)
+
     # Load context data
     cont = load_context_data(context_path, flank_lower, flank_upper)
 
@@ -916,16 +945,8 @@ def cugo_arrow_plot(context_path: str,
 
     positions = sorted(cont['position'].unique())
 
-    # get top annotation per position
-    # check if we need to identify annotation type like this or if this will be input from the
-    # top function anyway
-    annotation = None
-    for label in cont.columns:
-        if label in ANNOTATION_COLUMNS:
-            annotation = label
-
-    if annotation is None:
-        raise ValueError(f"No annotation found for {context_path}")
+    if annotation not in cont.columns:
+        raise ValueError(f"No {annotation} annotation found in {context_path}")
 
     # get top annotation per position
     top_ids, top_counts = retrieve_top_annotations_per_position(cont, 1, positions, annotation)
@@ -972,7 +993,8 @@ def cugo_arrow_plot(context_path: str,
     ax.axis('off')
 
     plt.tight_layout()
-    plt.show()
+    plt.savefig(arrow_plot_path, dpi=300, bbox_inches='tight')
+    logger.info(f"Plot saved to {arrow_plot_path}")
 
 
 def cugo_select(context_path: str,
