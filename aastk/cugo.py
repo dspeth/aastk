@@ -10,6 +10,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable
+import matplotlib.patches as mpatches
 from typing import Optional
 from pathlib import Path
 import sqlite3
@@ -404,7 +405,7 @@ def plot_top_annotations_per_position(
             y_values.append(count)
             all_xticks.append(x)
 
-            if annotation_id == 'NA':
+            if pd.isna(annotation_id):
                 annotation_labels.append('NA')
                 point_colors.append('#cccccc')  # gray for NA
                 all_xlabels.append('NA')
@@ -469,7 +470,10 @@ def plot_size_per_position(context_path: str,
     """
     Creates 1D-density plot showing sequence length distribution across genomic positions.
     """
-    cont = load_context_data(context_path.context_path, flank_lower, flank_upper)
+    if not is_cugo_context_tsv(context_path):
+        raise ValueError(f"Not a valid CUGO context TSV file: {context_path}")
+
+    cont = load_context_data(context_path, flank_lower, flank_upper)
     heat_data, bin_edges, positions, position_counts = bin_by_size(cont, bin_width)
     n_bins = len(bin_edges) - 1
 
@@ -925,7 +929,51 @@ def cugo_arrow_plot(context_path: str,
 
     # get top annotation per position
     top_ids, top_counts = retrieve_top_annotations_per_position(cont, 1, positions, annotation)
-    pass
+
+    gene_context_length = 0
+
+    fig, ax = plt.subplots(figsize=(10, 3))
+    arrow_height = 0.4
+    head_w = 0.4
+    head_l = 100
+
+    for i, position in enumerate(positions):
+        start = gene_context_length
+        arrow_length = arrow_lengths[i]
+        arrow_annotation = top_ids[0][i]
+        if pd.isna(arrow_annotation):
+            facecolor = '#cccccc'
+        else:
+            facecolor = '#' + hashlib.md5(str(arrow_annotation).encode()).hexdigest()[:6]
+
+        arrow = mpatches.FancyArrow(
+            x=start,
+            y=1,
+            dx=arrow_length,
+            dy=0,
+            width=arrow_height,
+            head_width=head_w,
+            head_length=head_l,
+            length_includes_head=True,
+            facecolor=facecolor,
+            edgecolor='black',
+            linewidth=1.2
+        )
+
+        annotation_centre = start + max(arrow_length - head_l, 0) / 2
+        position_centre = start + max(arrow_length - head_l, 0) / 2
+        ax.text(annotation_centre, 1.025 + arrow_height / 2, arrow_annotation, rotation=45, rotation_mode='anchor')
+        ax.text(position_centre, 0.9 - arrow_height / 2 - 0.1, str(position), ha='center')
+
+        ax.add_patch(arrow)
+        gene_context_length += arrow_length
+    ax.set_xlim(-head_l, gene_context_length + head_l)
+    ax.set_ylim(0, 2)
+    ax.axis('off')
+
+    plt.tight_layout()
+    plt.show()
+
 
 def cugo_select(context_path: str,
              position: int,
