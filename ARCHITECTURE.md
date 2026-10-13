@@ -22,7 +22,7 @@ aastk/
 ├── aastk/
 │   ├── __init__.py       # marks the package
 │   ├── __main__.py       # entry point: argument dispatch, print_help()
-│   ├── cli.py            # argparse definitions for every subcommand
+│   ├── cli.py            # argparse definitions for every CLI command
 │   ├── log.py            # logging setup
 │   ├── util.py           # shared helpers used by all modules
 │   ├── version.py        # __version__, __author__, __copyright__
@@ -58,8 +58,10 @@ top-level orchestrator that chains them. For example, `pasr.py` exposes `build()
 `search()`, `get_hit_seqs()`, `max_score()`, `bsr()`, and `pasr_plot()` as standalone
 functions, and `pasr()` calls them in sequence.
 
-This means a user can run the full workflow with `aastk pasr ...` or run individual steps
-separately—useful for debugging and for resuming a partially complete run.
+On the CLI, only the orchestrators (`aastk pasr`, `aastk casm`, `aastk cugo`) and their
+plotting steps (`pasr_plot`, `casm_plot`, `cugo_plot`) are exposed, so plots can be
+regenerated from existing output; the remaining step functions are importable from Python
+for debugging or custom pipelines.
 
 ### Output path management
 
@@ -78,9 +80,13 @@ raises `FileNotFoundError` with a clear message if the binary is missing. Subpro
 
 ### Parallel processing
 
-CPU-bound batch work (e.g., batch database fetches, sequence retrieval) uses
-`concurrent.futures.ThreadPoolExecutor`. Pass `threads` through from the CLI argument
-all the way to the executor. Long-running operations expose progress via `tqdm`.
+I/O-bound batch work (e.g., batch database fetches, sequence retrieval) uses
+`concurrent.futures.ThreadPoolExecutor`. Work where Python-level parsing or decompression
+dominates and would be serialized by the GIL (e.g., anvi'o shard ingestion in
+`db/build.py`, sequence export in `db/export.py`) uses
+`concurrent.futures.ProcessPoolExecutor` instead. Do not wrap numpy/scikit-learn calls in
+a process pool: forking around BLAS can deadlock. Pass `threads` through from the CLI
+argument all the way to the executor. Long-running operations expose progress via `tqdm`.
 
 ### Database access
 
@@ -207,19 +213,9 @@ Add the import at the top of `__main__.py`:
 from aastk.mytool import *
 ```
 
-Add `elif` branches in `main()` for each new subcommand, grouped under a matching
-`### PARSER FOR MYTOOL ###` comment:
+Add an `elif` branch in `main()` for each new CLI command:
 
 ```python
-### PARSER FOR MYTOOL FUNCTIONALITIES AND WORKFLOW ###
-elif args.subparser_name == 'step_a':
-    step_a(
-        fasta=args.fasta,
-        output_dir=args.output,
-        threads=args.threads,
-        force=args.force
-    )
-
 elif args.subparser_name == 'mytool':
     mytool(
         fasta=args.fasta,
@@ -233,8 +229,8 @@ Call functions with explicit keyword arguments, never by positional order.
 
 ### 5. Update `print_help()` in `__main__.py`
 
-Add the new tool and its helper subcommands to the help text under the appropriate
-section (Main Tools, Helper tools, or Subcommands).
+Add the new tool to the help text under the appropriate section (Main Tools, Helper
+tools, Plotting tools, or Database utilities).
 
 ---
 

@@ -10,7 +10,6 @@ from aastk.db.build import database
 from aastk.db.check import database_check
 from aastk.db.meta import meta, list_metadata, parse_query
 from aastk.db.export import export_fasta, export_by_metadata
-from aastk.db.gene_family import gene_family
 from aastk.version import __version__, __copyright__, __author__
 import sys
 
@@ -40,17 +39,9 @@ def print_help():
     filter         Filter sequence dataset to remove non-homologous sequences
     list_metadata  List available metadata
 
-  Subcommands:
-    build          Build DIAMOND database from seed sequence(s)
-    search         Search query sequences against DIAMOND database
-    get_hit_seqs   Extract sequences that have DIAMOND hits against custom database
-    max_score      Calculate max scores for extracted sequences using BLOSUM matrix
-    bsr            Compute BSR (Blast Score Ratio) using a BLAST tab file and max scores from a TSV
+  Plotting tools:
     pasr_plot      Scatterplot with max score on the x-axis and score against the seed db on y-axis
-    matrix         Create alignment score matrix for tSNE embedding and DBSCAN clustering
-    cluster        Run tSNE embedding and DBSCAN clustering on input matrix
     casm_plot      Scatterplot of sequences with tSNE coordinates as axes
-    context        Parse context information from AASTK SQL database
     cugo_plot      Consensus genomic context plot of annotation, length, and transmembrane segments
 
   Database utilities
@@ -86,58 +77,7 @@ def main():
 
     try:
         ### PARSER FOR PASR FUNCTIONALITIES AND WORKFLOW ###
-        if args.subparser_name == 'build':
-            build(
-                seed_fasta=args.seed,
-                output=args.output,
-                threads=args.threads,
-                force=args.force
-            )
-
-        elif args.subparser_name == 'search':
-            search(
-                db_path=args.diamond_db,
-                query_path=args.query,
-                output_dir=args.output,
-                threads=args.threads,
-                sensitivity=args.sensitivity,
-                block=args.block,
-                chunk=args.chunk,
-                force=args.force
-            )
-
-        elif args.subparser_name == 'get_hit_seqs':
-            get_hit_seqs(
-                blast_tab=args.blast_output,
-                query_path=args.query,
-                output_dir=args.output,
-                db_path=args.db_path,
-                threads=args.threads,
-                key_column=args.key_column,
-                sql=args.sql,
-                force=args.force
-            )
-
-        elif args.subparser_name == 'max_score':
-            max_score(
-                extracted=args.extracted,
-                matrix=args.matrix,
-                output_dir=args.output,
-                force=args.force
-            )
-
-        elif args.subparser_name == 'bsr':
-            bsr(
-                blast_tab=args.blast_output,
-                max_scores_path=args.max_scores,
-                output_dir=args.output,
-                key_column=args.key_column,
-                column_info_path=args.column_info_path,
-                score_column=args.score_column,
-                force=args.force
-            )
-
-        elif args.subparser_name == 'pasr_plot':
+        if args.subparser_name == 'pasr_plot':
             pasr_plot(
                 bsr_file=args.bsr,
                 output_dir=args.output,
@@ -231,18 +171,6 @@ def main():
                 force=args.force
             )
 
-        elif args.subparser_name == 'context':
-            context(
-                fasta=args.fasta,
-                id_list=args.id_list,
-                db_path=args.db_path,
-                annotation=args.annotation,
-                cugo_range=args.cugo_range,
-                output_dir=args.output,
-                threads=args.threads,
-                force=args.force
-            )
-
         elif args.subparser_name == 'cugo_plot':
             cugo_plot(
                 context_path=args.context_path,
@@ -306,31 +234,6 @@ def main():
             )
 
         ### PARSER FOR CASM FUNCTIONALITIES AND WORKFLOW ###
-        elif args.subparser_name == 'matrix':
-            matrix(
-                fasta=args.fasta,
-                output=args.output,
-                subset=args.subset,
-                subset_size=args.subset_size,
-                threads=args.threads,
-                force=args.force
-            )
-
-        elif args.subparser_name == 'cluster':
-            cluster(
-                matrix_path=args.matrix_path,
-                matrix_metadata_path=args.metadata_matrix,
-                output=args.output,
-                perplexity=args.perplexity,
-                iterations=args.iterations,
-                exaggeration=args.exaggeration,
-                threads=args.threads,
-                n_svd_components=args.n_svd_components,
-                force=args.force,
-                large=args.large
-            )
-
-
         elif args.subparser_name == 'casm_plot':
             casm_plot(
                 clust_path=args.cluster_path,
@@ -397,14 +300,6 @@ def main():
                 threads=args.threads,
                 force=args.force
             )
-
-        elif args.subparser_name == 'gene_family':
-            gene_family(
-                master_sheet=args.master_sheet,
-                output_dir=args.output,
-                force=args.force
-            )
-
 
     except Exception as e:
         logger.error(f"Error executing command: {e}")
