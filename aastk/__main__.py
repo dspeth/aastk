@@ -113,6 +113,7 @@ def main():
                 threads=args.threads,
                 output_dir=args.output,
                 db_path=args.db_path,
+                key_column=args.key_column,
                 block=args.block,
                 chunk=args.chunk,
                 sensitivity=args.sensitivity,
@@ -176,6 +177,7 @@ def main():
                 context_path=args.context_path,
                 flank_lower=args.flank_lower,
                 flank_upper=args.flank_upper,
+                annotation=args.annotation,
                 top_n=args.top_n,
                 output=args.output,
                 cugo=args.cugo,
@@ -230,6 +232,7 @@ def main():
                 output=args.output,
                 db_path=args.db_path,
                 threads=args.threads,
+                sql=args.sql,
                 force=args.force
             )
 
