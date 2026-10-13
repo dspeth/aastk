@@ -978,7 +978,7 @@ def cugo_arrow_plot(context_path: str,
 
         annotation_centre = start + max(arrow_length - head_l, 0) / 2
         position_centre = start + max(arrow_length - head_l, 0) / 2
-        ax.text(annotation_centre, 1.025 + arrow_height / 2, arrow_annotation, rotation=45, ha='right', rotation_mode='anchor')
+        ax.text(annotation_centre, 1.025 + arrow_height / 2, arrow_annotation, rotation=-45, ha='right', rotation_mode='anchor')
         ax.text(position_centre, 0.9 - arrow_height / 2 - 0.1, str(position), ha='center')
 
         ax.add_patch(arrow)
@@ -988,9 +988,10 @@ def cugo_arrow_plot(context_path: str,
     ax.set_ylim(0, 2)
     ax.axis('off')
 
+    plt.tight_layout()
     plt.savefig(arrow_plot_path, dpi=300, bbox_inches='tight')
+    plt.close(fig)
     logger.info(f"Plot saved to {arrow_plot_path}")
-
 
 def cugo_select(context_path: str,
              position: int,
