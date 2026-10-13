@@ -806,9 +806,9 @@ def cugo(db_path: str,
          tmh_y_range: int = None,
          export: bool = False,
          export_dir: str = None,
-         homogeneity_threshold: float = None,
+         homogeneity_threshold: float = 0.75,
          homogeneity_window: int = 1,
-         sequence_frequency_threshold: float = None):
+         sequence_frequency_threshold: float = 0.75):
     """
     Complete CUGO workflow: generate context data and create comprehensive plots.
 
@@ -863,33 +863,32 @@ def cugo(db_path: str,
         logger.error("Context generation failed - no plots will be created")
         return None, None
 
-    if export:
-        homogeneity_df = compute_homogeneity_index(
-            context_file, flank_lower, flank_upper, bin_width, window=homogeneity_window
-        )
-        homogeneous_positions = set()
-        for position, data in homogeneity_df.iterrows():
-            if (data['relative sequence frequency'] >= sequence_frequency_threshold
-                    and data['homogeneity'] > homogeneity_threshold):
-                homogeneous_positions.add(position)
+    homogeneity_df = compute_homogeneity_index(
+        context_file, flank_lower, flank_upper, bin_width, window=homogeneity_window
+    )
+    homogeneous_positions = set()
+    for position, data in homogeneity_df.iterrows():
+        if (data['relative sequence frequency'] >= sequence_frequency_threshold
+                and data['homogeneity'] > homogeneity_threshold):
+            homogeneous_positions.add(position)
+            if export:
                 cugo_select(context_file, position, db_path, export_dir or output_dir, threads, filter_seqs=True, force=force)
 
-        # create gene arrow plot for homogeneous positions
-        if homogeneous_positions:
-            homogeneous_lower = min(homogeneous_positions)
-            homogeneous_upper = max(homogeneous_positions)
-            cugo_arrow_plot(
-                context_path=context_file,
-                flank_lower=homogeneous_lower,
-                flank_upper=homogeneous_upper,
-                output=output_dir,
-                annotation=annotation,
-                bin_width=bin_width,
-                svg=svg,
-                force=force
-            )
-        else:
-            logger.warning("No homogeneous positions found - no arrow plot will be created")
+    # create gene arrow plot for homogeneous positions
+    if homogeneous_positions:
+        homogeneous_lower = min(homogeneous_positions)
+        homogeneous_upper = max(homogeneous_positions)
+        cugo_arrow_plot(
+            context_path=context_file,
+            flank_lower=homogeneous_lower,
+            flank_upper=homogeneous_upper,
+            output=output_dir,
+            annotation=annotation,
+            bin_width=bin_width,
+            force=force
+        )
+    else:
+        logger.warning("No homogeneous positions found - no arrow plot will be created")
 
     # create comprehensive plots
     cugo_plot(
@@ -922,16 +921,12 @@ def cugo_arrow_plot(context_path: str,
                     output: str,
                     annotation: str,
                     bin_width: int = 50,
-                    svg: bool = False,
                     force: bool = False):
     # arrow style without broad head
     # color by annotation
     # label at 45° sloping downward to accommodate shorter genes
     dataset_name = determine_dataset_name(context_path, '.', 0, '_context')
-    if svg:
-        arrow_plot_path = ensure_path(output, f'{dataset_name}_cugo_arrow.svg', force=force)
-    else:
-        arrow_plot_path = ensure_path(output, f'{dataset_name}_cugo_arrow.png', force=force)
+    arrow_plot_path = ensure_path(output, f'{dataset_name}_cugo_arrow.svg', force=force)
 
     # Load context data
     cont = load_context_data(context_path, flank_lower, flank_upper)
@@ -983,16 +978,16 @@ def cugo_arrow_plot(context_path: str,
 
         annotation_centre = start + max(arrow_length - head_l, 0) / 2
         position_centre = start + max(arrow_length - head_l, 0) / 2
-        ax.text(annotation_centre, 1.025 + arrow_height / 2, arrow_annotation, rotation=-45, ha='right', rotation_mode='anchor')
+        ax.text(annotation_centre, 1.025 + arrow_height / 2, arrow_annotation, rotation=45, ha='right', rotation_mode='anchor')
         ax.text(position_centre, 0.9 - arrow_height / 2 - 0.1, str(position), ha='center')
 
         ax.add_patch(arrow)
         gene_context_length += arrow_length
+
     ax.set_xlim(-head_l, gene_context_length + head_l)
     ax.set_ylim(0, 2)
     ax.axis('off')
 
-    plt.tight_layout()
     plt.savefig(arrow_plot_path, dpi=300, bbox_inches='tight')
     logger.info(f"Plot saved to {arrow_plot_path}")
 
