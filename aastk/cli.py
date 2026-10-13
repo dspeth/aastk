@@ -207,6 +207,10 @@ def __low_level_environment_path(group, required=False):
     group.add_argument('-l', '--low_level_environment_path', type=str, required=required,
                        help='Path to low level environment data TSV file')
 
+def __master_sheet(group, required=False):
+    group.add_argument('-m', '--master_sheet', type=str, required=required,
+                       help='Path to GlobDB protein master sheet TSV file')
+
 def __matched(group, required=False):
     group.add_argument('-m', '--matched', type=str, required=required,
                        help='Path to matched sequences FASTA file from previous PASR run')
@@ -604,6 +608,13 @@ def get_main_parser():
             __taxonomy_column(grp)
             __output(grp)
             __threads(grp)
+            __force(grp)
+
+    with subparser(sub_parsers, 'gene_family', 'Generate per-gene-family info/synteny/validation YAML files from a GlobDB protein master sheet') as parser:
+        with arg_group(parser, 'Required arguments') as grp:
+            __master_sheet(grp, required=True)
+        with arg_group(parser, 'Optional') as grp:
+            __output(grp)
             __force(grp)
 
     return main_parser
