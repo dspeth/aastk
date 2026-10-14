@@ -294,6 +294,9 @@ def meta(db_path: str,
          include_low_level_environment: bool = False,
          include_high_level_env_category: bool = False,
          include_low_level_env_category: bool = False,
+         high_level_env_stacked_bar_plot: bool = False,
+         low_level_env_stacked_bar_plot: bool = False,
+         taxonomy_stacked_bar_plot: bool = False,
          all_metadata: bool = False,
          force: bool = False):
 
@@ -321,6 +324,14 @@ def meta(db_path: str,
         )
         return
 
+    if include_high_level_env_category is True:
+        high_level_env_stacked_bar_plot = True
+    elif include_low_level_env_category is True:
+        low_level_env_stacked_bar_plot = True
+    elif include_taxonomy is True:
+        taxonomy_stacked_bar_plot = True
+
+
     if all_metadata:
         include_annotation = True
         include_taxonomy = True
@@ -329,6 +340,9 @@ def meta(db_path: str,
         include_low_level_environment = True
         include_high_level_env_category = True
         include_low_level_env_category = True
+        high_level_env_stacked_bar_plot = True
+        low_level_env_stacked_bar_plot = True
+        taxonomy_stacked_bar_plot = True
 
     if not any([
         include_annotation,
@@ -437,10 +451,33 @@ def meta(db_path: str,
 
     logger.info(f"Metadata has been saved to {output_path}")
 
+    if include_taxonomy is True:
+        plot_taxonomy(header, batch_results)
+
     if missing_ids:
         logger.warning(
             f"{len(missing_ids)} sequence IDs were not found in the database"
         )
+
+
+def plot_taxonomy(header: list,
+                  batch_results: dict):
+    taxonomy_dict = {key: {} for key in TAXONOMY_COLUMNS}
+    for column in TAXONOMY_COLUMNS:
+        index = next((id for id, item in enumerate(header) if column in item), None)
+        for key, value in batch_results.items():
+            if isinstance(value, (tuple, list)) and index < len(value):
+                print(key, value[index])
+                taxonomy_dict[column][key] = value[index]
+            else:
+                print(f"WARNUNG: Key '{key}' has incomplete data: {value}")
+
+def meta_plot(batch_results: dict,
+              high_level_env_stacked_bar_plot: bool = False,
+              low_level_env_stacked_bar_plot: bool = False,
+              taxonomy_stacked_bar_plot: bool = False
+              ):
+    plot_taxonomy(batch_results)
 
 
 def list_metadata():
