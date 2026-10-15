@@ -2,6 +2,7 @@ import logging
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 from aastk.util import ensure_path, determine_dataset_name, read_fasta_to_dict
@@ -445,7 +446,7 @@ def meta(db_path: str,
     logger.info(f"Metadata has been saved to {output_path}")
 
     if include_taxonomy is True:
-        plot_taxonomy(header, results)
+        plot_taxonomy(header, results, output, dataset_name, force=force)
 
     if missing_ids:
         logger.warning(
@@ -455,7 +456,10 @@ def meta(db_path: str,
 
 def plot_taxonomy(header: list,
                   results: dict,
-                  top_n: int = 10):
+                  output: str,
+                  dataset_name: str,
+                  top_n: int = 10,
+                  force: bool = False):
     # start with phylum; omit genome_ID and domain
     taxonomy_dict = {key: {} for key in TAXONOMY_COLUMNS[2:]}
     for column in taxonomy_dict.keys():
@@ -477,7 +481,35 @@ def plot_taxonomy(header: list,
     column: dict(sorted(counts.items(), key=lambda x: x[1], reverse=True)[:top_n])
     for column, counts in taxonomy_dict.items()
     }
-    print(top_n_dict)
+
+    total = len(results)
+    for column, counts in top_n_dict.items():
+        rank_name = 'Order' if column == 'order_tax' else column.capitalize()
+        taxa = [str(taxon).replace('_', ' ') for taxon in counts.keys()]
+        values = list(counts.values())
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+        bars = ax.bar(taxa, values, color='#2a78d6', width=0.7)
+        ax.bar_label(bars, padding=3, fontsize=9)
+
+        ax.set_title(f'{rank_name}: top {len(taxa)} taxa (n = {total:,} sequences)')
+        ax.set_xlabel(rank_name)
+        ax.set_ylabel('Number of sequences')
+        ax.tick_params(axis='x', labelrotation=45)
+        plt.setp(ax.get_xticklabels(), ha='right', rotation_mode='anchor')
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.margins(y=0.1)
+
+        plot_path = ensure_path(
+            output,
+            f'{dataset_name}_taxonomy_{column}_top{top_n}.svg',
+            force=force
+        )
+        plt.tight_layout()
+        plt.savefig(plot_path, format='svg', bbox_inches='tight')
+        plt.close(fig)
+        logger.info(f"Plot saved to {plot_path}")
 
 def meta_plot(results: dict,
               high_level_env_stacked_bar_plot: bool = False,
