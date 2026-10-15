@@ -279,7 +279,7 @@ def process_batch(db_path: str,
     result_dict = {row[0]: row for row in results}
 
     conn.close()
-    return batch, result_dict
+    return result_dict
 
 
 def meta(db_path: str,
@@ -395,9 +395,8 @@ def meta(db_path: str,
         for i in range(0, len(seq_ids), BATCH_SIZE)
     ]
 
-    found_ids = set()
     missing_ids = set()
-    batch_results = {}
+    results = {}
 
     # Process batches in parallel
     with ThreadPoolExecutor(max_workers=threads) as executor:
@@ -422,37 +421,31 @@ def meta(db_path: str,
                 total=len(batches),
                 desc="Querying database"
         ):
-            batch_idx = futures[future]
             try:
-                batch, result_dict = future.result()
-                batch_results[batch_idx] = (batch, result_dict)
+                results.update(future.result())
             except Exception as e:
                 logger.error(
-                    f"Error processing batch {batch_idx}: {e}"
+                    f"Error processing batch {futures[future]}: {e}"
                 )
 
     # Write results in original order
     with open(output_path, 'w') as out:
         out.write('\t'.join(header) + '\n')
 
-        for batch_idx in sorted(batch_results.keys()):
-            batch, result_dict = batch_results[batch_idx]
-
-            for seq_id in batch:
-                if seq_id in result_dict:
-                    found_ids.add(seq_id)
-                    row = [
-                        str(x) if x is not None else ''
-                        for x in result_dict[seq_id]
-                    ]
-                    out.write('\t'.join(row) + '\n')
-                else:
-                    missing_ids.add(seq_id)
+        for seq_id in seq_ids:
+            if seq_id in results:
+                row = [
+                    str(x) if x is not None else ''
+                    for x in results[seq_id]
+                ]
+                out.write('\t'.join(row) + '\n')
+            else:
+                missing_ids.add(seq_id)
 
     logger.info(f"Metadata has been saved to {output_path}")
 
     if include_taxonomy is True:
-        plot_taxonomy(header, batch_results)
+        plot_taxonomy(header, results)
 
     if missing_ids:
         logger.warning(
