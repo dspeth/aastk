@@ -482,28 +482,33 @@ def plot_taxonomy(header: list,
     for column, counts in taxonomy_dict.items()
     }
 
-    for column, counts in top_n_dict.items():
+    fig, axes = plt.subplots(1, len(top_n_dict), figsize=(3.5 * len(top_n_dict), 8))
+    for ax, (column, counts) in zip(axes, top_n_dict.items()):
         rank_name = 'Order' if column == 'order_tax' else column.capitalize()
-        taxa = [str(taxon) for taxon in counts.keys()]
-        fig, ax = plt.subplots(figsize=(6, 10))
         bottom = 0
-        for taxon, count in zip(taxa, counts.values()):
-            ax.bar(rank_name, count, bottom=bottom, width=3, label=taxon)
+        for taxon, count in reversed(list(counts.items())):
+            ax.bar(0, count, bottom=bottom, width=0.8, label=str(taxon), linewidth=0)
             bottom += count
-        ax.set_ylabel('Number of sequences')
+        ax.set_xlim(-0.75, 0.75)
+        ax.set_ylim(0, bottom)
+        ax.set_xticks([])
+        ax.set_title(rank_name)
+        for side in ['top', 'right', 'bottom']:
+            ax.spines[side].set_visible(False)
         handles, labels = ax.get_legend_handles_labels()
-        ax.legend(handles[::-1], labels[::-1], bbox_to_anchor=(1.02, 1), loc='upper left', frameon=False)
+        ax.legend(handles[::-1], labels[::-1], loc='upper center', bbox_to_anchor=(0.5, -0.02), frameon=False, fontsize=8)
+    axes[0].set_ylabel('Number of sequences')
 
-        plot_path = ensure_path(
-            output,
-            f'{dataset_name}_taxonomy_{column}_top{top_n}_stacked.svg',
-            force=force
-        )
-        plt.tight_layout()
-        plt.savefig(plot_path, format='svg', bbox_inches='tight')
-        plt.close(fig)
-        logger.info(f"Plot saved to {plot_path}")
-
+    plot_path = ensure_path(
+        output,
+        f'{dataset_name}_taxonomy_top{top_n}_stacked.svg',
+        force=force
+    )
+    plt.tight_layout()
+    plt.savefig(plot_path, format='svg', bbox_inches='tight')
+    plt.close(fig)
+    logger.info(f"Plot saved to {plot_path}")
+    
 def meta_plot(results: dict,
               high_level_env_stacked_bar_plot: bool = False,
               low_level_env_stacked_bar_plot: bool = False,
