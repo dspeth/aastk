@@ -454,23 +454,37 @@ def meta(db_path: str,
 
 
 def plot_taxonomy(header: list,
-                  batch_results: dict):
-    taxonomy_dict = {key: {} for key in TAXONOMY_COLUMNS}
-    for column in TAXONOMY_COLUMNS:
+                  results: dict,
+                  top_n: int = 10):
+    # start with phylum; omit genome_ID and domain
+    taxonomy_dict = {key: {} for key in TAXONOMY_COLUMNS[2:]}
+    for column in taxonomy_dict.keys():
         index = next((id for id, item in enumerate(header) if column in item), None)
-        for key, value in batch_results.items():
+        for key, value in results.items():
             if isinstance(value, (tuple, list)) and index < len(value):
-                print(key, value[index])
-                taxonomy_dict[column][key] = value[index]
+                if results[key][index] not in taxonomy_dict[column].keys():
+                    taxonomy_dict[column][results[key][index]] = 1
+                else:
+                    taxonomy_dict[column][results[key][index]] += 1
             else:
                 print(f"WARNUNG: Key '{key}' has incomplete data: {value}")
 
-def meta_plot(batch_results: dict,
+    # get top n per taxonomic rank
+    # outer loop: iterate over ranks -> column = rank name, counts = {taxon: count}
+    # inner sort: x = (taxon, count) tuple, x[1] = count -> sort taxa by count, descending
+    # slice the sorted list before converting back to dict (dicts can't be sliced)
+    top_n_dict = {
+    column: dict(sorted(counts.items(), key=lambda x: x[1], reverse=True)[:top_n])
+    for column, counts in taxonomy_dict.items()
+    }
+    print(top_n_dict)
+
+def meta_plot(results: dict,
               high_level_env_stacked_bar_plot: bool = False,
               low_level_env_stacked_bar_plot: bool = False,
               taxonomy_stacked_bar_plot: bool = False
               ):
-    plot_taxonomy(batch_results)
+    plot_taxonomy(results)
 
 
 def list_metadata():
