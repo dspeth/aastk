@@ -482,28 +482,21 @@ def plot_taxonomy(header: list,
     for column, counts in taxonomy_dict.items()
     }
 
-    total = len(results)
     for column, counts in top_n_dict.items():
         rank_name = 'Order' if column == 'order_tax' else column.capitalize()
-        taxa = [str(taxon).replace('_', ' ') for taxon in counts.keys()]
-        values = list(counts.values())
-
-        fig, ax = plt.subplots(figsize=(10, 6))
-        bars = ax.bar(taxa, values, color='#2a78d6', width=0.7)
-        ax.bar_label(bars, padding=3, fontsize=9)
-
-        ax.set_title(f'{rank_name}: top {len(taxa)} taxa (n = {total:,} sequences)')
-        ax.set_xlabel(rank_name)
+        taxa = [str(taxon) for taxon in counts.keys()]
+        fig, ax = plt.subplots(figsize=(6, 10))
+        bottom = 0
+        for taxon, count in zip(taxa, counts.values()):
+            ax.bar(rank_name, count, bottom=bottom, width=3, label=taxon)
+            bottom += count
         ax.set_ylabel('Number of sequences')
-        ax.tick_params(axis='x', labelrotation=45)
-        plt.setp(ax.get_xticklabels(), ha='right', rotation_mode='anchor')
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        ax.margins(y=0.1)
+        handles, labels = ax.get_legend_handles_labels()
+        ax.legend(handles[::-1], labels[::-1], bbox_to_anchor=(1.02, 1), loc='upper left', frameon=False)
 
         plot_path = ensure_path(
             output,
-            f'{dataset_name}_taxonomy_{column}_top{top_n}.svg',
+            f'{dataset_name}_taxonomy_{column}_top{top_n}_stacked.svg',
             force=force
         )
         plt.tight_layout()
