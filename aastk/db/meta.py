@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import hashlib
+import numpy as np
 
 from aastk.pasr import pasr_select
 from aastk.util import ensure_path, determine_dataset_name, read_fasta_to_dict
@@ -25,6 +26,10 @@ logger = logging.getLogger(__name__)
 
 # color maps used for plotting in meta taxonomy plot
 COLOR_MAPS = ['Blues', 'Oranges', 'Greens', 'Purples', 'Reds']
+DOMAIN_COLORS = {
+    'Bacteria': '#3b3b58',
+    'Archaea':  '#c9a227',
+}
 
 GENOME_ID_MATCH = """
     CASE
@@ -458,6 +463,54 @@ def meta(db_path: str,
             f"{len(missing_ids)} sequence IDs were not found in the database"
         )
 
+def taxon_color(header: list,
+                results: dict,
+                top_n_dict: dict,
+                top_n: int):
+    phylum_to_colormap = {}
+    for i, phylum in enumerate(top_n_dict['phylum'].keys()):
+        if phylum != 'Other':
+            phylum_to_colormap[phylum] = COLOR_MAPS[i]
+
+    # save top_n shades for each color map; 1 to 0.25 to begin with strongest shade
+    color_shades = {}
+    for color_map in COLOR_MAPS:
+        cmap = plt.get_cmap(color_map)
+        # get RGB array for equidistantly spaced points on the Colormap scale
+        color_shades[color_map] = cmap(np.linspace(1, 0.25, top_n + 1))
+
+    # map phylum to color_shade
+    phylum_color = {phylum: color_shades[phylum_to_colormap[phylum]][0] for phylum in phylum_to_colormap.keys()}
+
+    # map taxon to phylum and assign color shade according to top_n directed sort
+    phylum_index = list(header).index('phylum')
+    taxon_to_phylum = {}
+    # only map phylum to ranks below phylum
+    for rank, counts in list(top_n_dict.items())[2:]:
+        rank_index = header.index(rank)
+        taxon_to_phylum[rank] = {}
+        for row in results.values():
+            taxon = row[rank_index]
+            if taxon in counts:
+                taxon_to_phylum[rank][taxon] = row[phylum_index]
+
+    # map taxon to correct phylum-derived shade
+    taxon_to_phylum_color_shade = {}
+    for rank, counts in list(top_n_dict.items())[2:]:
+        taxon_to_phylum_color_shade[rank] = {}
+        phylum_count = {}
+        for taxon in counts:
+            if taxon == 'Other':
+                continue
+            phylum = taxon_to_phylum[rank][taxon]
+            # keep track of how many times phylum was encountered starting with 1
+            # as 0 is occupied by phylum itself when it comes to color mapping
+            phylum_count[phylum] = phylum_count.get(phylum, 0) + 1
+            shades = color_shades[phylum_to_colormap[phylum]]
+            taxon_to_phylum_color_shade[rank][taxon] = shades[phylum_count[phylum]]
+
+    return phylum_color, taxon_to_phylum_color_shade
+
 
 def plot_taxonomy(header: list,
                   results: dict,
@@ -494,15 +547,19 @@ def plot_taxonomy(header: list,
         if other_count > 0:
             top_n_dict[key]['Other'] = other_count
 
+    phylum_color, taxon_shades = taxon_color(header, results, top_n_dict, top_n)
+
     fig, axes = plt.subplots(1, len(top_n_dict), figsize=(3.5 * len(top_n_dict), 8), sharey=True)
     for ax, (column, counts) in zip(axes, top_n_dict.items()):
         rank_name = 'Order' if column == 'order_tax' else column.capitalize()
         bottom = 0
         for taxon, count in counts.items():
-            if taxon == 'Other':
-                color = '#cccccc'
+            if column == 'domain':
+                color = DOMAIN_COLORS.get(str(taxon).replace('d__', ''), '#cccccc')
+            elif column == 'phylum':
+                color = phylum_color.get(taxon, '#cccccc')
             else:
-                color = '#' + hashlib.md5(str(taxon).encode()).hexdigest()[:6]
+                color = taxon_shades.get(column, {}).get(taxon, '#cccccc')
             ax.bar(0, count, bottom=bottom, width=0.8, label=str(taxon), color=color, linewidth=0)
             bottom += count
         ax.set_xlim(-0.75, 0.75)
