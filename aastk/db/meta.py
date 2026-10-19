@@ -4,7 +4,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+import hashlib
 
+from aastk.pasr import pasr_select
 from aastk.util import ensure_path, determine_dataset_name, read_fasta_to_dict
 from aastk.db.schema import (
     BASE_COLUMNS,
@@ -20,6 +22,9 @@ from aastk.db.schema import (
 )
 
 logger = logging.getLogger(__name__)
+
+# color maps used for plotting in meta taxonomy plot
+COLOR_MAPS = ['Blues', 'Oranges', 'Greens', 'Purples', 'Reds']
 
 GENOME_ID_MATCH = """
     CASE
@@ -458,10 +463,10 @@ def plot_taxonomy(header: list,
                   results: dict,
                   output: str,
                   dataset_name: str,
-                  top_n: int = 10,
+                  top_n: int = 5,
                   force: bool = False):
-    # start with phylum; omit genome_ID and domain
-    taxonomy_dict = {key: {} for key in TAXONOMY_COLUMNS[2:]}
+    # start with phylum; omit genome_ID, genus and species
+    taxonomy_dict = {key: {} for key in TAXONOMY_COLUMNS[1:6]}
     for column in taxonomy_dict.keys():
         index = next((id for id, item in enumerate(header) if column in item), None)
         for key, value in results.items():
@@ -471,7 +476,7 @@ def plot_taxonomy(header: list,
                 else:
                     taxonomy_dict[column][results[key][index]] += 1
             else:
-                print(f"WARNUNG: Key '{key}' has incomplete data: {value}")
+                logger.warning(f"Key '{key}' has incomplete data: {value}")
 
     # get top n per taxonomic rank
     # outer loop: iterate over ranks -> column = rank name, counts = {taxon: count}
@@ -482,15 +487,26 @@ def plot_taxonomy(header: list,
     for column, counts in taxonomy_dict.items()
     }
 
-    fig, axes = plt.subplots(1, len(top_n_dict), figsize=(3.5 * len(top_n_dict), 8))
+    total_sequences = len(results)
+    for key in top_n_dict.keys():
+        top_n_sum = sum(top_n_dict[key].values())
+        other_count = total_sequences - top_n_sum
+        if other_count > 0:
+            top_n_dict[key]['Other'] = other_count
+
+    fig, axes = plt.subplots(1, len(top_n_dict), figsize=(3.5 * len(top_n_dict), 8), sharey=True)
     for ax, (column, counts) in zip(axes, top_n_dict.items()):
         rank_name = 'Order' if column == 'order_tax' else column.capitalize()
         bottom = 0
-        for taxon, count in reversed(list(counts.items())):
-            ax.bar(0, count, bottom=bottom, width=0.8, label=str(taxon), linewidth=0)
+        for taxon, count in counts.items():
+            if taxon == 'Other':
+                color = '#cccccc'
+            else:
+                color = '#' + hashlib.md5(str(taxon).encode()).hexdigest()[:6]
+            ax.bar(0, count, bottom=bottom, width=0.8, label=str(taxon), color=color, linewidth=0)
             bottom += count
         ax.set_xlim(-0.75, 0.75)
-        ax.set_ylim(0, bottom)
+        ax.set_ylim(0, total_sequences)
         ax.set_xticks([])
         ax.set_title(rank_name)
         for side in ['top', 'right', 'bottom']:
@@ -508,7 +524,7 @@ def plot_taxonomy(header: list,
     plt.savefig(plot_path, format='svg', bbox_inches='tight')
     plt.close(fig)
     logger.info(f"Plot saved to {plot_path}")
-    
+
 def meta_plot(results: dict,
               high_level_env_stacked_bar_plot: bool = False,
               low_level_env_stacked_bar_plot: bool = False,
