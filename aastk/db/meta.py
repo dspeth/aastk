@@ -25,7 +25,7 @@ from aastk.db.schema import (
 logger = logging.getLogger(__name__)
 
 # color maps used for plotting in meta taxonomy plot
-COLOR_MAPS = ['Blues', 'Oranges', 'Greens', 'Purples', 'Reds']
+COLOR_MAPS = ['Greens', 'Blues', 'Oranges', 'Purples', 'Reds']
 DOMAIN_COLORS = {
     'Bacteria': '#3b3b58',
     'Archaea':  '#c9a227',
@@ -477,7 +477,7 @@ def taxon_color(header: list,
     for color_map in COLOR_MAPS:
         cmap = plt.get_cmap(color_map)
         # get RGB array for equidistantly spaced points on the Colormap scale
-        color_shades[color_map] = cmap(np.linspace(1, 0.25, top_n + 1))
+        color_shades[color_map] = cmap(np.linspace(0.8, 0.25, top_n))
 
     # map phylum to color_shade
     phylum_color = {phylum: color_shades[phylum_to_colormap[phylum]][0] for phylum in phylum_to_colormap.keys()}
@@ -494,9 +494,19 @@ def taxon_color(header: list,
             if taxon in counts:
                 taxon_to_phylum[rank][taxon] = row[phylum_index]
 
+    # sorted copy: ranks below phylum by phylum abundance, then in-rank count
+    sorted_top_n = dict(top_n_dict)
+    phylum_order = {p: i for i, p in enumerate(top_n_dict['phylum'])}
+    for rank, counts in list(top_n_dict.items())[2:]:
+        taxa = sorted((t for t in counts if t != 'Other'),
+                      key=lambda t: (phylum_order.get(taxon_to_phylum[rank][t], len(phylum_order)), -counts[t]))
+        sorted_top_n[rank] = {t: counts[t] for t in taxa}
+        if 'Other' in counts:
+            sorted_top_n[rank]['Other'] = counts['Other']
+
     # map taxon to correct phylum-derived shade
     taxon_to_phylum_color_shade = {}
-    for rank, counts in list(top_n_dict.items())[2:]:
+    for rank, counts in list(sorted_top_n.items())[2:]:
         taxon_to_phylum_color_shade[rank] = {}
         phylum_count = {}
         for taxon in counts:
@@ -505,11 +515,12 @@ def taxon_color(header: list,
             phylum = taxon_to_phylum[rank][taxon]
             # keep track of how many times phylum was encountered starting with 1
             # as 0 is occupied by phylum itself when it comes to color mapping
-            phylum_count[phylum] = phylum_count.get(phylum, 0) + 1
+            phylum_count[phylum] = phylum_count.get(phylum, 0)
             shades = color_shades[phylum_to_colormap[phylum]]
             taxon_to_phylum_color_shade[rank][taxon] = shades[phylum_count[phylum]]
+            phylum_count[phylum] = phylum_count.get(phylum, 0) + 1
 
-    return phylum_color, taxon_to_phylum_color_shade
+    return phylum_color, taxon_to_phylum_color_shade, sorted_top_n
 
 
 def plot_taxonomy(header: list,
@@ -547,10 +558,10 @@ def plot_taxonomy(header: list,
         if other_count > 0:
             top_n_dict[key]['Other'] = other_count
 
-    phylum_color, taxon_shades = taxon_color(header, results, top_n_dict, top_n)
+    phylum_color, taxon_shades, sorted_top_n = taxon_color(header, results, top_n_dict, top_n)
 
     fig, axes = plt.subplots(1, len(top_n_dict), figsize=(3.5 * len(top_n_dict), 8), sharey=True)
-    for ax, (column, counts) in zip(axes, top_n_dict.items()):
+    for ax, (column, counts) in zip(axes, sorted_top_n.items()):
         rank_name = 'Order' if column == 'order_tax' else column.capitalize()
         bottom = 0
         for taxon, count in counts.items():
