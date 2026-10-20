@@ -27,8 +27,8 @@ logger = logging.getLogger(__name__)
 # color maps used for plotting in meta taxonomy plot
 COLOR_MAPS = ['Greens', 'Blues', 'Oranges', 'Purples', 'Reds']
 DOMAIN_COLORS = {
-    'Bacteria': '#3b3b58',
-    'Archaea':  '#c9a227',
+    'Bacteria': '#708090',
+    'Archaea':  '#DCDCDC',
 }
 
 GENOME_ID_MATCH = """
