@@ -591,8 +591,8 @@ def plot_taxonomy(header: list,
         for side in ['top', 'right', 'bottom']:
             ax.spines[side].set_visible(False)
         handles, labels = ax.get_legend_handles_labels()
-        ax.legend(handles[::-1], labels[::-1], loc='upper center', bbox_to_anchor=(0.5, -0.02), frameon=False, fontsize=8)
-    axes[0].set_ylabel('Number of sequences')
+        ax.legend(handles[::-1], labels[::-1], loc='upper center', bbox_to_anchor=(0.5, -0.02), frameon=False, fontsize=12)
+    axes[0].set_ylabel('Number of sequences', fontsize=15)
 
     plot_path = ensure_path(
         output,
