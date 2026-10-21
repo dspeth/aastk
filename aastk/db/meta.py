@@ -458,6 +458,9 @@ def meta(db_path: str,
     if include_taxonomy is True:
         plot_taxonomy(header, results, output, dataset_name, force=force)
 
+    if HIGH_LEVEL_ENV_CATEGORY_COLUMN in header and LOW_LEVEL_ENV_CATEGORY_COLUMN in header:
+        plot_environment(header, results, output, dataset_name, force=force)
+
     if missing_ids:
         logger.warning(
             f"{len(missing_ids)} sequence IDs were not found in the database"
@@ -603,6 +606,62 @@ def plot_taxonomy(header: list,
     plt.savefig(plot_path, format='svg', bbox_inches='tight')
     plt.close(fig)
     logger.info(f"Plot saved to {plot_path}")
+
+
+def plot_environment(header: list,
+                     results: dict,
+                     output: str,
+                     dataset_name: str,
+                     force: bool = False):
+    env_dict = {key: {} for key in [HIGH_LEVEL_ENV_CATEGORY_COLUMN, LOW_LEVEL_ENV_CATEGORY_COLUMN]}
+    for column in env_dict.keys():
+        index = header.index(column)
+        for row in results.values():
+            category = row[index] if row[index] is not None else 'No data'
+            env_dict[column][category] = env_dict[column].get(category, 0) + 1
+
+    sorted_env_dict = {
+        column: dict(sorted(counts.items(), key=lambda x: x[1], reverse=True))
+        for column, counts in env_dict.items()
+    }
+
+    level_names = {
+        HIGH_LEVEL_ENV_CATEGORY_COLUMN: 'High-level environment',
+        LOW_LEVEL_ENV_CATEGORY_COLUMN: 'Low-level environment',
+    }
+    total_sequences = len(results)
+
+    fig, axes = plt.subplots(1, len(sorted_env_dict), figsize=(3.5 * len(sorted_env_dict), 8), sharey=True)
+    for ax, (column, counts) in zip(axes, sorted_env_dict.items()):
+        bottom = 0
+        for category, count in counts.items():
+            if category == 'No data':
+                color = '#cccccc'
+            else:
+                color = '#' + hashlib.md5(str(category).encode()).hexdigest()[:6]
+            ax.bar(0, count, bottom=bottom, width=0.8, label=category.replace('_', ' '), color=color, linewidth=0)
+            bottom += count
+        ax.set_xlim(-0.75, 0.75)
+        ax.set_ylim(0, total_sequences)
+        ax.set_xticks([])
+        n_categories = len([category for category in counts if category != 'No data'])
+        ax.set_title(f'{level_names[column]}\n({n_categories} {"category" if n_categories == 1 else "categories"})', fontsize=15)
+        for side in ['top', 'right', 'bottom']:
+            ax.spines[side].set_visible(False)
+        handles, labels = ax.get_legend_handles_labels()
+        ax.legend(handles[::-1], labels[::-1], loc='upper center', bbox_to_anchor=(0.5, -0.02), frameon=False, fontsize=12)
+    axes[0].set_ylabel('Number of sequences', fontsize=15)
+
+    plot_path = ensure_path(
+        output,
+        f'{dataset_name}_environment_stacked.svg',
+        force=force
+    )
+    plt.tight_layout()
+    plt.savefig(plot_path, format='svg', bbox_inches='tight')
+    plt.close(fig)
+    logger.info(f"Plot saved to {plot_path}")
+
 
 def meta_plot(results: dict,
               high_level_env_stacked_bar_plot: bool = False,
