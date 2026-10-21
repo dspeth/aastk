@@ -617,8 +617,10 @@ def plot_environment(header: list,
     for column in env_dict.keys():
         index = header.index(column)
         for row in results.values():
-            category = row[index] if row[index] is not None else 'No data'
+            category = row[index]
             env_dict[column][category] = env_dict[column].get(category, 0) + 1
+
+    no_data_counts = {column: counts.pop(None, 0) for column, counts in env_dict.items()}
 
     sorted_env_dict = {
         column: dict(sorted(counts.items(), key=lambda x: x[1], reverse=True))
@@ -629,32 +631,31 @@ def plot_environment(header: list,
         HIGH_LEVEL_ENV_CATEGORY_COLUMN: 'High-level environment',
         LOW_LEVEL_ENV_CATEGORY_COLUMN: 'Low-level environment',
     }
-    total_sequences = len(results)
 
-    fig, axes = plt.subplots(1, len(sorted_env_dict), figsize=(3.5 * len(sorted_env_dict), 8), sharey=True)
+    height_ratios = [max(len(counts), 1) for counts in sorted_env_dict.values()]
+    fig, axes = plt.subplots(len(sorted_env_dict), 1,
+                             figsize=(10, 0.35 * sum(height_ratios) + 3),
+                             gridspec_kw={'height_ratios': height_ratios})
     for ax, (column, counts) in zip(axes, sorted_env_dict.items()):
-        bottom = 0
-        for category, count in counts.items():
-            if category == 'No data':
-                color = '#cccccc'
-            else:
-                color = '#' + hashlib.md5(str(category).encode()).hexdigest()[:6]
-            ax.bar(0, count, bottom=bottom, width=0.8, label=category.replace('_', ' '), color=color, linewidth=0)
-            bottom += count
-        ax.set_xlim(-0.75, 0.75)
-        ax.set_ylim(0, total_sequences)
-        ax.set_xticks([])
-        n_categories = len([category for category in counts if category != 'No data'])
-        ax.set_title(f'{level_names[column]}\n({n_categories} {"category" if n_categories == 1 else "categories"})', fontsize=15)
-        for side in ['top', 'right', 'bottom']:
+        categories = list(counts.keys())
+        colors = ['#' + hashlib.md5(str(category).encode()).hexdigest()[:6] for category in categories]
+        bars = ax.barh([category.replace('_', ' ') for category in categories], list(counts.values()),
+                       color=colors, linewidth=0)
+        ax.bar_label(bars, padding=3, fontsize=12)
+        ax.invert_yaxis()
+        ax.tick_params(axis='y', labelsize=12)
+        n_categories = len(categories)
+        title = f'{level_names[column]} ({n_categories} {"category" if n_categories == 1 else "categories"})'
+        if no_data_counts[column] > 0:
+            title += f'\n{no_data_counts[column]} sequences without data'
+        ax.set_title(title, fontsize=15)
+        for side in ['top', 'right']:
             ax.spines[side].set_visible(False)
-        handles, labels = ax.get_legend_handles_labels()
-        ax.legend(handles[::-1], labels[::-1], loc='upper center', bbox_to_anchor=(0.5, -0.02), frameon=False, fontsize=12)
-    axes[0].set_ylabel('Number of sequences', fontsize=15)
+    axes[-1].set_xlabel('Number of sequences', fontsize=15)
 
     plot_path = ensure_path(
         output,
-        f'{dataset_name}_environment_stacked.svg',
+        f'{dataset_name}_environment.svg',
         force=force
     )
     plt.tight_layout()
