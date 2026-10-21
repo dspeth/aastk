@@ -577,7 +577,7 @@ def plot_taxonomy(header: list,
         ax.set_ylim(0, total_sequences)
         ax.set_xticks([])
         if column == 'domain':
-            ax.set_title(rank_name)
+            ax.set_title(rank_name, fontsize=15)
         else:
             rank_forms = {
                 'phylum': ('phylum', 'phyla'),
@@ -587,7 +587,7 @@ def plot_taxonomy(header: list,
             }
             singular, plural = rank_forms.get(column, ('taxon', 'taxa'))
             n_taxa = len(taxonomy_dict[column])
-            ax.set_title(f'{rank_name}\n({n_taxa} {singular if n_taxa == 1 else plural})')
+            ax.set_title(f'{rank_name}\n({n_taxa} {singular if n_taxa == 1 else plural})', fontsize=15)
         for side in ['top', 'right', 'bottom']:
             ax.spines[side].set_visible(False)
         handles, labels = ax.get_legend_handles_labels()
