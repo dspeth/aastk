@@ -340,6 +340,7 @@ def main():
                 force=args.force,
                 svg=args.svg,
                 show_cluster_numbers=args.show,
+                threads=args.threads,
             )
 
         elif args.subparser_name == 'casm':

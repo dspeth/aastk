@@ -14,6 +14,8 @@ from aastk.db.schema import (
 from aastk.cugo import filter
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from tqdm import tqdm
 import numpy as np
 import pandas as pd
 import scipy.sparse
@@ -414,63 +416,79 @@ ENV_CATEGORY_VIEWS = {
     LOW_LEVEL_ENV_CATEGORY_COLUMN: LOW_LEVEL_ENV_VIEW,
 }
 
+VALID_PROTEIN_COLS = BASE_COLUMNS[1:] + ANNOTATION_COLUMNS
+VALID_GENOME_COLS = TAXONOMY_COLUMNS + CULTURE_COLLECTION_COLUMNS + LOW_LEVEL_ENV_COLUMNS + HIGH_LEVEL_ENV_COLUMNS
+
+def fetch_metadata_batch(db_path: str,
+                         batch: list,
+                         column: str):
+    conn = sqlite3.connect(db_path)
+    placeholders = ','.join(['?'] * len(batch))
+
+    if column in VALID_PROTEIN_COLS:
+        query = f"""SELECT seqID, {column} FROM protein_data WHERE seqID IN ({placeholders})"""
+
+    elif column in VALID_GENOME_COLS:
+        query = f"""
+            SELECT p.seqID, g.{column}
+            FROM protein_data p
+            LEFT JOIN genome_data g ON
+                CASE
+                    WHEN instr(p.seqID, '___') > 0
+                    THEN substr(p.seqID, 1, instr(p.seqID, '___') - 1)
+                    ELSE p.seqID
+                END = g.genome_ID
+            WHERE p.seqID IN ({placeholders})
+        """
+
+    elif column in ENV_CATEGORY_VIEWS:
+        view = ENV_CATEGORY_VIEWS[column]
+        query = f"""
+            SELECT p.seqID, v.{column}
+            FROM protein_data p
+            LEFT JOIN {view} v ON
+                CASE
+                    WHEN instr(p.seqID, '___') > 0
+                    THEN substr(p.seqID, 1, instr(p.seqID, '___') - 1)
+                    ELSE p.seqID
+                END = v.genome_ID
+            WHERE p.seqID IN ({placeholders})
+        """
+
+    batch_df = pd.read_sql_query(query, conn, params=batch)
+    conn.close()
+    return batch_df
+
 def fetch_protein_metadata(db_path: str,
                            protein_ids: list,
                            column: str,
-                           batch_size: int = 500
+                           batch_size: int = 500,
+                           threads: int = 1
                            ):
-    valid_protein_cols = BASE_COLUMNS[1:] + ANNOTATION_COLUMNS
-    valid_genome_cols = TAXONOMY_COLUMNS + CULTURE_COLLECTION_COLUMNS + LOW_LEVEL_ENV_COLUMNS + HIGH_LEVEL_ENV_COLUMNS
-
-    if column not in valid_protein_cols and column not in valid_genome_cols and column not in ENV_CATEGORY_VIEWS:
+    if column not in VALID_PROTEIN_COLS and column not in VALID_GENOME_COLS and column not in ENV_CATEGORY_VIEWS:
         logger.warning(f"No valid metadata columns requested")
         return pd.DataFrame({'seqID': protein_ids})
 
-    conn = sqlite3.connect(db_path)
+    batches = [
+        protein_ids[i:i + batch_size]
+        for i in range(0, len(protein_ids), batch_size)
+    ]
+    logger.info(f"Fetching metadata in {len(batches)} batches")
+
     all_results = []
-    n_batches = (len(protein_ids) + batch_size - 1) // batch_size
-    logger.info(f"Fetching metadata in {n_batches} batches")
+    with ThreadPoolExecutor(max_workers=threads) as executor:
+        futures = {
+            executor.submit(fetch_metadata_batch, db_path, batch, column): idx
+            for idx, batch in enumerate(batches)
+        }
 
-    for i in range(0, len(protein_ids), batch_size):
-        batch = protein_ids[i:i + batch_size]
-        placeholders = ','.join(['?'] * len(batch))
+        for future in tqdm(
+                as_completed(futures),
+                total=len(batches),
+                desc="Fetching metadata"
+        ):
+            all_results.append(future.result())
 
-        if column in valid_protein_cols:
-            query = f"""SELECT seqID, {column} FROM protein_data WHERE seqID IN ({placeholders})"""
-            batch_df = pd.read_sql_query(query, conn, params=batch)
-
-        elif column in valid_genome_cols:
-            query = f"""
-                SELECT p.seqID, g.{column}
-                FROM protein_data p
-                LEFT JOIN genome_data g ON
-                    CASE
-                        WHEN instr(p.seqID, '___') > 0
-                        THEN substr(p.seqID, 1, instr(p.seqID, '___') - 1)
-                        ELSE p.seqID
-                    END = g.genome_ID
-                WHERE p.seqID IN ({placeholders})
-            """
-            batch_df = pd.read_sql_query(query, conn, params=batch)
-
-        elif column in ENV_CATEGORY_VIEWS:
-            view = ENV_CATEGORY_VIEWS[column]
-            query = f"""
-                SELECT p.seqID, v.{column}
-                FROM protein_data p
-                LEFT JOIN {view} v ON
-                    CASE
-                        WHEN instr(p.seqID, '___') > 0
-                        THEN substr(p.seqID, 1, instr(p.seqID, '___') - 1)
-                        ELSE p.seqID
-                    END = v.genome_ID
-                WHERE p.seqID IN ({placeholders})
-            """
-            batch_df = pd.read_sql_query(query, conn, params=batch)
-
-        all_results.append(batch_df)
-
-    conn.close()
     df = pd.concat(all_results, ignore_index=True)
     logger.info(f"Retrieved {len(df)} metadata records total")
     return df
@@ -478,6 +496,7 @@ def fetch_protein_metadata(db_path: str,
 def extend_embedding_with_metadata(df: pd.DataFrame,
                                    db_path: str,
                                    protein_col: str = None,
+                                   threads: int = 1
                                    ):
     if not db_path:
         logger.warning("No database path provided, skipping metadata enrichment")
@@ -485,7 +504,7 @@ def extend_embedding_with_metadata(df: pd.DataFrame,
 
     if protein_col is not None:
         logger.info(f"Fetching metadata: {protein_col}")
-        protein_metadata = fetch_protein_metadata(db_path, df['seqID'].tolist(), protein_col)
+        protein_metadata = fetch_protein_metadata(db_path, df['seqID'].tolist(), protein_col, threads=threads)
         df = pd.merge(df, protein_metadata, on='seqID', how='left')
 
 
@@ -498,7 +517,8 @@ def plot_clusters(tsv_file: str,
                   metadata: str = None,
                   svg: bool = False,
                   force: bool = False,
-                  show_cluster_numbers: bool = False
+                  show_cluster_numbers: bool = False,
+                  threads: int = 1
                   ):
     """
     Create a t-SNE scatter plot visualization of DBSCAN clustering results.
@@ -534,7 +554,7 @@ def plot_clusters(tsv_file: str,
     if db_path:
         if metadata:
             logger.info(f"Fetching metadata column '{metadata}' for coloring")
-            df = extend_embedding_with_metadata(df, db_path, protein_col=metadata)
+            df = extend_embedding_with_metadata(df, db_path, protein_col=metadata, threads=threads)
             color_column = metadata
 
     if metadata and not db_path:
@@ -980,7 +1000,8 @@ def casm_plot(clust_path: str,
               db_path: str,
               svg: bool = False,
               force: bool = False,
-              show_cluster_numbers: bool = False):
+              show_cluster_numbers: bool = False,
+              threads: int = 1):
     """
     Generate t-SNE cluster visualization plots for early and final embeddings.
 
@@ -1007,7 +1028,8 @@ def casm_plot(clust_path: str,
                                  db_path=db_path,
                                  force=force,
                                  svg=svg,
-                                 show_cluster_numbers=show_cluster_numbers)
+                                 show_cluster_numbers=show_cluster_numbers,
+                                 threads=threads)
 
     logger.info("=== Plot Generation Completed ===")
 
@@ -1122,7 +1144,8 @@ def casm(fasta: str,
         db_path=db_path,
         svg=svg,
         force=force,
-        show_cluster_numbers=show_cluster_numbers
+        show_cluster_numbers=show_cluster_numbers,
+        threads=threads
     )
 
     full_cluster_plot = casm_plot(
@@ -1132,7 +1155,8 @@ def casm(fasta: str,
         db_path=db_path,
         svg=svg,
         force=force,
-        show_cluster_numbers=show_cluster_numbers
+        show_cluster_numbers=show_cluster_numbers,
+        threads=threads
     )
     results['early_cluster_plot'] = early_cluster_plot
     results['full_cluster_plot'] = full_cluster_plot

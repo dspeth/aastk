@@ -701,6 +701,7 @@ def get_main_parser():
         with arg_group(parser, 'Required arguments') as grp:
             __cluster_path(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
+            __threads(grp)
             __output(grp)
             __db_path(grp)
             __metadata(grp)
