@@ -97,7 +97,8 @@ def database(chunk_dir: str = None,
                         INSERT INTO protein_data (seqID, parent_ID, aa_length, strand, COG_ID, KEGG_ID, Pfam_ID, cugo_number, protein_seq) 
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(seqID) DO UPDATE SET
-                            protein_seq = excluded.protein_seq
+                            protein_seq = excluded.protein_seq,
+                            COG_ID = excluded.COG_ID
                     """, records)
                     conn.commit()
 
