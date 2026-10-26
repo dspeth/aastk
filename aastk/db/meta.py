@@ -3,6 +3,7 @@ import sqlite3
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
 from tqdm import tqdm
 import hashlib
 import numpy as np
@@ -30,6 +31,19 @@ DOMAIN_COLORS = {
     'Bacteria': '#708090',
     'Archaea':  '#DCDCDC',
 }
+
+ENV_COLORS = {
+    'aquatic': '#0072B2',
+    'soil': '#D55E00',
+    'sediment': '#E69F00',
+    'animal_associated': '#CC79A7',
+    'other': '#009E73',
+    'built': '#F0E442',
+    'diverse': '#56B4E9',
+    'unassigned_high_level': '#444444',
+}
+OTHER_COLOR = '#cccccc'
+NO_DATA_COLOR = '#999999'
 
 GENOME_ID_MATCH = """
     CASE
@@ -608,10 +622,59 @@ def plot_taxonomy(header: list,
     logger.info(f"Plot saved to {plot_path}")
 
 
+def env_color(header: list,
+              results: dict,
+              top_n_dict: dict,
+              top_n: int):
+    color_shades = {}
+    for category, color in ENV_COLORS.items():
+        cmap = LinearSegmentedColormap.from_list(category, ['#ffffff', color])
+        color_shades[category] = cmap(np.linspace(1.0, 0.35, top_n))
+
+    high_level_color = {
+        category: color_shades[category][0]
+        for category in top_n_dict[HIGH_LEVEL_ENV_CATEGORY_COLUMN]
+        if category in color_shades
+    }
+
+    high_index = header.index(HIGH_LEVEL_ENV_CATEGORY_COLUMN)
+    low_index = header.index(LOW_LEVEL_ENV_CATEGORY_COLUMN)
+    low_counts = top_n_dict[LOW_LEVEL_ENV_CATEGORY_COLUMN]
+    co_occurrence = {}
+    for row in results.values():
+        low, high = row[low_index], row[high_index]
+        if low in low_counts and high in color_shades:
+            co_occurrence.setdefault(low, {})
+            co_occurrence[low][high] = co_occurrence[low].get(high, 0) + 1
+    low_to_high = {low: max(counts, key=counts.get) for low, counts in co_occurrence.items()}
+
+    sorted_top_n = dict(top_n_dict)
+    high_order = {h: i for i, h in enumerate(top_n_dict[HIGH_LEVEL_ENV_CATEGORY_COLUMN])}
+    lows = sorted((c for c in low_counts if c not in ('Other', 'No data')),
+                  key=lambda c: (high_order.get(low_to_high.get(c), len(high_order)), -low_counts[c]))
+    sorted_top_n[LOW_LEVEL_ENV_CATEGORY_COLUMN] = {c: low_counts[c] for c in lows}
+    for extra in ['Other', 'No data']:
+        if extra in low_counts:
+            sorted_top_n[LOW_LEVEL_ENV_CATEGORY_COLUMN][extra] = low_counts[extra]
+
+    low_level_shade = {}
+    high_count = {}
+    for low in lows:
+        if low not in low_to_high:
+            continue
+        high = low_to_high[low]
+        high_count[high] = high_count.get(high, 0)
+        low_level_shade[low] = color_shades[high][high_count[high]]
+        high_count[high] += 1
+
+    return high_level_color, low_level_shade, sorted_top_n
+
+
 def plot_environment(header: list,
                      results: dict,
                      output: str,
                      dataset_name: str,
+                     top_n: int = 8,
                      force: bool = False):
     env_dict = {key: {} for key in [HIGH_LEVEL_ENV_CATEGORY_COLUMN, LOW_LEVEL_ENV_CATEGORY_COLUMN]}
     for column in env_dict.keys():
@@ -622,40 +685,58 @@ def plot_environment(header: list,
 
     no_data_counts = {column: counts.pop(None, 0) for column, counts in env_dict.items()}
 
-    sorted_env_dict = {
-        column: dict(sorted(counts.items(), key=lambda x: x[1], reverse=True))
-        for column, counts in env_dict.items()
+    top_n_dict = {
+        HIGH_LEVEL_ENV_CATEGORY_COLUMN: dict(sorted(env_dict[HIGH_LEVEL_ENV_CATEGORY_COLUMN].items(),
+                                                    key=lambda x: x[1], reverse=True)),
+        LOW_LEVEL_ENV_CATEGORY_COLUMN: dict(sorted(env_dict[LOW_LEVEL_ENV_CATEGORY_COLUMN].items(),
+                                                   key=lambda x: x[1], reverse=True)[:top_n]),
     }
+
+    total_sequences = len(results)
+    for column in top_n_dict.keys():
+        other_count = total_sequences - no_data_counts[column] - sum(top_n_dict[column].values())
+        if other_count > 0:
+            top_n_dict[column]['Other'] = other_count
+        if no_data_counts[column] > 0:
+            top_n_dict[column]['No data'] = no_data_counts[column]
+
+    high_level_color, low_level_shade, sorted_top_n = env_color(header, results, top_n_dict, top_n)
 
     level_names = {
-        HIGH_LEVEL_ENV_CATEGORY_COLUMN: 'High-level environment',
-        LOW_LEVEL_ENV_CATEGORY_COLUMN: 'Low-level environment',
+        HIGH_LEVEL_ENV_CATEGORY_COLUMN: 'High-level\nenvironment',
+        LOW_LEVEL_ENV_CATEGORY_COLUMN: 'Low-level\nenvironment',
     }
 
-    height_ratios = [max(len(counts), 1) for counts in sorted_env_dict.values()]
-    fig, axes = plt.subplots(len(sorted_env_dict), 1,
-                             figsize=(10, 0.35 * sum(height_ratios) + 3),
-                             gridspec_kw={'height_ratios': height_ratios})
-    for ax, (column, counts) in zip(axes, sorted_env_dict.items()):
-        categories = list(counts.keys())
-        colors = ['#' + hashlib.md5(str(category).encode()).hexdigest()[:6] for category in categories]
-        bars = ax.barh([category.replace('_', ' ') for category in categories], list(counts.values()),
-                       color=colors, linewidth=0)
-        ax.bar_label(bars, padding=3, fontsize=12)
-        ax.invert_yaxis()
-        ax.tick_params(axis='y', labelsize=12)
-        n_categories = len(categories)
-        title = f'{level_names[column]} ({n_categories} {"category" if n_categories == 1 else "categories"})'
-        if no_data_counts[column] > 0:
-            title += f'\n{no_data_counts[column]} sequences without data'
-        ax.set_title(title, fontsize=15)
-        for side in ['top', 'right']:
+    fig, axes = plt.subplots(1, len(sorted_top_n), figsize=(4.5 * len(sorted_top_n), 8), sharey=True)
+    for ax, (column, counts) in zip(axes, sorted_top_n.items()):
+        bottom = 0
+        for category, count in counts.items():
+            if category == 'Other':
+                color = OTHER_COLOR
+            elif category == 'No data':
+                color = NO_DATA_COLOR
+            elif column == HIGH_LEVEL_ENV_CATEGORY_COLUMN:
+                color = high_level_color.get(category, OTHER_COLOR)
+            else:
+                color = low_level_shade.get(category, OTHER_COLOR)
+            ax.bar(0, count, bottom=bottom, width=0.8, label=str(category).replace('_', ' '),
+                   color=color, linewidth=0)
+            bottom += count
+        ax.set_xlim(-0.75, 0.75)
+        ax.set_ylim(0, total_sequences)
+        ax.set_xticks([])
+        n_categories = len(env_dict[column])
+        ax.set_title(f'{level_names[column]}\n({n_categories} {"category" if n_categories == 1 else "categories"})',
+                     fontsize=15)
+        for side in ['top', 'right', 'bottom']:
             ax.spines[side].set_visible(False)
-    axes[-1].set_xlabel('Number of sequences', fontsize=15)
+        handles, labels = ax.get_legend_handles_labels()
+        ax.legend(handles[::-1], labels[::-1], loc='upper center', bbox_to_anchor=(0.5, -0.02), frameon=False, fontsize=12)
+    axes[0].set_ylabel('Number of sequences', fontsize=15)
 
     plot_path = ensure_path(
         output,
-        f'{dataset_name}_environment.svg',
+        f'{dataset_name}_environment_top{top_n}_stacked.svg',
         force=force
     )
     plt.tight_layout()
