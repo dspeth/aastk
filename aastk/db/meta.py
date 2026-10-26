@@ -26,7 +26,7 @@ from aastk.db.schema import (
 logger = logging.getLogger(__name__)
 
 # color maps used for plotting in meta taxonomy plot
-COLOR_MAPS = ['Greens', 'Blues', 'Oranges', 'Purples', 'Reds']
+COLOR_MAPS = ['#0072B2', '#E69F00', '#009E73', '#D55E00', '#CC79A7']
 DOMAIN_COLORS = {
     'Bacteria': '#708090',
     'Archaea':  '#DCDCDC',
@@ -492,9 +492,9 @@ def taxon_color(header: list,
     # save top_n shades for each color map; 1 to 0.25 to begin with strongest shade
     color_shades = {}
     for color_map in COLOR_MAPS:
-        cmap = plt.get_cmap(color_map)
+        cmap = LinearSegmentedColormap.from_list(color_map, ['#ffffff', color_map])
         # get RGB array for equidistantly spaced points on the Colormap scale
-        color_shades[color_map] = cmap(np.linspace(0.8, 0.25, top_n))
+        color_shades[color_map] = cmap(np.linspace(1.0, 0.35, top_n))
 
     # map phylum to color_shade
     phylum_color = {phylum: color_shades[phylum_to_colormap[phylum]][0] for phylum in phylum_to_colormap.keys()}
