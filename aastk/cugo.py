@@ -1019,7 +1019,7 @@ def cugo_select(context_path: str,
 
     if filter_seqs:
         logger.info(f"Filtering {select_fasta}")
-        filtered_output = filter(select_fasta, db_path, output, threads, force=force)
+        filtered_output, _ = filter(select_fasta, db_path, output, threads, force=force)
         return filtered_output
     else:
         return select_fasta

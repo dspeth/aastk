@@ -1152,7 +1152,7 @@ def pasr_select(yaml_path: str,
 
     if filter_seqs:
         logger.info(f"Filtering {output_path}")
-        output_path = filter(output_path, db_path=None, output=output_dir, threads=threads, force=force)
+        output_path, _ = filter(output_path, db_path=None, output=output_dir, threads=threads, force=force)
 
     if created_yaml_path:
         return output_path, stats_path, created_yaml_path, update_plot

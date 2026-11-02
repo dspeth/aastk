@@ -371,7 +371,8 @@ def main():
                 output=args.output,
                 threads=args.threads,
                 filter_seqs=args.filter_seqs,
-                force=args.force
+                force=args.force,
+                keep=args.keep
             )
 
         elif args.subparser_name == 'list_metadata':

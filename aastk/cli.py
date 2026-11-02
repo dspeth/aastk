@@ -740,6 +740,7 @@ def get_main_parser():
             __threads(grp)
             __filter_seqs(grp)
             __force(grp)
+            __keep(grp)
 
     with subparser(sub_parsers, 'list_metadata', 'Display avaiilable metadata categories') as parser:
         pass

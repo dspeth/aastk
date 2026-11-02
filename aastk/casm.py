@@ -756,7 +756,8 @@ def casm_select(final_embedding_file: str,
          output: str,
          threads: int = 1,
          filter_seqs: bool = False,
-         force: bool = False):
+         force: bool = False,
+         keep: bool = False):
     """
     Extract proteins belonging to a specific cluster into a separate FASTA file.
 
@@ -771,6 +772,7 @@ def casm_select(final_embedding_file: str,
         threads (int): Number of threads to use when filter_seqs is True (default: 1).
         filter_seqs (bool): Additionally filter the selected sequences for improved homogeneity.
         force (bool): Overwrite existing files if True
+        keep (bool): Keep intermediate files produced by filtering if True
 
     Returns:
         str: Path to the output FASTA file containing selected cluster sequences
@@ -822,7 +824,20 @@ def casm_select(final_embedding_file: str,
 
     if filter_seqs:
         logger.info(f"Filtering {cluster_fasta}")
-        cluster_fasta = filter(cluster_fasta, db_path=None, output=output, threads=threads, force=force)
+        filtered_fasta, intermediate_results = filter(cluster_fasta, db_path=None, output=output, threads=threads, force=force)
+
+        if not keep and intermediate_results:
+            logger.info("Cleaning up intermediate files")
+            for key, filepath in intermediate_results.items():
+                try:
+                    file_path = Path(filepath)
+                    if file_path.exists():
+                        file_path.unlink()
+                        logger.debug(f"Deleted {filepath}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete {filepath}: {e}")
+
+        return filtered_fasta
 
     return cluster_fasta
 
