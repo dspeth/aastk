@@ -521,6 +521,7 @@ def get_main_parser():
             __filter_seqs(grp)
             __density(grp)
             __force(grp)
+            __keep(grp)
 
 
     with subparser(sub_parsers, 'pasr', 'PASR: protein alignment score ratio') as parser:
@@ -654,6 +655,7 @@ def get_main_parser():
             __homogeneity_threshold(grp)
             __homogeneity_window(grp)
             __sequence_frequency_threshold(grp)
+            __keep(grp)
 
 
     with subparser(sub_parsers, 'cugo_select', 'Retrieve protein IDs for select CUGO position') as parser:
@@ -666,6 +668,7 @@ def get_main_parser():
             __threads(grp)
             __filter_seqs(grp)
             __force(grp)
+            __keep(grp)
 
     with subparser(sub_parsers, 'filter', 'Filter datasets in FASTA format for improved homogeneity') as parser:
         with arg_group(parser, 'Required arguments') as grp:

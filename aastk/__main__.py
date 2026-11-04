@@ -162,7 +162,8 @@ def main():
                 force=args.force,
                 params=args.params,
                 filter_seqs=args.filter_seqs,
-                density=args.density
+                density=args.density,
+                keep=args.keep
             )
 
         elif args.subparser_name == 'pasr':
@@ -283,7 +284,8 @@ def main():
                 export_annotation=args.export_annotation,
                 homogeneity_threshold=args.homogeneity_threshold,
                 homogeneity_window=args.homogeneity_window,
-                sequence_frequency_threshold=args.sequence_frequency_threshold
+                sequence_frequency_threshold=args.sequence_frequency_threshold,
+                keep=args.keep
             )
 
         elif args.subparser_name == 'cugo_select':
@@ -294,7 +296,8 @@ def main():
                 output=args.output,
                 threads=args.threads,
                 filter_seqs=args.filter_seqs,
-                force=args.force
+                force=args.force,
+                keep=args.keep
             )
 
         elif args.subparser_name == 'filter':

@@ -968,7 +968,8 @@ def pasr_select(yaml_path: str,
                 force: bool = False,
                 params: bool = False,
                 filter_seqs: bool = False,
-                density: bool = False):
+                density: bool = False,
+                keep: bool = False):
     """
     Subsets matched sequences based on YAML thresholds or provided parameters.
 
@@ -986,6 +987,7 @@ def pasr_select(yaml_path: str,
         params (bool): Use provided parameters instead of YAML file (mutually exclusive with yaml_path).
         filter_seqs (bool): Additionally filter the selected sequences for improved homogeneity.
         density (bool): If true, the regenerated plot uses a 2D density (hexbin) instead of a scatter plot.
+        keep (bool): Keep intermediate files produced by filtering if True
     """
     # check if seqkit is in path
     check_dependency_availability('seqkit')
@@ -1152,7 +1154,18 @@ def pasr_select(yaml_path: str,
 
     if filter_seqs:
         logger.info(f"Filtering {output_path}")
-        output_path, _ = filter(output_path, db_path=None, output=output_dir, threads=threads, force=force)
+        output_path, intermediate_results = filter(output_path, db_path=None, output=output_dir, threads=threads, force=force)
+
+        if not keep and intermediate_results:
+            logger.info("Cleaning up intermediate files")
+            for key, filepath in intermediate_results.items():
+                try:
+                    file_path = Path(filepath)
+                    if file_path.exists():
+                        file_path.unlink()
+                        logger.debug(f"Deleted {filepath}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete {filepath}: {e}")
 
     if created_yaml_path:
         return output_path, stats_path, created_yaml_path, update_plot

@@ -809,7 +809,8 @@ def cugo(db_path: str,
          export_annotation: bool = False,
          homogeneity_threshold: float = 0.75,
          homogeneity_window: int = 1,
-         sequence_frequency_threshold: float = 0.75):
+         sequence_frequency_threshold: float = 0.75,
+         keep: bool = False):
     """
     Complete CUGO workflow: generate context data and create comprehensive plots.
 
@@ -837,6 +838,7 @@ def cugo(db_path: str,
             "homogeneous" when computing the homogeneity index (default: 1)
         sequence_frequency_threshold: Minimum sequence frequency, relative to position 0,
             required for automatic export (required when export=True; suggested value: 0.75)
+        keep: Keep intermediate files produced by filtering exported positions if True
 
     Returns:
         tuple: (context_file_path, plot_file_path)
@@ -888,7 +890,7 @@ def cugo(db_path: str,
                 position_dir = export_dir or output_dir
                 if export_annotation:
                     position_dir = str(Path(position_dir) / f'{dataset_name}_{position}_{top_annotations[position]}')
-                cugo_select(context_file, position, db_path, position_dir, threads, filter_seqs=True, force=force)
+                cugo_select(context_file, position, db_path, position_dir, threads, filter_seqs=True, force=force, keep=keep)
 
     # create gene arrow plot for homogeneous positions
     if homogeneous_positions:
@@ -1015,7 +1017,8 @@ def cugo_select(context_path: str,
              output: str,
              threads: int,
              filter_seqs: bool = False,
-             force: bool = False):
+             force: bool = False,
+             keep: bool = False):
     if not is_cugo_context_tsv(context_path):
         raise ValueError(f"Not a valid CUGO context TSV file: {context_path}")
 
@@ -1035,7 +1038,19 @@ def cugo_select(context_path: str,
 
     if filter_seqs:
         logger.info(f"Filtering {select_fasta}")
-        filtered_output, _ = filter(select_fasta, db_path, output, threads, force=force)
+        filtered_output, intermediate_results = filter(select_fasta, db_path, output, threads, force=force)
+
+        if not keep and intermediate_results:
+            logger.info("Cleaning up intermediate files")
+            for key, filepath in intermediate_results.items():
+                try:
+                    file_path = Path(filepath)
+                    if file_path.exists():
+                        file_path.unlink()
+                        logger.debug(f"Deleted {filepath}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete {filepath}: {e}")
+
         return filtered_output
     else:
         return select_fasta
