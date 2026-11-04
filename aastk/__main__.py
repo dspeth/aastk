@@ -280,6 +280,7 @@ def main():
                 tmh_y_range=args.tmh_y_range,
                 export=args.export,
                 export_dir=args.export_dir,
+                export_annotation=args.export_annotation,
                 homogeneity_threshold=args.homogeneity_threshold,
                 homogeneity_window=args.homogeneity_window,
                 sequence_frequency_threshold=args.sequence_frequency_threshold

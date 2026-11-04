@@ -806,6 +806,7 @@ def cugo(db_path: str,
          tmh_y_range: int = None,
          export: bool = False,
          export_dir: str = None,
+         export_annotation: bool = False,
          homogeneity_threshold: float = 0.75,
          homogeneity_window: int = 1,
          sequence_frequency_threshold: float = 0.75):
@@ -828,6 +829,8 @@ def cugo(db_path: str,
         export: Whether to automatically export a FASTA file for each position whose
             homogeneity and relative sequence frequency pass their thresholds
         export_dir: Directory for automatically exported FASTA files (default: output_dir)
+        export_annotation: Whether to export each position into its own subdirectory named
+            {dataset}_{position}_{most prevalent annotation} within export_dir
         homogeneity_threshold: Minimum homogeneity index required for automatic export
             (required when export=True; suggested value: 0.75)
         homogeneity_window: Number of size bins on either side of the modal bin counted as
@@ -866,13 +869,26 @@ def cugo(db_path: str,
     homogeneity_df = compute_homogeneity_index(
         context_file, flank_lower, flank_upper, bin_width, window=homogeneity_window
     )
+    if export and export_annotation:
+        dataset_name = determine_dataset_name(context_file, '.', 0, '_context')
+        cont = load_context_data(context_file, flank_lower, flank_upper)
+        positions = list(homogeneity_df.index)
+        top_ids, _ = retrieve_top_annotations_per_position(cont, 1, positions, annotation)
+        top_annotations = {
+            position: 'NA' if top_id is None or pd.isna(top_id) else top_id
+            for position, top_id in zip(positions, top_ids[0])
+        }
+
     homogeneous_positions = set()
     for position, data in homogeneity_df.iterrows():
         if (data['relative sequence frequency'] >= sequence_frequency_threshold
                 and data['homogeneity'] > homogeneity_threshold):
             homogeneous_positions.add(position)
             if export:
-                cugo_select(context_file, position, db_path, export_dir or output_dir, threads, filter_seqs=True, force=force)
+                position_dir = export_dir or output_dir
+                if export_annotation:
+                    position_dir = str(Path(position_dir) / f'{dataset_name}_{position}_{top_annotations[position]}')
+                cugo_select(context_file, position, db_path, position_dir, threads, filter_seqs=True, force=force)
 
     # create gene arrow plot for homogeneous positions
     if homogeneous_positions:
