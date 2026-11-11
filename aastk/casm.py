@@ -32,6 +32,8 @@ import gc
 logger = logging.getLogger(__name__)
 
 CASM_BLAST_OUTPUT_COLUMNS = ["qseqid", "sseqid", "score"]
+DEFAULT_TSNE_ITERATIONS = 500
+DEFAULT_TSNE_EXAGGERATION = 6
 
 
 def build_alignment_matrix_split(align_file: str,
@@ -725,11 +727,12 @@ def plot_clusters(tsv_file: str,
     # =============================
 
     # parse input filename to determine if early or final embedding
-    if 'early_clust' in tsv_file:
-        prefix = determine_dataset_name(tsv_file, '.', 0, '_tsne_early_clust')
+    tsv_stem = determine_dataset_name(tsv_file, '.', 0)
+    if tsv_stem.endswith('_tsne_early_clust'):
+        prefix = tsv_stem.removesuffix('_tsne_early_clust')
         base_name = f"{prefix}_tsne_early"
-    elif 'final_clust' in tsv_file:
-        prefix = determine_dataset_name(tsv_file, '.', 0, '_tsne_final_clust')
+    elif tsv_stem.endswith('_tsne_final_clust'):
+        prefix = tsv_stem.removesuffix('_tsne_final_clust')
         base_name = f"{prefix}_tsne_final"
     else:
         raise ValueError(f"Unexpected TSV filename: {tsv_file}")
@@ -896,6 +899,30 @@ def matrix(fasta: str,
     return matrix_file, metadata_file
 
 
+def tsne_param_tag(perplexity: int,
+                   iterations: int,
+                   exaggeration: int,
+                   n_svd_components: int,
+                   large: bool):
+    """
+    Builds the parameter tag used in t-SNE output filenames.
+
+    Perplexity is always included; iterations and exaggeration only if they differ
+    from their defaults; the number of SVD components only if --large is set.
+
+    Returns:
+        tag (str): e.g. "p50", "p30_e12" or "p50_i1000_svd50"
+    """
+    tag = f"p{perplexity}"
+    if iterations != DEFAULT_TSNE_ITERATIONS:
+        tag += f"_i{iterations}"
+    if exaggeration != DEFAULT_TSNE_EXAGGERATION:
+        tag += f"_e{exaggeration}"
+    if large:
+        tag += f"_svd{n_svd_components}"
+    return tag
+
+
 def _reduce_and_embed(matrix,
                       queries: list,
                       output: str,
@@ -936,10 +963,12 @@ def _reduce_and_embed(matrix,
 
     embed_matrix = reduced_matrix if reduced_matrix is not None else dense_matrix
 
+    tag = tsne_param_tag(perplexity, iterations, exaggeration, n_svd_components, large)
+
     return tsne_embedding(matrix=embed_matrix,
                           queries=queries,
                           output=output,
-                          basename=basename,
+                          basename=f"{basename}_{tag}",
                           perplexity=perplexity,
                           iterations=iterations,
                           exaggeration=exaggeration,
@@ -1120,7 +1149,7 @@ def casm(fasta: str,
     align_output = run_diamond_alignment(fasta, subset_fasta, subset_size, threads,
                                          CASM_BLAST_OUTPUT_COLUMNS, output, force=force)
     intermediate_results['align_output'] = align_output
-    intermediate_results['subset_dmnd'] = str(Path(output or '.') / f"{determine_dataset_name(fasta, '.', 0)}_subset_dmnd.dmnd")
+    intermediate_results['subset_dmnd'] = f"{align_output}_dmnd.dmnd"
 
     # Phase 2: Matrix construction. Kept in memory and handed straight to the
     # embedding step below; only written to disk when `keep` is set, to avoid a

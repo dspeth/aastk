@@ -641,10 +641,11 @@ def pasr_plot(bsr_file: str,
     # ===============================
     suffix = '_density' if density else ''
     if update:
+        selection_name = determine_dataset_name(yaml_path, '.', 0)
         if svg:
-            out_graph = ensure_path(output_dir, f'{protein_name}_bsr_update{suffix}.svg', force=force)
+            out_graph = ensure_path(output_dir, f'{selection_name}_selected_bsr{suffix}.svg', force=force)
         else:
-            out_graph = ensure_path(output_dir, f'{protein_name}_bsr_update{suffix}.png', force=force)
+            out_graph = ensure_path(output_dir, f'{selection_name}_selected_bsr{suffix}.png', force=force)
     else:
         if svg:
             out_graph = ensure_path(output_dir, f'{protein_name}_bsr{suffix}.svg', force=force)
@@ -1073,9 +1074,10 @@ def pasr_select(yaml_path: str,
     # ===============================
     # Output file path setup
     # ===============================
-    # create output file path
-    output_file = f"{protein_name}_matched_update.faa"
-    stats_file = f"{protein_name}_matched_update.stats"
+    # create output file path named after the threshold YAML, so different thresholds give different files
+    selection_name = determine_dataset_name(created_yaml_path or yaml_path, '.', 0)
+    output_file = f"{selection_name}_selected.faa"
+    stats_file = f"{selection_name}_selected.stats"
     output_path = ensure_path(output_dir, output_file, force=force)
     stats_path = ensure_path(output_dir, stats_file, force=force)
 

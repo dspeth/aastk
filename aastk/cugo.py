@@ -128,12 +128,12 @@ def context(fasta: str,
 
     if fasta:
         protein_name = determine_dataset_name(fasta, '.', 0)
-        output_file = ensure_path(output_dir, f'{protein_name}_{annotation}_context.tsv', force=force)
+        output_file = ensure_path(output_dir, f'{protein_name}_{annotation}_r{cugo_range}_context.tsv', force=force)
         sequences = read_fasta_to_dict(fasta)
         protein_identifiers = set(sequences.keys())
     elif id_list:
         protein_name = determine_dataset_name(id_list, '.', 0)
-        output_file = ensure_path(output_dir, f'{protein_name}_{annotation}_context.tsv', force=force)
+        output_file = ensure_path(output_dir, f'{protein_name}_{annotation}_r{cugo_range}_context.tsv', force=force)
         with open(id_list, 'r') as f:
             protein_identifiers = [line.strip() for line in f]
     else:
