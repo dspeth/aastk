@@ -122,7 +122,7 @@ def context(fasta: str,
             force: bool = False,
             ):
     if annotation not in ANNOTATION_COLUMNS:
-        raise ValueError(f'Invalid annotation. Please select one of the following annotations: {",".join(annotation_columns)}')
+        raise ValueError(f'Invalid annotation. Please select one of the following annotations: {",".join(ANNOTATION_COLUMNS)}')
 
     if fasta:
         protein_name = determine_dataset_name(fasta, '.', 0)
@@ -334,12 +334,6 @@ def plot_top_annotations_per_position(
     cont = cont[(cont['position'] >= flank_lower) & (cont['position'] <= flank_upper)]
 
     positions = sorted(cont['position'].unique())
-
-    # Load annotation color mapping
-    script_dir = Path(__file__).resolve().parent
-    yaml_dir = script_dir / "yaml"
-    annotation_lower = annotation.lower().replace('_id', '')
-    color_yaml_path = yaml_dir / f'{annotation_lower}_colors.yaml'
 
     # dynamically color by first 6 digits of md5 hash
     unique_annotations = cont[f'{annotation}'].dropna().unique()
@@ -639,7 +633,7 @@ def cugo_plot(context_path: str,
         force: Whether to overwrite existing files
     """
     if annotation not in ANNOTATION_COLUMNS:
-        raise ValueError(f'Invalid annotation. Please select one of the following annotations: {",".join(annotation_columns)}')
+        raise ValueError(f'Invalid annotation. Please select one of the following annotations: {",".join(ANNOTATION_COLUMNS)}')
 
     if not (all_plots or cugo or size or tmh):
         raise ValueError(f'No output plot format chosen please select: --all, --cugo, --size, --tmh')
@@ -823,7 +817,7 @@ def cugo(db_path: str,
         tuple: (context_file_path, plot_file_path)
     """
     if annotation not in ANNOTATION_COLUMNS:
-        raise ValueError(f'Invalid annotation. Please select one of the following annotations: {",".join(annotation_columns)}')
+        raise ValueError(f'Invalid annotation. Please select one of the following annotations: {",".join(ANNOTATION_COLUMNS)}')
 
     if export and (homogeneity_threshold is None or sequence_frequency_threshold is None):
         raise ValueError(

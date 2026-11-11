@@ -541,7 +541,8 @@ def bsr(blast_tab: str,
     # ===============================
     max_scores = {}
     with open(max_scores_path) as tsv:
-        header = tsv.readline()
+        # skip header
+        tsv.readline()
         for line in tsv:
             parts = line.strip().split('\t')
             if len(parts) >= 2:
@@ -1217,8 +1218,7 @@ def pasr(seed_fasta: str,
     # Parameter validation and setup
     # ===============================
     if update and not yaml_path:
-        logger.error("YAML path is required if update is True")
-        exit()
+        raise ValueError("YAML path is required if update is True")
 
     if matrix not in BLOSUM_DIAGONALS.keys():
         raise ValueError(f"Invalid matrix: {matrix}. Must be one of {BLOSUM_DIAGONALS.keys()}")
@@ -1240,7 +1240,7 @@ def pasr(seed_fasta: str,
     try:
         logger.info("Building protein database")
         diamond_db_path = build(seed_fasta, threads, output_dir, force=force)
-        intermediate_results['db_path'] = f"{db_path}.dmnd"
+        intermediate_results['diamond_db_path'] = f"{diamond_db_path}.dmnd"
 
         # ===============================
         # Database search
@@ -1290,8 +1290,7 @@ def pasr(seed_fasta: str,
         return results
 
     except Exception as e:
-        logger.error(f"PASR workflow failed: {e}")
-        exit()
+        raise RuntimeError(f"PASR workflow failed with error: {e}") from e
     finally:
         if not keep and intermediate_results:
             logger.info("Cleaning up intermediate files")

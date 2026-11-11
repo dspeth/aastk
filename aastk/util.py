@@ -449,7 +449,7 @@ def retrieve_sequences_from_db(seq_ids: list,
 							   output_path: str,
 							   db_path: str):
 	if not seq_ids:
-		logger.warning(f"No sequences found for position {position}")
+		logger.warning("No sequence IDs provided; no sequences will be retrieved")
 		return output_path
 
 	# connect to database
