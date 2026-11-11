@@ -18,6 +18,7 @@ import hashlib
 from tqdm import tqdm
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -365,21 +366,7 @@ def plot_top_annotations_per_position(
     }
 
     # Extract top N annotations per position
-    top_ids = [[] for _ in range(top_n)]
-    top_counts = [[] for _ in range(top_n)]
-
-    for pos in positions:
-        pos_data = cont[cont['position'] == pos]
-        counts = pos_data[f'{annotation}'].value_counts(dropna=False)  # include NA
-        for i in range(top_n):
-            if i < len(counts):
-                annotation_id = counts.index[i]
-                top_ids[i].append(annotation_id)
-                top_counts[i].append(counts.iloc[i])
-            else:
-                # Only append nothing if no real data in this rank
-                top_ids[i].append(None)
-                top_counts[i].append(None)
+    top_ids, top_counts = retrieve_top_annotations_per_position(cont, top_n, positions, annotation)
 
     # X-position offsets for multiple ranks
     subtick_width = 0.8 / top_n
@@ -784,6 +771,73 @@ def cugo_plot(context_path: str,
         plt.savefig(all_plot_path, dpi=300, bbox_inches='tight')
         logger.info(f"Plot saved to {all_plot_path}")
 
+def fetch_cog_definitions(db_path: str, cog_ids: set):
+    with sqlite3.connect(db_path) as conn:
+        placeholders = ', '.join('?' for _ in cog_ids)
+        rows = conn.execute(f"""
+            SELECT COG_ID, COG_definition
+            FROM cog_data
+            WHERE COG_ID IN ({placeholders})
+        """, list(cog_ids)).fetchall()
+
+    return {cog_id: cog_definition for cog_id, cog_definition in rows}
+
+def fetch_annotation_definitions(db_path: str, annotation: str, annotation_ids: set):
+    annotation_prefix = annotation.replace('_ID', '')
+    table_name = f"{annotation_prefix.lower()}_data"
+    definition_column = f"{annotation_prefix}_definition"
+
+    with sqlite3.connect(db_path) as conn:
+        placeholders = ', '.join('?' for _ in annotation_ids)
+        rows = conn.execute(f"""
+            SELECT {annotation}, {definition_column}
+            FROM {table_name}
+            WHERE {annotation} IN ({placeholders})
+        """, list(annotation_ids)).fetchall()
+
+    return {annotation_id: definition for annotation_id, definition in rows}
+
+def cugo_yaml(context_path: str,
+             flank_lower: int,
+             flank_upper: int,
+             db_path: str,
+             output: str,
+             annotation: str,
+             top_n: int = 3,
+             force: bool = False
+             ):
+    dataset_name = determine_dataset_name(context_path, '.', 0, '_context')
+    top_annotations_path = ensure_path(output, f'{dataset_name}_top{top_n}.yaml', force=force)
+
+    cont = load_context_data(context_path, flank_lower, flank_upper)
+
+    positions = sorted(cont['position'].unique())
+
+    top_ids, _ = retrieve_top_annotations_per_position(cont, top_n, positions, annotation)
+
+    unique_ids = {annotation_id for rank in top_ids for annotation_id in rank
+                  if annotation_id is not None and not pd.isna(annotation_id)}
+
+    definitions = fetch_annotation_definitions(db_path, annotation, unique_ids)
+
+    top_annotations = {}
+    for pos_idx, pos in enumerate(positions):
+        position_annotations = {}
+        for rank in range(top_n):
+            annotation_id = top_ids[rank][pos_idx]
+            if annotation_id is None:
+                continue
+            if pd.isna(annotation_id):
+                annotation_id = 'NA'
+            position_annotations[annotation_id] = definitions.get(annotation_id, '')
+        top_annotations[int(pos)] = position_annotations
+
+    with open(top_annotations_path, 'w') as f:
+        yaml.dump(top_annotations, f, sort_keys=False, default_flow_style=False, width=float('inf'))
+    logger.info(f"Top {top_n} annotations saved to {top_annotations_path}")
+
+    return top_annotations_path
+
 
 # ======================================
 # CUGO COMMAND LINE WORKFLOW
@@ -921,6 +975,17 @@ def cugo(db_path: str,
         y_range=y_range,
         tmh_y_range=tmh_y_range,
         svg=svg,
+        force=force
+    )
+
+    cugo_yaml(
+        context_path=context_file,
+        flank_lower=flank_lower,
+        flank_upper=flank_upper,
+        db_path=db_path,
+        output=output_dir,
+        annotation=annotation,
+        top_n=top_n,
         force=force
     )
 
