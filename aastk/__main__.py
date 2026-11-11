@@ -1,18 +1,8 @@
 #!/usr/bin/env python3
-
-import logging
-from aastk.log import logger_setup
 from aastk.cli import get_main_parser
-from aastk.pasr import *
-from aastk.cugo import *
-from aastk.casm import *
-from aastk.db.build import database
-from aastk.db.check import database_check
-from aastk.db.meta import meta, list_metadata, parse_query
-from aastk.db.export import export_fasta, export_by_metadata
-from aastk.db.gene_family import gene_family
 from aastk.version import __version__, __copyright__, __author__
 import sys
+
 
 def print_help():
     print('''\
@@ -75,6 +65,17 @@ def main():
         sys.exit(0)
     else:
         args = parser.parse_args()
+
+    import logging
+    from aastk.log import logger_setup
+    from aastk.pasr import pasr_plot, pasr_select, pasr
+    from aastk.cugo import cugo, cugo_plot, cugo_select
+    from aastk.casm import casm, casm_plot, casm_select
+    from aastk.db.build import database
+    from aastk.db.check import database_check
+    from aastk.db.meta import meta, list_metadata, parse_query
+    from aastk.db.export import export_fasta, export_by_metadata
+    from aastk.db.gene_family import gene_family
 
     output_dir = getattr(args, 'output', getattr(args, 'output_dir', None))
     logger = logger_setup(silent=args.silent, output_dir=output_dir)
