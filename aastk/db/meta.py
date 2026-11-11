@@ -344,10 +344,9 @@ def meta(db_path: str,
             force=force
         )
     else:
-        logger.error(
+        raise ValueError(
             "No valid input file found. Please specify path to protein FASTA file OR sequence ID list (one ID per line)."
         )
-        return
 
     if include_high_level_env_category is True:
         high_level_env_stacked_bar_plot = True
@@ -378,13 +377,12 @@ def meta(db_path: str,
         include_high_level_env_category,
         include_low_level_env_category
     ]):
-        logger.error(
+        raise ValueError(
             "Must specify at least one metadata type "
             "(--taxonomy, --annotation, --culture-collection, "
             "--high-level-environment, --low-level-environment, "
             "--high-level-env-category, --low-level-env-category, or --all-metadata)"
         )
-        return
 
     unavailable = check_metadata_availability(
         db_path,
@@ -397,10 +395,9 @@ def meta(db_path: str,
         include_low_level_env_category
     )
     if unavailable:
-        logger.error(
+        raise ValueError(
             f"Requested metadata not available in database: {', '.join(unavailable)}"
         )
-        return
 
     BATCH_SIZE = 500
 
@@ -449,6 +446,7 @@ def meta(db_path: str,
             try:
                 results.update(future.result())
             except Exception as e:
+                failed_ids.update(batches[batch_idx])
                 logger.error(
                     f"Error processing batch {futures[future]}: {e}"
                 )

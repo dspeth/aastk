@@ -22,7 +22,7 @@ aastk/
 ├── aastk/
 │   ├── __init__.py       # marks the package
 │   ├── __main__.py       # entry point: argument dispatch, print_help()
-│   ├── cli.py            # argparse definitions for every subcommand
+│   ├── cli.py            # argparse definitions for every CLI command
 │   ├── log.py            # logging setup
 │   ├── util.py           # shared helpers used by all modules
 │   ├── version.py        # __version__, __author__, __copyright__
@@ -58,8 +58,10 @@ top-level orchestrator that chains them. For example, `pasr.py` exposes `build()
 `search()`, `get_hit_seqs()`, `max_score()`, `bsr()`, and `pasr_plot()` as standalone
 functions, and `pasr()` calls them in sequence.
 
-This means a user can run the full workflow with `aastk pasr ...` or run individual steps
-separately—useful for debugging and for resuming a partially complete run.
+On the CLI, only the orchestrators (`aastk pasr`, `aastk casm`, `aastk cugo`) and their
+plotting steps (`pasr_plot`, `casm_plot`, `cugo_plot`) are exposed, so plots can be
+regenerated from existing output; the remaining step functions are importable from Python
+for debugging or custom pipelines.
 
 ### Output path management
 
@@ -78,24 +80,28 @@ raises `FileNotFoundError` with a clear message if the binary is missing. Subpro
 
 ### Parallel processing
 
-CPU-bound batch work (e.g., batch database fetches, sequence retrieval) uses
-`concurrent.futures.ThreadPoolExecutor`. Pass `threads` through from the CLI argument
-all the way to the executor. Long-running operations expose progress via `tqdm`.
+I/O-bound batch work (e.g., batch database fetches, sequence retrieval) uses
+`concurrent.futures.ThreadPoolExecutor`. Work where Python-level parsing or decompression
+dominates and would be serialized by the GIL (e.g., anvi'o shard ingestion in
+`db/build.py`, sequence export in `db/export.py`) uses
+`concurrent.futures.ProcessPoolExecutor` instead. Do not wrap numpy/scikit-learn calls in
+a process pool: forking around BLAS can deadlock. Pass `threads` through from the CLI
+argument all the way to the executor. Long-running operations expose progress via `tqdm`.
 
 ### Database access
 
 The SQLite database is opened with `sqlite3.connect()`. Sequences are stored zlib-compressed
 (`compress_sequence` / `decompress_sequence` in `util.py`). Queries that touch many rows
 use batch fetching (typically 500–900 IDs per query) to bound memory usage. Never read
-an entire table into memory at once—stream and batch instead.
+an entire table into memory at once - stream and batch instead.
 
 ### Logging
 
 `logger_setup()` in `log.py` configures a root logger with two handlers:
 
-- **Console handler** — `INFO` level, written to `stdout`. Use for user-visible progress
+- **Console handler** - `INFO` level, written to `stdout`. Use for user-visible progress
   messages (`logger.info(...)`).
-- **File handler** — level 99 (custom `SUBPROCESS` pseudo-level), written to a
+- **File handler** - level 99 (custom `SUBPROCESS` pseudo-level), written to a
   timestamped `aastk-subprocesses-<timestamp>.log` next to the output directory. Use for
   subprocess stderr (`logger.log(99, ...)`).
 
@@ -120,10 +126,6 @@ naming convention `__<argument_name>(group, required=False)`. The function calls
 `group.add_argument(...)` and returns nothing. This keeps subparser definitions concise
 and ensures that shared arguments (e.g. `--output`, `--threads`, `--force`) have
 consistent flag letters and help text across all subcommands.
-
-When adding a new argument that will appear in more than one subcommand, add a helper
-function. When an argument is specific to a single subcommand, it is acceptable to define
-it inline in the subparser block.
 
 ### Subparser structure
 
@@ -157,21 +159,26 @@ Follow these steps to integrate a new top-level tool (e.g. `mytool`).
 
 ### 1. Create the module
 
-Start with a single file, `aastk/mytool.py`. If the tool grows internal complexity—e.g.
-several pluggable sources or components that warrant their own files—convert it into a
+Start with a single file, `aastk/mytool.py`. If the tool grows internal complexity - e.g.
+several pluggable sources or components that warrant their own files - convert it into a
 package (`aastk/mytool/__init__.py` plus submodules) instead. Either shape follows the
 same conventions:
 
 - One function per subcommand step (e.g. `step_a()`, `step_b()`).
 - One top-level orchestrator (e.g. `mytool()`) that calls the steps in sequence.
-- All functions accept explicit keyword arguments—no `argparse.Namespace` objects inside
+- All functions accept explicit keyword arguments - no `argparse.Namespace` objects inside
   the module. Keep argparse in `cli.py` and `__main__.py`.
 - Use `ensure_path()` for all file output.
+- Check `util.py` before writing new helpers: it already covers FASTA handling
+  (`read_fasta_to_dict()`, `write_fa_matches()`, `fasta_subsample()`), sequence retrieval
+  from the database, DIAMOND alignment, and input file type checks (`is_fasta()`,
+  `is_bsr_tsv()`, etc.). Functions needed by more than one tool belong in `util.py`
+  rather than being imported from another tool module.
 - Use `logger.info()` for progress messages; `logger.error()` for failures.
 - Raise `RuntimeError` for unrecoverable errors (caught by the top-level handler in
   `__main__.py`).
 
-Don't start as a package "just in case"—convert only once a single file actually becomes
+Don't start as a package "just in case" - convert only once a single file actually becomes
 unwieldy.
 
 ### 2. Add argument helpers to `cli.py`
@@ -182,21 +189,17 @@ ones.
 
 ### 3. Register subparsers in `cli.py`
 
-Add subparser blocks inside `get_main_parser()`, grouped with a `### PARSER FOR MYTOOL ###`
-comment:
+Register the orchestrator (and, if the tool produces plots, its plotting step) inside
+`get_main_parser()`. Other step functions are not exposed on the CLI.
 
 ```python
-### PARSER FOR MYTOOL FUNCTIONALITIES AND WORKFLOW ###
-with subparser(sub_parsers, 'step_a', 'Description of step A') as parser:
+with subparser(sub_parsers, 'mytool', 'MYTOOL: short description') as parser:
     with arg_group(parser, 'Required arguments') as grp:
         __fasta(grp, required=True)
     with arg_group(parser, 'Optional') as grp:
         __output(grp)
         __threads(grp)
         __force(grp)
-
-with subparser(sub_parsers, 'mytool', 'MYTOOL: short description') as parser:
-    ...
 ```
 
 ### 4. Register dispatch cases in `__main__.py`
@@ -207,19 +210,9 @@ Add the import at the top of `__main__.py`:
 from aastk.mytool import *
 ```
 
-Add `elif` branches in `main()` for each new subcommand, grouped under a matching
-`### PARSER FOR MYTOOL ###` comment:
+Add an `elif` branch in `main()` for each new CLI command:
 
 ```python
-### PARSER FOR MYTOOL FUNCTIONALITIES AND WORKFLOW ###
-elif args.subparser_name == 'step_a':
-    step_a(
-        fasta=args.fasta,
-        output_dir=args.output,
-        threads=args.threads,
-        force=args.force
-    )
-
 elif args.subparser_name == 'mytool':
     mytool(
         fasta=args.fasta,
@@ -233,8 +226,8 @@ Call functions with explicit keyword arguments, never by positional order.
 
 ### 5. Update `print_help()` in `__main__.py`
 
-Add the new tool and its helper subcommands to the help text under the appropriate
-section (Main Tools, Helper tools, or Subcommands).
+Add the new tool to the help text under the appropriate section (Main Tools, Helper
+tools, Plotting tools, or Database utilities).
 
 ---
 
