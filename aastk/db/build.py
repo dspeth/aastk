@@ -13,6 +13,7 @@ from aastk.db.sources.tmhmm import *
 from aastk.db.sources.taxonomy import parse_taxonomy_file
 from aastk.db.sources.culture_collection import parse_culture_collection_file
 from aastk.db.sources.environment import parse_environment_file
+from aastk.db.sources.cog_definitions import parse_cog_definitions_file
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ def database(chunk_dir: str = None,
              culture_collection_path: str = None,
              high_level_environment_path: str = None,
              low_level_environment_path: str = None,
+             cog_definitions_path: str = None,
              db_version: str = None,
              output: str = None,
              anvio: bool = False,
@@ -45,6 +47,8 @@ def database(chunk_dir: str = None,
              taxonomy: bool = False,
              culture_collection: bool = False,
              environmental_data: bool = False,
+             cog_definitions: bool = False,
+             cog_counts: bool = False,
              all_sources: bool = False,
              threads: int = 1,
              force: bool = False):
@@ -57,6 +61,7 @@ def database(chunk_dir: str = None,
                 ('--culture_collection_path', culture_collection_path),
                 ('--high_level_environment_path', high_level_environment_path),
                 ('--low_level_environment_path', low_level_environment_path),
+                ('--cog_definitions_path', cog_definitions_path),
             ] if not path
         ]
         if missing:
@@ -67,6 +72,8 @@ def database(chunk_dir: str = None,
         taxonomy = True
         culture_collection = True
         environmental_data = True
+        cog_definitions = True
+        cog_counts = True
 
     output_dir = Path(output) if output else Path('.')
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -181,6 +188,38 @@ def database(chunk_dir: str = None,
         else:
             _insert_environment_data(conn, high_level_environment_path, HIGH_LEVEL_ENV_COLUMNS, 'high-level')
             _insert_environment_data(conn, low_level_environment_path, LOW_LEVEL_ENV_COLUMNS, 'low-level')
+
+    if cog_definitions:
+        if not cog_definitions_path:
+            raise ValueError('--cog_definitions is True. --cog_definitions_path must be provided.')
+        else:
+            logger.info("Processing COG definitions...")
+            cog_def_data = parse_cog_definitions_file(cog_definitions_path)
+            if cog_def_data:
+                conn.executemany("""
+                    INSERT INTO cog_data (COG_ID, COG_definition)
+                    VALUES (?, ?)
+                    ON CONFLICT(COG_ID) DO UPDATE SET
+                        COG_definition = excluded.COG_definition
+                """, cog_def_data)
+                conn.commit()
+                logger.info(f"Inserted COG definitions for {len(cog_def_data)} COGs")
+
+    if cog_counts:
+        logger.info("Counting proteins per COG...")
+        conn.execute("UPDATE cog_data SET COG_count = 0")
+        conn.execute("""
+            INSERT INTO cog_data (COG_ID, COG_count)
+            SELECT COG_ID, COUNT(*)
+            FROM protein_data
+            WHERE COG_ID IS NOT NULL AND COG_ID != 'NA'
+            GROUP BY COG_ID
+            ON CONFLICT(COG_ID) DO UPDATE SET
+                COG_count = excluded.COG_count
+        """)
+        conn.commit()
+        n_cogs = conn.execute("SELECT COUNT(*) FROM cog_data WHERE COG_count > 0").fetchone()[0]
+        logger.info(f"Inserted protein counts for {n_cogs} COGs")
 
     conn.close()
 

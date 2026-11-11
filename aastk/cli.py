@@ -28,7 +28,7 @@ def __all_proteins(group, required=False):
 
 def __all_sources(group, required=False):
     group.add_argument('--all_sources', action='store_true', required=required,
-                       help='Import all available data sources (anvi\'o, TMHMM, taxonomy, culture collection, environment)')
+                       help='Import all available data sources (anvi\'o, TMHMM, taxonomy, culture collection, environment, COG definitions, COG counts)')
 
 def __anvio(group, required=False):
     group.add_argument('--anvio', action='store_true', required=required,
@@ -77,6 +77,18 @@ def __chunk_dir(group, required=False):
 def __cog_gff(group, required=False):
     group.add_argument('-c', '--cog_gff', type=str, required=required,
                        help='Path to (.tar.gz) GFF directory containing COG annotations')
+
+def __cog_definitions(group, required=False):
+    group.add_argument('--cog_definitions', action='store_true', required=required,
+                       help='Import COG definitions')
+
+def __cog_counts(group, required=False):
+    group.add_argument('--cog_counts', action='store_true', required=required,
+                       help='Count proteins per COG ID in protein_data')
+
+def __cog_definitions_path(group, required=False):
+    group.add_argument('--cog_definitions_path', type=str, required=required,
+                       help='Path to COG definition file (e.g. cog-24.def.tab)')
 
 def __column_info_path(group, required=False):
     group.add_argument('-c', '--column_info_path', type=str, default=None, required=required,
@@ -561,6 +573,9 @@ def get_main_parser():
             __environmental_data(grp)
             __high_level_environment_path(grp)
             __low_level_environment_path(grp)
+            __cog_definitions(grp)
+            __cog_definitions_path(grp)
+            __cog_counts(grp)
             __all_sources(grp)
             __threads(grp)
             __output(grp)

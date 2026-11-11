@@ -65,6 +65,12 @@ GENOME_SCHEMA = {
     'unassigned_low_level': 'REAL'
 }
 
+COG_SCHEMA = {
+    'COG_ID': 'TEXT PRIMARY KEY',
+    'COG_definition': 'TEXT',
+    'COG_count': 'INTEGER'
+}
+
 # extract column name lists for queries (same order)
 PROTEIN_COLUMNS = list(PROTEIN_SCHEMA.keys())
 GENOME_COLUMNS = list(GENOME_SCHEMA.keys())
