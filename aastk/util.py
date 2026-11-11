@@ -274,7 +274,13 @@ def filter(fasta: str,
     #fig.suptitle('Distribution of sequences during filtering with cutoffs')
     plt.savefig(plot_path, dpi=300)
 
-    return output_path
+    intermediate_results = {
+        'subsample': subset,
+        'diamond_db': f"{align_output.removesuffix('_align')}_subset_dmnd.dmnd",
+        'align_output': align_output,
+    }
+
+    return output_path, intermediate_results
 
 def is_blast_tab(file_path: str, n_columns: int, numeric_columns: list = None) -> bool:
 	with open(file_path, 'r') as file:

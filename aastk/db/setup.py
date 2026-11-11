@@ -3,6 +3,7 @@ import sqlite3
 from aastk.db.schema import (
     PROTEIN_SCHEMA,
     GENOME_SCHEMA,
+    COG_SCHEMA,
     PROTEIN_COLUMNS,
     HIGH_LEVEL_ENV_COLUMNS,
     LOW_LEVEL_ENV_COLUMNS,
@@ -57,6 +58,16 @@ def setup_database(db_path: str) -> sqlite3.Connection:
     conn.execute(f'''
                  CREATE TABLE IF NOT EXISTS genome_data (
                     {genome_cols}
+                 )
+                 ''')
+
+    cog_cols = ',\n                     '.join(
+        [f'{col} {dtype}' for col, dtype in COG_SCHEMA.items()]
+    )
+
+    conn.execute(f'''
+                 CREATE TABLE IF NOT EXISTS cog_data (
+                    {cog_cols}
                  )
                  ''')
 

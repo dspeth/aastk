@@ -2,8 +2,13 @@ import logging
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
 from tqdm import tqdm
+import hashlib
+import numpy as np
 
+from aastk.pasr import pasr_select
 from aastk.util import ensure_path, determine_dataset_name, read_fasta_to_dict
 from aastk.db.schema import (
     BASE_COLUMNS,
@@ -19,6 +24,26 @@ from aastk.db.schema import (
 )
 
 logger = logging.getLogger(__name__)
+
+# color maps used for plotting in meta taxonomy plot
+COLOR_MAPS = ['#0072B2', '#E69F00', '#009E73', '#D55E00', '#CC79A7']
+DOMAIN_COLORS = {
+    'Bacteria': '#708090',
+    'Archaea':  '#DCDCDC',
+}
+
+ENV_COLORS = {
+    'aquatic': '#0072B2',
+    'soil': '#D55E00',
+    'sediment': '#E69F00',
+    'animal_associated': '#CC79A7',
+    'other': '#009E73',
+    'built': '#F0E442',
+    'diverse': '#56B4E9',
+    'unassigned_high_level': '#444444',
+}
+OTHER_COLOR = '#cccccc'
+NO_DATA_COLOR = '#999999'
 
 GENOME_ID_MATCH = """
     CASE
@@ -279,7 +304,7 @@ def process_batch(db_path: str,
     result_dict = {row[0]: row for row in results}
 
     conn.close()
-    return batch, result_dict
+    return result_dict
 
 
 def meta(db_path: str,
@@ -294,6 +319,9 @@ def meta(db_path: str,
          include_low_level_environment: bool = False,
          include_high_level_env_category: bool = False,
          include_low_level_env_category: bool = False,
+         high_level_env_stacked_bar_plot: bool = False,
+         low_level_env_stacked_bar_plot: bool = False,
+         taxonomy_stacked_bar_plot: bool = False,
          all_metadata: bool = False,
          force: bool = False):
 
@@ -320,6 +348,14 @@ def meta(db_path: str,
             "No valid input file found. Please specify path to protein FASTA file OR sequence ID list (one ID per line)."
         )
 
+    if include_high_level_env_category is True:
+        high_level_env_stacked_bar_plot = True
+    elif include_low_level_env_category is True:
+        low_level_env_stacked_bar_plot = True
+    elif include_taxonomy is True:
+        taxonomy_stacked_bar_plot = True
+
+
     if all_metadata:
         include_annotation = True
         include_taxonomy = True
@@ -328,6 +364,9 @@ def meta(db_path: str,
         include_low_level_environment = True
         include_high_level_env_category = True
         include_low_level_env_category = True
+        high_level_env_stacked_bar_plot = True
+        low_level_env_stacked_bar_plot = True
+        taxonomy_stacked_bar_plot = True
 
     if not any([
         include_annotation,
@@ -378,10 +417,8 @@ def meta(db_path: str,
         for i in range(0, len(seq_ids), BATCH_SIZE)
     ]
 
-    found_ids = set()
     missing_ids = set()
-    failed_ids = set()
-    batch_results = {}
+    results = {}
 
     # Process batches in parallel
     with ThreadPoolExecutor(max_workers=threads) as executor:
@@ -406,55 +443,312 @@ def meta(db_path: str,
                 total=len(batches),
                 desc="Querying database"
         ):
-            batch_idx = futures[future]
             try:
-                batch, result_dict = future.result()
-                batch_results[batch_idx] = (batch, result_dict)
+                results.update(future.result())
             except Exception as e:
                 failed_ids.update(batches[batch_idx])
                 logger.error(
-                    f"Error processing batch {batch_idx}: {e}"
+                    f"Error processing batch {futures[future]}: {e}"
                 )
 
     # Write results in original order
     with open(output_path, 'w') as out:
         out.write('\t'.join(header) + '\n')
 
-        for batch_idx in sorted(batch_results.keys()):
-            batch, result_dict = batch_results[batch_idx]
-
-            for seq_id in batch:
-                if seq_id in result_dict:
-                    found_ids.add(seq_id)
-                    row = [
-                        str(x) if x is not None else ''
-                        for x in result_dict[seq_id]
-                    ]
-                    out.write('\t'.join(row) + '\n')
-                else:
-                    missing_ids.add(seq_id)
+        for seq_id in seq_ids:
+            if seq_id in results:
+                row = [
+                    str(x) if x is not None else ''
+                    for x in results[seq_id]
+                ]
+                out.write('\t'.join(row) + '\n')
+            else:
+                missing_ids.add(seq_id)
 
     logger.info(f"Metadata has been saved to {output_path}")
+
+    if include_taxonomy is True:
+        plot_taxonomy(header, results, output, dataset_name, force=force)
+
+    if HIGH_LEVEL_ENV_CATEGORY_COLUMN in header and LOW_LEVEL_ENV_CATEGORY_COLUMN in header:
+        plot_environment(header, results, output, dataset_name, force=force)
 
     if missing_ids:
         logger.warning(
             f"{len(missing_ids)} sequence IDs were not found in the database"
         )
 
-    if failed_ids:
-        failed_ids_path = ensure_path(
-            output,
-            f'{dataset_name}_metadata_failed_ids.txt',
-            force=force
-        )
-        with open(failed_ids_path, 'w') as f:
-            for seq_id in seq_ids:
-                if seq_id in failed_ids:
-                    f.write(f"{seq_id}\n")
-        raise RuntimeError(
-            f"Database query failed for {len(failed_ids)} sequence IDs; "
-            f"they are missing from {output_path} and listed in {failed_ids_path}"
-        )
+def taxon_color(header: list,
+                results: dict,
+                top_n_dict: dict,
+                top_n: int):
+    phylum_to_colormap = {}
+    for i, phylum in enumerate(top_n_dict['phylum'].keys()):
+        if phylum != 'Other':
+            phylum_to_colormap[phylum] = COLOR_MAPS[i]
+
+    # save top_n shades for each color map; 1 to 0.25 to begin with strongest shade
+    color_shades = {}
+    for color_map in COLOR_MAPS:
+        cmap = LinearSegmentedColormap.from_list(color_map, ['#ffffff', color_map])
+        # get RGB array for equidistantly spaced points on the Colormap scale
+        color_shades[color_map] = cmap(np.linspace(1.0, 0.35, top_n))
+
+    # map phylum to color_shade
+    phylum_color = {phylum: color_shades[phylum_to_colormap[phylum]][0] for phylum in phylum_to_colormap.keys()}
+
+    # map taxon to phylum and assign color shade according to top_n directed sort
+    phylum_index = list(header).index('phylum')
+    taxon_to_phylum = {}
+    # only map phylum to ranks below phylum
+    for rank, counts in list(top_n_dict.items())[2:]:
+        rank_index = header.index(rank)
+        taxon_to_phylum[rank] = {}
+        for row in results.values():
+            taxon = row[rank_index]
+            if taxon in counts:
+                taxon_to_phylum[rank][taxon] = row[phylum_index]
+
+    # sorted copy: ranks below phylum by phylum abundance, then in-rank count
+    sorted_top_n = dict(top_n_dict)
+    phylum_order = {p: i for i, p in enumerate(top_n_dict['phylum'])}
+    for rank, counts in list(top_n_dict.items())[2:]:
+        taxa = sorted((t for t in counts if t != 'Other'),
+                      key=lambda t: (phylum_order.get(taxon_to_phylum[rank][t], len(phylum_order)), -counts[t]))
+        sorted_top_n[rank] = {t: counts[t] for t in taxa}
+        if 'Other' in counts:
+            sorted_top_n[rank]['Other'] = counts['Other']
+
+    # map taxon to correct phylum-derived shade
+    taxon_to_phylum_color_shade = {}
+    for rank, counts in list(sorted_top_n.items())[2:]:
+        taxon_to_phylum_color_shade[rank] = {}
+        phylum_count = {}
+        for taxon in counts:
+            if taxon == 'Other':
+                continue
+            phylum = taxon_to_phylum[rank][taxon]
+            # keep track of how many times phylum was encountered starting with 1
+            # as 0 is occupied by phylum itself when it comes to color mapping
+            phylum_count[phylum] = phylum_count.get(phylum, 0)
+            shades = color_shades[phylum_to_colormap[phylum]]
+            taxon_to_phylum_color_shade[rank][taxon] = shades[phylum_count[phylum]]
+            phylum_count[phylum] = phylum_count.get(phylum, 0) + 1
+
+    return phylum_color, taxon_to_phylum_color_shade, sorted_top_n
+
+
+def plot_taxonomy(header: list,
+                  results: dict,
+                  output: str,
+                  dataset_name: str,
+                  top_n: int = 5,
+                  force: bool = False):
+    # start with phylum; omit genome_ID, genus and species
+    taxonomy_dict = {key: {} for key in TAXONOMY_COLUMNS[1:6]}
+    for column in taxonomy_dict.keys():
+        index = next((id for id, item in enumerate(header) if column in item), None)
+        for key, value in results.items():
+            if isinstance(value, (tuple, list)) and index < len(value):
+                if results[key][index] not in taxonomy_dict[column].keys():
+                    taxonomy_dict[column][results[key][index]] = 1
+                else:
+                    taxonomy_dict[column][results[key][index]] += 1
+            else:
+                logger.warning(f"Key '{key}' has incomplete data: {value}")
+
+    # get top n per taxonomic rank
+    # outer loop: iterate over ranks -> column = rank name, counts = {taxon: count}
+    # inner sort: x = (taxon, count) tuple, x[1] = count -> sort taxa by count, descending
+    # slice the sorted list before converting back to dict (dicts can't be sliced)
+    top_n_dict = {
+    column: dict(sorted(counts.items(), key=lambda x: x[1], reverse=True)[:top_n])
+    for column, counts in taxonomy_dict.items()
+    }
+
+    total_sequences = len(results)
+    for key in top_n_dict.keys():
+        top_n_sum = sum(top_n_dict[key].values())
+        other_count = total_sequences - top_n_sum
+        if other_count > 0:
+            top_n_dict[key]['Other'] = other_count
+
+    phylum_color, taxon_shades, sorted_top_n = taxon_color(header, results, top_n_dict, top_n)
+
+    fig, axes = plt.subplots(1, len(top_n_dict), figsize=(3.5 * len(top_n_dict), 8), sharey=True)
+    for ax, (column, counts) in zip(axes, sorted_top_n.items()):
+        rank_name = 'Order' if column == 'order_tax' else column.capitalize()
+        bottom = 0
+        for taxon, count in counts.items():
+            if column == 'domain':
+                color = DOMAIN_COLORS.get(str(taxon).replace('d__', ''), '#cccccc')
+            elif column == 'phylum':
+                color = phylum_color.get(taxon, '#cccccc')
+            else:
+                color = taxon_shades.get(column, {}).get(taxon, '#cccccc')
+            ax.bar(0, count, bottom=bottom, width=0.8, label=str(taxon), color=color, linewidth=0)
+            bottom += count
+        ax.set_xlim(-0.75, 0.75)
+        ax.set_ylim(0, total_sequences)
+        ax.set_xticks([])
+        if column == 'domain':
+            ax.set_title(rank_name, fontsize=15)
+        else:
+            rank_forms = {
+                'phylum': ('phylum', 'phyla'),
+                'class': ('class', 'classes'),
+                'order_tax': ('order', 'orders'),
+                'family': ('family', 'families'),
+            }
+            singular, plural = rank_forms.get(column, ('taxon', 'taxa'))
+            n_taxa = len(taxonomy_dict[column])
+            ax.set_title(f'{rank_name}\n({n_taxa} {singular if n_taxa == 1 else plural})', fontsize=15)
+        for side in ['top', 'right', 'bottom']:
+            ax.spines[side].set_visible(False)
+        handles, labels = ax.get_legend_handles_labels()
+        ax.legend(handles[::-1], labels[::-1], loc='upper center', bbox_to_anchor=(0.5, -0.02), frameon=False, fontsize=12)
+    axes[0].set_ylabel('Number of sequences', fontsize=15)
+
+    plot_path = ensure_path(
+        output,
+        f'{dataset_name}_taxonomy_top{top_n}_stacked.svg',
+        force=force
+    )
+    plt.tight_layout()
+    plt.savefig(plot_path, format='svg', bbox_inches='tight')
+    plt.close(fig)
+    logger.info(f"Plot saved to {plot_path}")
+
+
+def env_color(header: list,
+              results: dict,
+              top_n_dict: dict,
+              top_n: int):
+    color_shades = {}
+    for category, color in ENV_COLORS.items():
+        cmap = LinearSegmentedColormap.from_list(category, ['#ffffff', color])
+        color_shades[category] = cmap(np.linspace(1.0, 0.35, top_n))
+
+    high_level_color = {
+        category: color_shades[category][0]
+        for category in top_n_dict[HIGH_LEVEL_ENV_CATEGORY_COLUMN]
+        if category in color_shades
+    }
+
+    high_index = header.index(HIGH_LEVEL_ENV_CATEGORY_COLUMN)
+    low_index = header.index(LOW_LEVEL_ENV_CATEGORY_COLUMN)
+    low_counts = top_n_dict[LOW_LEVEL_ENV_CATEGORY_COLUMN]
+    co_occurrence = {}
+    for row in results.values():
+        low, high = row[low_index], row[high_index]
+        if low in low_counts and high in color_shades:
+            co_occurrence.setdefault(low, {})
+            co_occurrence[low][high] = co_occurrence[low].get(high, 0) + 1
+    low_to_high = {low: max(counts, key=counts.get) for low, counts in co_occurrence.items()}
+
+    sorted_top_n = dict(top_n_dict)
+    high_order = {h: i for i, h in enumerate(top_n_dict[HIGH_LEVEL_ENV_CATEGORY_COLUMN])}
+    lows = sorted((c for c in low_counts if c not in ('Other', 'No data')),
+                  key=lambda c: (high_order.get(low_to_high.get(c), len(high_order)), -low_counts[c]))
+    sorted_top_n[LOW_LEVEL_ENV_CATEGORY_COLUMN] = {c: low_counts[c] for c in lows}
+    for extra in ['Other', 'No data']:
+        if extra in low_counts:
+            sorted_top_n[LOW_LEVEL_ENV_CATEGORY_COLUMN][extra] = low_counts[extra]
+
+    low_level_shade = {}
+    high_count = {}
+    for low in lows:
+        if low not in low_to_high:
+            continue
+        high = low_to_high[low]
+        high_count[high] = high_count.get(high, 0)
+        low_level_shade[low] = color_shades[high][high_count[high]]
+        high_count[high] += 1
+
+    return high_level_color, low_level_shade, sorted_top_n
+
+
+def plot_environment(header: list,
+                     results: dict,
+                     output: str,
+                     dataset_name: str,
+                     top_n: int = 8,
+                     force: bool = False):
+    env_dict = {key: {} for key in [HIGH_LEVEL_ENV_CATEGORY_COLUMN, LOW_LEVEL_ENV_CATEGORY_COLUMN]}
+    for column in env_dict.keys():
+        index = header.index(column)
+        for row in results.values():
+            category = row[index]
+            env_dict[column][category] = env_dict[column].get(category, 0) + 1
+
+    no_data_counts = {column: counts.pop(None, 0) for column, counts in env_dict.items()}
+
+    top_n_dict = {
+        HIGH_LEVEL_ENV_CATEGORY_COLUMN: dict(sorted(env_dict[HIGH_LEVEL_ENV_CATEGORY_COLUMN].items(),
+                                                    key=lambda x: x[1], reverse=True)),
+        LOW_LEVEL_ENV_CATEGORY_COLUMN: dict(sorted(env_dict[LOW_LEVEL_ENV_CATEGORY_COLUMN].items(),
+                                                   key=lambda x: x[1], reverse=True)[:top_n]),
+    }
+
+    total_sequences = len(results)
+    for column in top_n_dict.keys():
+        other_count = total_sequences - no_data_counts[column] - sum(top_n_dict[column].values())
+        if other_count > 0:
+            top_n_dict[column]['Other'] = other_count
+        if no_data_counts[column] > 0:
+            top_n_dict[column]['No data'] = no_data_counts[column]
+
+    high_level_color, low_level_shade, sorted_top_n = env_color(header, results, top_n_dict, top_n)
+
+    level_names = {
+        HIGH_LEVEL_ENV_CATEGORY_COLUMN: 'High-level\nenvironment',
+        LOW_LEVEL_ENV_CATEGORY_COLUMN: 'Low-level\nenvironment',
+    }
+
+    fig, axes = plt.subplots(1, len(sorted_top_n), figsize=(4.5 * len(sorted_top_n), 8), sharey=True)
+    for ax, (column, counts) in zip(axes, sorted_top_n.items()):
+        bottom = 0
+        for category, count in counts.items():
+            if category == 'Other':
+                color = OTHER_COLOR
+            elif category == 'No data':
+                color = NO_DATA_COLOR
+            elif column == HIGH_LEVEL_ENV_CATEGORY_COLUMN:
+                color = high_level_color.get(category, OTHER_COLOR)
+            else:
+                color = low_level_shade.get(category, OTHER_COLOR)
+            ax.bar(0, count, bottom=bottom, width=0.8, label=str(category).replace('_', ' '),
+                   color=color, linewidth=0)
+            bottom += count
+        ax.set_xlim(-0.75, 0.75)
+        ax.set_ylim(0, total_sequences)
+        ax.set_xticks([])
+        n_categories = len(env_dict[column])
+        ax.set_title(f'{level_names[column]}\n({n_categories} {"category" if n_categories == 1 else "categories"})',
+                     fontsize=15)
+        for side in ['top', 'right', 'bottom']:
+            ax.spines[side].set_visible(False)
+        handles, labels = ax.get_legend_handles_labels()
+        ax.legend(handles[::-1], labels[::-1], loc='upper center', bbox_to_anchor=(0.5, -0.02), frameon=False, fontsize=12)
+    axes[0].set_ylabel('Number of sequences', fontsize=15)
+
+    plot_path = ensure_path(
+        output,
+        f'{dataset_name}_environment_top{top_n}_stacked.svg',
+        force=force
+    )
+    plt.tight_layout()
+    plt.savefig(plot_path, format='svg', bbox_inches='tight')
+    plt.close(fig)
+    logger.info(f"Plot saved to {plot_path}")
+
+
+def meta_plot(results: dict,
+              high_level_env_stacked_bar_plot: bool = False,
+              low_level_env_stacked_bar_plot: bool = False,
+              taxonomy_stacked_bar_plot: bool = False
+              ):
+    plot_taxonomy(results)
 
 
 def list_metadata():

@@ -38,14 +38,14 @@ def read_annotations(conn: sqlite3.Connection):
     rows = conn.execute("""
            SELECT gene_callers_id, source, accession, e_value
            FROM gene_functions
-           WHERE source IN ('COG24_FUNCTION', 'KOfam', 'Pfam')
+           WHERE source IN ('KOfam', 'Pfam') OR source GLOB 'COG*_FUNCTION'
         """).fetchall()
 
     annotations = defaultdict(dict)
     best_pfam_evalue = {}
 
     for gene_caller_id, source, accession, e_value in rows:
-        if source == "COG24_FUNCTION":
+        if source.startswith("COG") and source.endswith("_FUNCTION"):
             annotations[gene_caller_id]['COG_ID'] = accession
         elif source == "KOfam":
             annotations[gene_caller_id]['KEGG_ID'] = accession

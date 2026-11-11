@@ -1,18 +1,8 @@
 #!/usr/bin/env python3
-
-import logging
-from aastk.log import logger_setup
 from aastk.cli import get_main_parser
-from aastk.pasr import *
-from aastk.cugo import *
-from aastk.casm import *
-from aastk.db.build import database
-from aastk.db.check import database_check
-from aastk.db.meta import meta, list_metadata, parse_query
-from aastk.db.export import export_fasta, export_by_metadata
-from aastk.db.gene_family import gene_family
 from aastk.version import __version__, __copyright__, __author__
 import sys
+
 
 def print_help():
     print('''\
@@ -69,6 +59,17 @@ def main():
     else:
         args = parser.parse_args()
 
+    import logging
+    from aastk.log import logger_setup
+    from aastk.pasr import pasr_plot, pasr_select, pasr
+    from aastk.cugo import cugo, cugo_plot, cugo_select
+    from aastk.casm import casm, casm_plot, casm_select
+    from aastk.db.build import database
+    from aastk.db.check import database_check
+    from aastk.db.meta import meta, list_metadata, parse_query
+    from aastk.db.export import export_fasta, export_by_metadata
+    from aastk.db.gene_family import gene_family
+
     output_dir = getattr(args, 'output', getattr(args, 'output_dir', None))
     logger = logger_setup(silent=args.silent, output_dir=output_dir)
 
@@ -104,7 +105,8 @@ def main():
                 force=args.force,
                 params=args.params,
                 filter_seqs=args.filter_seqs,
-                density=args.density
+                density=args.density,
+                keep=args.keep
             )
 
         elif args.subparser_name == 'pasr':
@@ -139,11 +141,14 @@ def main():
                 culture_collection_path=args.culture_collection_path,
                 high_level_environment_path=args.high_level_environment_path,
                 low_level_environment_path=args.low_level_environment_path,
+                cog_definitions_path=args.cog_definitions_path,
                 anvio=args.anvio,
                 tmhmm=args.tmhmm,
                 taxonomy=args.taxonomy,
                 culture_collection=args.culture_collection,
                 environmental_data=args.environmental_data,
+                cog_definitions=args.cog_definitions,
+                cog_counts=args.cog_counts,
                 all_sources=args.all_sources,
                 threads=args.threads,
                 force=args.force,
@@ -212,9 +217,11 @@ def main():
                 tmh_y_range=args.tmh_y_range,
                 export=args.export,
                 export_dir=args.export_dir,
+                export_annotation=args.export_annotation,
                 homogeneity_threshold=args.homogeneity_threshold,
                 homogeneity_window=args.homogeneity_window,
-                sequence_frequency_threshold=args.sequence_frequency_threshold
+                sequence_frequency_threshold=args.sequence_frequency_threshold,
+                keep=args.keep
             )
 
         elif args.subparser_name == 'cugo_select':
@@ -225,7 +232,8 @@ def main():
                 output=args.output,
                 threads=args.threads,
                 filter_seqs=args.filter_seqs,
-                force=args.force
+                force=args.force,
+                keep=args.keep
             )
 
         elif args.subparser_name == 'filter':
@@ -248,6 +256,7 @@ def main():
                 force=args.force,
                 svg=args.svg,
                 show_cluster_numbers=args.show,
+                threads=args.threads,
             )
 
         elif args.subparser_name == 'casm':
@@ -278,7 +287,8 @@ def main():
                 output=args.output,
                 threads=args.threads,
                 filter_seqs=args.filter_seqs,
-                force=args.force
+                force=args.force,
+                keep=args.keep
             )
 
         elif args.subparser_name == 'list_metadata':
