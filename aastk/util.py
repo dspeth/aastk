@@ -125,7 +125,7 @@ def fasta_subsample(fasta: str,
 	# Output file path setup
 	# ===============================
 	dataset = determine_dataset_name(fasta, '.', 0)
-	output_file = f"{dataset}_subsample.faa"
+	output_file = f"{dataset}_subsample{subset_size}.faa"
 	output_path = ensure_path(output_dir, output_file, force=force)
 
 	# ===============================
@@ -181,7 +181,7 @@ def filter(fasta: str,
 
     subset = fasta_subsample(fasta, output, 100, force=force)
 
-    align_output = run_diamond_alignment(fasta, subset, None, threads, FILTER_BLAST_OUTPUT_COLUMNS, output, force)
+    align_output = run_diamond_alignment(fasta, subset, None, threads, FILTER_BLAST_OUTPUT_COLUMNS, output, force, label='filter_align')
 
     alignment_df = pd.read_csv(align_output, sep='\t', names=FILTER_BLAST_OUTPUT_COLUMNS)
 
@@ -276,7 +276,7 @@ def filter(fasta: str,
 
     intermediate_results = {
         'subsample': subset,
-        'diamond_db': f"{align_output.removesuffix('_align')}_subset_dmnd.dmnd",
+        'diamond_db': f"{align_output}_dmnd.dmnd",
         'align_output': align_output,
     }
 
@@ -488,9 +488,13 @@ def run_diamond_alignment(fasta: str,
 						  threads: int,
 						  blast_columns: list,
 						  output: str = None,
-						  force: bool = False):
+						  force: bool = False,
+						  label: str = 'align'):
 	"""
     Run DIAMOND makedb and blastp to align a full FASTA file to a subset.
+
+    Output files are named after the subset if its name extends the query name
+    (e.g. X_subsample1000_align), otherwise after both (e.g. X_vs_S_align).
 
     Args:
         fasta (str): Path to the full input FASTA file (query)
@@ -499,6 +503,7 @@ def run_diamond_alignment(fasta: str,
         threads (int): Number of threads to use
         output (str): Output directory
         force (bool): If set, existing files will be overwritten
+        label (str): Suffix marking the alignment output (default: 'align')
 
     Returns:
         align_output (str): Path to Blast Tabular Output file for the alignment
@@ -526,8 +531,13 @@ def run_diamond_alignment(fasta: str,
 	# Output file path setup
 	# ===============================
 	dataset = determine_dataset_name(fasta, '.', 0)
-	dbname = ensure_path(output, f"{dataset}_subset_dmnd", force=force)
-	align_output = ensure_path(output, f"{dataset}_align", force=force)
+	subset_name = determine_dataset_name(align_subset, '.', 0)
+	if subset_name.startswith(f"{dataset}_"):
+		align_name = f"{subset_name}_{label}"
+	else:
+		align_name = f"{dataset}_vs_{subset_name}_{label}"
+	dbname = ensure_path(output, f"{align_name}_dmnd", suffix='.dmnd', force=force)
+	align_output = ensure_path(output, align_name, force=force)
 
 	# ===============================
 	# Subprocess command creation

@@ -91,6 +91,38 @@ def fetch_metadata_batch(db_path: str, query: dict, batch: list):
     return records
 
 
+def export_dataset_name(db_path: str,
+                        query: dict,
+                        fasta: str = None,
+                        id_list: str = None,
+                        genome_id_list: str = None,
+                        taxonomy_list: str = None) -> str:
+    """
+    Builds export output name from input file names and metadata query.
+
+    Args:
+        db_path (str): Path to GlobDB SQLite database (used if no input file is given)
+        query (dict): Metadata query as parsed from the command line
+        fasta (str): Path to input FASTA file
+        id_list (str): Path to sequence ID list
+        genome_id_list (str): Path to genome ID list
+        taxonomy_list (str): Path to taxonomy list
+
+    Returns:
+        dataset_name (str): Output name, e.g. nifH_phylum-p__Firmicutes
+    """
+    parts = [determine_dataset_name(path, '.', 0)
+             for path in (fasta or id_list, genome_id_list, taxonomy_list) if path]
+    if not parts:
+        parts.append(determine_dataset_name(db_path, '.', 0))
+
+    for column, values in query.items():
+        token = f"{column}-{'+'.join(values)}"
+        parts.append(''.join(c if c.isalnum() or c in '_+-' else '-' for c in token))
+
+    return '_'.join(parts)
+
+
 def export_by_metadata(db_path: str,
                         query: dict,
                         output: str,
@@ -110,6 +142,8 @@ def export_by_metadata(db_path: str,
             f"Invalid taxonomy_column '{taxonomy_column}'. Must be one of: {', '.join(taxonomy_ranks)}"
         )
 
+    dataset_name = export_dataset_name(db_path, query, fasta, id_list, genome_id_list, taxonomy_list)
+
     if genome_id_list:
         with open(genome_id_list, 'r') as f:
             genome_ids = [line.strip() for line in f if line.strip()]
@@ -120,7 +154,6 @@ def export_by_metadata(db_path: str,
             taxon_values = [line.strip() for line in f if line.strip()]
         query.setdefault(taxonomy_column, []).extend(taxon_values)
 
-    dataset_name = determine_dataset_name(db_path, '.', 0)
     output_path = ensure_path(output, f'{dataset_name}_export.faa', force=force)
     query_info_path = ensure_path(output, f'{dataset_name}_export_query.json', force=force)
 
