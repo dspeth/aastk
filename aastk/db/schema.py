@@ -71,6 +71,12 @@ COG_SCHEMA = {
     'COG_count': 'INTEGER'
 }
 
+KEGG_SCHEMA = {
+    'KEGG_ID': 'TEXT PRIMARY KEY',
+    'KEGG_definition': 'TEXT',
+    'KEGG_count': 'INTEGER'
+}
+
 # extract column name lists for queries (same order)
 PROTEIN_COLUMNS = list(PROTEIN_SCHEMA.keys())
 GENOME_COLUMNS = list(GENOME_SCHEMA.keys())

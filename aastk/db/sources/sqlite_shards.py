@@ -42,12 +42,14 @@ def read_annotations(conn: sqlite3.Connection):
         """).fetchall()
 
     annotations = defaultdict(dict)
+    best_kegg_evalue = {}
     best_pfam_evalue = {}
 
     for gene_caller_id, source, accession, e_value in rows:
         if source.startswith("COG") and source.endswith("_FUNCTION"):
-            annotations[gene_caller_id]['COG_ID'] = accession
-        elif source == "KOfam":
+            annotations[gene_caller_id]['COG_ID'] = accession.split('!!!')[0]
+        elif source == "KOfam" and e_value < best_kegg_evalue.get(gene_caller_id, float('inf')):
+            best_kegg_evalue[gene_caller_id] = e_value
             annotations[gene_caller_id]['KEGG_ID'] = accession
         # for now, Pfam_ID with the lowest e-value is included (possibly subject to change)
         elif source == "Pfam" and e_value < best_pfam_evalue.get(gene_caller_id, float('inf')):

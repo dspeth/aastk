@@ -14,6 +14,7 @@ from aastk.db.sources.taxonomy import parse_taxonomy_file
 from aastk.db.sources.culture_collection import parse_culture_collection_file
 from aastk.db.sources.environment import parse_environment_file
 from aastk.db.sources.cog_definitions import parse_cog_definitions_file
+from aastk.db.sources.kegg_definitions import parse_kegg_definitions_file
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ def database(chunk_dir: str = None,
              high_level_environment_path: str = None,
              low_level_environment_path: str = None,
              cog_definitions_path: str = None,
+             kegg_definitions_path: str = None,
              db_version: str = None,
              output: str = None,
              anvio: bool = False,
@@ -49,6 +51,8 @@ def database(chunk_dir: str = None,
              environmental_data: bool = False,
              cog_definitions: bool = False,
              cog_counts: bool = False,
+             kegg_definitions: bool = False,
+             kegg_counts: bool = False,
              all_sources: bool = False,
              threads: int = 1,
              force: bool = False):
@@ -62,6 +66,7 @@ def database(chunk_dir: str = None,
                 ('--high_level_environment_path', high_level_environment_path),
                 ('--low_level_environment_path', low_level_environment_path),
                 ('--cog_definitions_path', cog_definitions_path),
+                ('--kegg_definitions_path', kegg_definitions_path),
             ] if not path
         ]
         if missing:
@@ -74,6 +79,8 @@ def database(chunk_dir: str = None,
         environmental_data = True
         cog_definitions = True
         cog_counts = True
+        kegg_definitions = True
+        kegg_counts = True
 
     output_dir = Path(output) if output else Path('.')
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -220,6 +227,38 @@ def database(chunk_dir: str = None,
         conn.commit()
         n_cogs = conn.execute("SELECT COUNT(*) FROM cog_data WHERE COG_count > 0").fetchone()[0]
         logger.info(f"Inserted protein counts for {n_cogs} COGs")
+
+    if kegg_definitions:
+        if not kegg_definitions_path:
+            raise ValueError('--kegg_definitions is True. --kegg_definitions_path must be provided.')
+        else:
+            logger.info("Processing KEGG definitions...")
+            kegg_def_data = parse_kegg_definitions_file(kegg_definitions_path)
+            if kegg_def_data:
+                conn.executemany("""
+                    INSERT INTO kegg_data (KEGG_ID, KEGG_definition)
+                    VALUES (?, ?)
+                    ON CONFLICT(KEGG_ID) DO UPDATE SET
+                        KEGG_definition = excluded.KEGG_definition
+                """, kegg_def_data)
+                conn.commit()
+                logger.info(f"Inserted KEGG definitions for {len(kegg_def_data)} KOs")
+
+    if kegg_counts:
+        logger.info("Counting proteins per KO...")
+        conn.execute("UPDATE kegg_data SET KEGG_count = 0")
+        conn.execute("""
+            INSERT INTO kegg_data (KEGG_ID, KEGG_count)
+            SELECT KEGG_ID, COUNT(*)
+            FROM protein_data
+            WHERE KEGG_ID IS NOT NULL AND KEGG_ID != 'NA'
+            GROUP BY KEGG_ID
+            ON CONFLICT(KEGG_ID) DO UPDATE SET
+                KEGG_count = excluded.KEGG_count
+        """)
+        conn.commit()
+        n_kos = conn.execute("SELECT COUNT(*) FROM kegg_data WHERE KEGG_count > 0").fetchone()[0]
+        logger.info(f"Inserted protein counts for {n_kos} KOs")
 
     conn.close()
 

@@ -4,6 +4,7 @@ from aastk.db.schema import (
     PROTEIN_SCHEMA,
     GENOME_SCHEMA,
     COG_SCHEMA,
+    KEGG_SCHEMA,
     PROTEIN_COLUMNS,
     HIGH_LEVEL_ENV_COLUMNS,
     LOW_LEVEL_ENV_COLUMNS,
@@ -68,6 +69,16 @@ def setup_database(db_path: str) -> sqlite3.Connection:
     conn.execute(f'''
                  CREATE TABLE IF NOT EXISTS cog_data (
                     {cog_cols}
+                 )
+                 ''')
+
+    kegg_cols = ',\n                     '.join(
+        [f'{col} {dtype}' for col, dtype in KEGG_SCHEMA.items()]
+    )
+
+    conn.execute(f'''
+                 CREATE TABLE IF NOT EXISTS kegg_data (
+                    {kegg_cols}
                  )
                  ''')
 

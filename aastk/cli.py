@@ -24,7 +24,7 @@ def __all_plots(group, required=False):
 
 def __all_sources(group, required=False):
     group.add_argument('--all_sources', action='store_true', required=required,
-                       help='Import all available data sources (anvi\'o, TMHMM, taxonomy, culture collection, environment, COG definitions, COG counts)')
+                       help='Import all available data sources (anvi\'o, TMHMM, taxonomy, culture collection, environment, COG definitions, COG counts, KEGG definitions, KEGG counts)')
 
 def __anvio(group, required=False):
     group.add_argument('--anvio', action='store_true', required=required,
@@ -221,6 +221,18 @@ def __iterations(group, required=False):
 def __keep(group, required=False):
     group.add_argument('--keep', action='store_true', required=required,
                        help='Keep intermediate files in specified paths')
+
+def __kegg_definitions(group, required=False):
+    group.add_argument('--kegg_definitions', action='store_true', required=required,
+                       help='Import KEGG definitions')
+
+def __kegg_counts(group, required=False):
+    group.add_argument('--kegg_counts', action='store_true', required=required,
+                       help='Count proteins per KEGG ID in protein_data')
+
+def __kegg_definitions_path(group, required=False):
+    group.add_argument('--kegg_definitions_path', type=str, required=required,
+                       help='Path to KOfam ko_list file')
 
 def __key_column(group, required=False):
     group.add_argument('-k', '--key_column', type=int, default=0, required=required,
@@ -467,6 +479,9 @@ def get_main_parser():
             __cog_definitions(grp)
             __cog_definitions_path(grp)
             __cog_counts(grp)
+            __kegg_definitions(grp)
+            __kegg_definitions_path(grp)
+            __kegg_counts(grp)
             __all_sources(grp)
             __threads(grp)
             __output(grp)
