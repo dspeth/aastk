@@ -395,9 +395,29 @@ def meta(db_path: str,
         include_low_level_env_category
     )
     if unavailable:
-        raise ValueError(
-            f"Requested metadata not available in database: {', '.join(unavailable)}"
+        logger.warning(
+            f"Requested metadata not available in database, skipping: {', '.join(unavailable)}"
         )
+        include_annotation = include_annotation and 'annotation' not in unavailable
+        include_taxonomy = include_taxonomy and 'taxonomy' not in unavailable
+        include_culture_collection = include_culture_collection and 'culture_collection' not in unavailable
+        include_high_level_environment = include_high_level_environment and 'high_level_environment' not in unavailable
+        include_low_level_environment = include_low_level_environment and 'low_level_environment' not in unavailable
+        include_high_level_env_category = include_high_level_env_category and 'high_level_env_category' not in unavailable
+        include_low_level_env_category = include_low_level_env_category and 'low_level_env_category' not in unavailable
+
+        if not any([
+            include_annotation,
+            include_taxonomy,
+            include_culture_collection,
+            include_high_level_environment,
+            include_low_level_environment,
+            include_high_level_env_category,
+            include_low_level_env_category
+        ]):
+            raise ValueError(
+                f"None of the requested metadata is available in database: {', '.join(unavailable)}"
+            )
 
     BATCH_SIZE = 500
 
@@ -418,6 +438,7 @@ def meta(db_path: str,
     ]
 
     missing_ids = set()
+    failed_ids = set()
     results = {}
 
     # Process batches in parallel
@@ -446,7 +467,7 @@ def meta(db_path: str,
             try:
                 results.update(future.result())
             except Exception as e:
-                failed_ids.update(batches[batch_idx])
+                failed_ids.update(batches[futures[future]])
                 logger.error(
                     f"Error processing batch {futures[future]}: {e}"
                 )
@@ -462,7 +483,7 @@ def meta(db_path: str,
                     for x in results[seq_id]
                 ]
                 out.write('\t'.join(row) + '\n')
-            else:
+            elif seq_id not in failed_ids:
                 missing_ids.add(seq_id)
 
     logger.info(f"Metadata has been saved to {output_path}")
@@ -476,6 +497,11 @@ def meta(db_path: str,
     if missing_ids:
         logger.warning(
             f"{len(missing_ids)} sequence IDs were not found in the database"
+        )
+
+    if failed_ids:
+        logger.warning(
+            f"{len(failed_ids)} sequence IDs were skipped because their batch query failed"
         )
 
 def taxon_color(header: list,

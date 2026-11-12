@@ -791,6 +791,23 @@ def fetch_annotation_definitions(db_path: str, annotation: str, annotation_ids: 
 
     return {annotation_id: definition for annotation_id, definition in rows}
 
+def annotation_definitions_available(db_path: str, annotation: str) -> bool:
+    annotation_prefix = annotation.replace('_ID', '')
+    table_name = f"{annotation_prefix.lower()}_data"
+    definition_column = f"{annotation_prefix}_definition"
+
+    with sqlite3.connect(db_path) as conn:
+        table_exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table_name,)
+        ).fetchone()
+        if not table_exists:
+            return False
+        has_definitions = conn.execute(
+            f"SELECT 1 FROM {table_name} WHERE {definition_column} IS NOT NULL LIMIT 1"
+        ).fetchone()
+
+    return has_definitions is not None
+
 def cugo_yaml(context_path: str,
              flank_lower: int,
              flank_upper: int,
@@ -800,6 +817,10 @@ def cugo_yaml(context_path: str,
              top_n: int = 3,
              force: bool = False
              ):
+    if not annotation_definitions_available(db_path, annotation):
+        logger.warning(f"No {annotation} definitions in database, skipping top annotations YAML")
+        return None
+
     dataset_name = determine_dataset_name(context_path, '.', 0, '_context')
     top_annotations_path = ensure_path(output, f'{dataset_name}_top{top_n}.yaml', force=force)
 
