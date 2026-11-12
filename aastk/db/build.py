@@ -1,6 +1,7 @@
 import logging
 import shutil
 import subprocess
+from functools import partial
 from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
@@ -33,6 +34,23 @@ def _insert_environment_data(conn, env_path: str, columns: list, label: str):
         """, env_data)
         conn.commit()
         logger.info(f"Inserted {label} environment data for {len(env_data)} genomes")
+
+def _check_input_files(inputs: list):
+    for enabled, flag, path_flag, path, parser in inputs:
+        if not enabled:
+            continue
+        if not path:
+            raise ValueError(f'{flag} is True. {path_flag} must be provided.')
+        if not Path(path).exists():
+            raise FileNotFoundError(f'{path_flag} does not exist: {path}')
+        if parser is not None:
+            try:
+                parsed = parser(path)
+            except Exception as e:
+                raise ValueError(f'{path_flag} could not be parsed ({path}): {e}') from e
+            if not parsed:
+                raise ValueError(f'{path_flag} contains no usable entries: {path}')
+            logger.info(f"Checked {path_flag}: {len(parsed)} entries")
 
 def database(chunk_dir: str = None,
              tmhmm_tar_path: str = None,
@@ -81,6 +99,23 @@ def database(chunk_dir: str = None,
         cog_counts = True
         kegg_definitions = True
         kegg_counts = True
+
+    logger.info("Checking input files...")
+    _check_input_files([
+        (anvio, '--anvio', '--chunk_dir', chunk_dir, None),
+        (tmhmm, '--tmhmm', '--tmhmm_tar_path', tmhmm_tar_path, None),
+        (taxonomy, '--taxonomy', '--taxonomy_path', taxonomy_path, parse_taxonomy_file),
+        (culture_collection, '--culture_collection', '--culture_collection_path', culture_collection_path,
+         parse_culture_collection_file),
+        (environmental_data, '--environmental_data', '--high_level_environment_path', high_level_environment_path,
+         partial(parse_environment_file, columns=HIGH_LEVEL_ENV_COLUMNS)),
+        (environmental_data, '--environmental_data', '--low_level_environment_path', low_level_environment_path,
+         partial(parse_environment_file, columns=LOW_LEVEL_ENV_COLUMNS)),
+        (cog_definitions, '--cog_definitions', '--cog_definitions_path', cog_definitions_path,
+         parse_cog_definitions_file),
+        (kegg_definitions, '--kegg_definitions', '--kegg_definitions_path', kegg_definitions_path,
+         parse_kegg_definitions_file),
+    ])
 
     output_dir = Path(output) if output else Path('.')
     output_dir.mkdir(parents=True, exist_ok=True)
