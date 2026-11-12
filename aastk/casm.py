@@ -168,7 +168,7 @@ def build_alignment_matrix_split(align_file: str,
     logger.info(f"Matrix sparsity: {sparsity:.2f}%")
     logger.info(f"Score range: {score_min:.2f} - {score_max:.2f}")
 
-    dataset_name = determine_dataset_name(align_file, '.', 0)
+    dataset_name = determine_dataset_name(align_file, '.', 0, '_align')
 
     # =============================================
     # Matrix and matrix metadata output to files
@@ -1161,7 +1161,7 @@ def casm(fasta: str,
 
     # Phase 3: t-SNE embedding
     logger.info("=== Phase 3: t-SNE Embedding ===")
-    prefix = determine_dataset_name(align_output, '.', 0)
+    prefix = determine_dataset_name(align_output, '.', 0, '_align')
     early_filename, final_filename = _reduce_and_embed(matrix=matrix_obj,
                                                         queries=queries,
                                                         output=output,
