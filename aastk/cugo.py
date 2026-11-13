@@ -863,7 +863,7 @@ def cugo_yaml(context_path: str,
                 annotation_id = 'NA'
             count = int(top_counts[rank][pos_idx])
             definition = definitions.get(annotation_id)
-            position_annotations[annotation_id] = f"{count} | {definition}" if definition else count
+            position_annotations[annotation_id] = f"{definition} | n={count}" if definition else f"n={count}"
         top_annotations[int(pos)] = position_annotations
 
     with open(top_annotations_path, 'w') as f:
