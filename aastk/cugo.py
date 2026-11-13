@@ -828,7 +828,8 @@ def cugo_yaml(context_path: str,
 
     positions = sorted(cont['position'].unique())
 
-    top_ids, _ = retrieve_top_annotations_per_position(cont, top_n, positions, annotation)
+    top_ids, top_counts = retrieve_top_annotations_per_position(cont, top_n, positions, annotation)
+    sequences_per_position = cont['position'].value_counts()
 
     unique_ids = {annotation_id for rank in top_ids for annotation_id in rank
                   if annotation_id is not None and not pd.isna(annotation_id)}
@@ -837,14 +838,16 @@ def cugo_yaml(context_path: str,
 
     top_annotations = {}
     for pos_idx, pos in enumerate(positions):
-        position_annotations = {}
+        position_annotations = {'n_sequences': int(sequences_per_position[pos])}
         for rank in range(top_n):
             annotation_id = top_ids[rank][pos_idx]
             if annotation_id is None:
                 continue
             if pd.isna(annotation_id):
                 annotation_id = 'NA'
-            position_annotations[annotation_id] = definitions.get(annotation_id, '')
+            count = int(top_counts[rank][pos_idx])
+            definition = definitions.get(annotation_id)
+            position_annotations[annotation_id] = f"{count} | {definition}" if definition else count
         top_annotations[int(pos)] = position_annotations
 
     with open(top_annotations_path, 'w') as f:
