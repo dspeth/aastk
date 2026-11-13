@@ -531,6 +531,7 @@ def get_main_parser():
             __bin_width(grp)
             __y_range(grp)
             __tmh_y_range(grp)
+            __db_path(grp)
             __output(grp)
             __force(grp)
             __svg(grp)

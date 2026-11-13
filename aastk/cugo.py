@@ -613,7 +613,8 @@ def cugo_plot(context_path: str,
               y_range: int = None,
               tmh_y_range: int = None,
               svg: bool = False,
-              force: bool = False
+              force: bool = False,
+              db_path: str = None
               ):
     """
     Generate plots for genomic context analysis: annotation distribution, protein size, and TMH counts.
@@ -634,6 +635,7 @@ def cugo_plot(context_path: str,
         tmh_y_range: Y-axis range for TMH plots
         svg: Generate plot in SVG format
         force: Whether to overwrite existing files
+        db_path: Path to SQLite database; if it exists, the top annotations YAML is written for the same window
     """
     if annotation not in ANNOTATION_COLUMNS:
         raise ValueError(f'Invalid annotation. Please select one of the following annotations: {",".join(ANNOTATION_COLUMNS)}')
@@ -764,6 +766,20 @@ def cugo_plot(context_path: str,
 
         plt.savefig(all_plot_path, dpi=300, bbox_inches='tight')
         logger.info(f"Plot saved to {all_plot_path}")
+
+    if db_path and Path(db_path).is_file():
+        cugo_yaml(
+            context_path=context_path,
+            flank_lower=flank_lower,
+            flank_upper=flank_upper,
+            db_path=db_path,
+            output=output,
+            annotation=annotation,
+            top_n=top_n,
+            force=force
+        )
+    else:
+        logger.info(f"No database found at {db_path}, skipping top annotations YAML")
 
 def fetch_cog_definitions(db_path: str, cog_ids: set):
     with sqlite3.connect(db_path) as conn:
@@ -993,18 +1009,8 @@ def cugo(db_path: str,
         y_range=y_range,
         tmh_y_range=tmh_y_range,
         svg=svg,
-        force=force
-    )
-
-    cugo_yaml(
-        context_path=context_file,
-        flank_lower=flank_lower,
-        flank_upper=flank_upper,
-        db_path=db_path,
-        output=output_dir,
-        annotation=annotation,
-        top_n=top_n,
-        force=force
+        force=force,
+        db_path=db_path
     )
 
     # determine plot file path

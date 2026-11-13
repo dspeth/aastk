@@ -198,7 +198,8 @@ def main():
                 y_range=args.y_range,
                 tmh_y_range=args.tmh_y_range,
                 svg=args.svg,
-                force=args.force
+                force=args.force,
+                db_path=args.db_path
             )
 
         elif args.subparser_name == 'cugo':
