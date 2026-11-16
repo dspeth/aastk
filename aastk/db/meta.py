@@ -43,6 +43,7 @@ ENV_COLORS = {
     'unassigned_high_level': '#444444',
 }
 OTHER_COLOR = '#cccccc'
+NON_TOP_PHYLUM_COLOR = '#444444'
 NO_DATA_COLOR = '#999999'
 
 GENOME_ID_MATCH = """
@@ -515,7 +516,7 @@ def taxon_color(header: list,
 
     # save top_n shades for each color map; 1 to 0.25 to begin with strongest shade
     color_shades = {}
-    for color_map in COLOR_MAPS:
+    for color_map in COLOR_MAPS + [NON_TOP_PHYLUM_COLOR]:
         cmap = LinearSegmentedColormap.from_list(color_map, ['#ffffff', color_map])
         # get RGB array for equidistantly spaced points on the Colormap scale
         color_shades[color_map] = cmap(np.linspace(1.0, 0.35, top_n))
@@ -554,12 +555,13 @@ def taxon_color(header: list,
             if taxon == 'Other':
                 continue
             phylum = taxon_to_phylum[rank][taxon]
+            color_map = phylum_to_colormap.get(phylum, NON_TOP_PHYLUM_COLOR)
             # keep track of how many times phylum was encountered starting with 1
             # as 0 is occupied by phylum itself when it comes to color mapping
-            phylum_count[phylum] = phylum_count.get(phylum, 0)
-            shades = color_shades[phylum_to_colormap[phylum]]
-            taxon_to_phylum_color_shade[rank][taxon] = shades[phylum_count[phylum]]
-            phylum_count[phylum] = phylum_count.get(phylum, 0) + 1
+            phylum_count[color_map] = phylum_count.get(color_map, 0)
+            shades = color_shades[color_map]
+            taxon_to_phylum_color_shade[rank][taxon] = shades[phylum_count[color_map]]
+            phylum_count[color_map] = phylum_count.get(color_map, 0) + 1
 
     return phylum_color, taxon_to_phylum_color_shade, sorted_top_n
 
