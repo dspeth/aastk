@@ -295,5 +295,10 @@ def database(chunk_dir: str = None,
         n_kos = conn.execute("SELECT COUNT(*) FROM kegg_data WHERE KEGG_count > 0").fetchone()[0]
         logger.info(f"Inserted protein counts for {n_kos} KOs")
 
+    logger.info("Optimizing database with VACUUM...")
+    conn.execute("VACUUM")
+    conn.commit()
+    logger.info("VACUUM complete")
+
     conn.close()
 
