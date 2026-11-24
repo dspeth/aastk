@@ -34,13 +34,14 @@ def __all_metadata(group, required=False):
     group.add_argument('--all_metadata', action='store_true', required=required,
                        help='Include all metadata in output file')
 
-def __annotation(group, required=False):
-    group.add_argument('--annotation', type=str, default='COG_ID', required=required,
-                       help='Annotation: COG_ID, KEGG_ID, Pfam_ID (default: COG_ID)')
+def __annotation_columns(group, required=False):
+    group.add_argument('--annotation_columns', type=int, default=3, required=required,
+                       help='Number of most prevalent annotations shown per position (default: 3)')
 
-def __bin_width(group, required=False):
-    group.add_argument('-b', '--bin_width', type=int, default=50, required=required,
-                       help='Bin width for amino acid sequence size plotting (default: 50)')
+def __annotation_source(group, required=False):
+    group.add_argument('--annotation_source', type=str, default='COG', choices=['COG', 'KEGG', 'Pfam'],
+                       required=required,
+                       help='Annotation source: COG, KEGG, Pfam (default: COG)')
 
 def __block(group, required=False):
     group.add_argument('-b', '--block', type=int, default=6, required=required,
@@ -95,8 +96,8 @@ def __cugo(group, required=False):
                        help='Generate CUGO plot')
 
 def __cugo_range(group, required=False):
-    group.add_argument('-r', '--cugo_range', type=int, required=required,
-                       help='CUGO range for genomic context analysis')
+    group.add_argument('--cugo_range', type=int, default=0, required=required,
+                       help='Number of adjacent CUGO units to include on each side of the target\'s CUGO unit (default: 0)')
 
 def __culture_collection(group, required=False):
     group.add_argument('--culture_collection', action='store_true', required=required,
@@ -122,6 +123,10 @@ def __density(group, required=False):
     group.add_argument('--density', action='store_true', required=required,
                        help='Plot a 2D density (hexbin) instead of a scatter plot')
 
+def __downstream(group, required=False):
+    group.add_argument('--downstream', type=int, required=required,
+                       help='Number of positions downstream of the target protein')
+
 def __environmental_data(group, required=False):
     group.add_argument('--environmental_data', action='store_true', required=required,
                        help='Import high and low level environment data')
@@ -134,11 +139,6 @@ def __export(group, required=False):
     group.add_argument('--export', action='store_true', required=required,
                        help='Automatically export a FASTA file for each position whose homogeneity '
                             'and sequence frequency pass their thresholds')
-
-def __export_annotation(group, required=False):
-    group.add_argument('--export_annotation', action='store_true', required=required,
-                       help='Export each position into its own subdirectory named '
-                            '{dataset}_{position}_{most prevalent annotation} within --export_dir')
 
 def __export_dir(group, required=False):
     group.add_argument('--export_dir', type=str, default=None, required=required,
@@ -155,14 +155,6 @@ def __filter_seqs(group, required=False):
 def __force(group, required=False):
     group.add_argument('--force', action='store_true', required=required,
                        help='Overwrite existing files in specified path')
-
-def __flank_lower(group, required=False):
-    group.add_argument('-l', '--flank_lower', type=int, required=required,
-                       help='Start of flanking window (inclusive)')
-
-def __flank_upper(group, required=False):
-    group.add_argument('-u', '--flank_upper', type=int, required=required,
-                       help='End of flanking window (inclusive)')
 
 def __genome_id_list(group, required=False):
     group.add_argument('-g', '--genome_id_list', type=str, required=required,
@@ -228,6 +220,15 @@ def __key_column(group, required=False):
 def __large(group, required=False):
     group.add_argument('--large', action='store_true', required=required,
                        help="Run CASM with TruncatedSVD on alignment score matrix for large input datasets")
+
+def __length_bin_width(group, required=False):
+    group.add_argument('--length_bin_width', type=int, default=50, required=required,
+                       help='Bin width for amino acid sequence length plotting (default: 50)')
+
+def __length_ymax(group, required=False):
+    group.add_argument('--length_ymax', type=int, required=required,
+                       help='Upper limit for sequence length plot y-axis (default: maximum length)')
+
 def __low_level_environment_path(group, required=False):
     group.add_argument('-l', '--low_level_environment_path', type=str, required=required,
                        help='Path to low level environment data TSV file')
@@ -357,6 +358,10 @@ def __tmh(group, required=False):
     group.add_argument('--tmh', action='store_true', required=required,
                        help='Generate transmembrane helices plot')
 
+def __tmh_max(group, required=False):
+    group.add_argument('--tmh_max', type=int, required=required,
+                       help='Upper limit for TMH plot y-axis (default: maximum number of transmembrane helices)')
+
 def __tmhmm(group, required=False):
     group.add_argument('--tmhmm', action='store_true', required=required,
                        help='Import number of predicted transmembrane helices from tmhmm files')
@@ -365,25 +370,17 @@ def __tmhmm_tar_path(group, required=False):
     group.add_argument('-t', '--tmhmm_tar_path', type=str, required=required,
                        help='Path to gzipped tar archive of tmhmm files')
 
-def __tmh_y_range(group, required=False):
-    group.add_argument('-t', '--tmh_y_range', type=int, required=required,
-                       help='Upper limit for TMH plot y-axis (default: maximum number of transmembrane helices)')
-
-def __top_n(group, required=False):
-    group.add_argument('-t', '--top_n', type=int, default=3, required=required,
-                       help='Number of top annotations to plot per position (default: 3)')
-
 def __update(group, required=False):
     group.add_argument('--update', action='store_true', required=required,
                        help='Update subset of data using metadata yaml file')
 
+def __upstream(group, required=False):
+    group.add_argument('--upstream', type=int, required=required,
+                       help='Number of positions upstream of the target protein')
+
 def __yaml(group, required=False):
     group.add_argument('-y', '--yaml', type=str, required=required,
                        help='Path to metadata yaml file')
-
-def __y_range(group, required=False):
-    group.add_argument('-y', '--y_range', type=int, required=required,
-                       help='Upper limit for sequence length plot y-axis (default: maximum length)')
 
 def get_main_parser():
     main_parser = argparse.ArgumentParser(
@@ -504,18 +501,18 @@ def get_main_parser():
     with subparser(sub_parsers, 'cugo_plot', 'Plot CUGO context') as parser:
         with arg_group(parser, 'Required arguments') as grp:
             __context_path(grp, required=True)
-            __flank_lower(grp, required=True)
-            __flank_upper(grp, required=True)
+            __upstream(grp, required=True)
+            __downstream(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
-            __annotation(grp)
-            __top_n(grp)
+            __annotation_source(grp)
+            __annotation_columns(grp)
             __cugo(grp)
             __size(grp)
             __tmh(grp)
             __all_plots(grp)
-            __bin_width(grp)
-            __y_range(grp)
-            __tmh_y_range(grp)
+            __length_bin_width(grp)
+            __length_ymax(grp)
+            __tmh_max(grp)
             __output(grp)
             __force(grp)
             __svg(grp)
@@ -528,23 +525,21 @@ def get_main_parser():
             __id_list(grp)
         with arg_group(parser, 'Required arguments') as grp:
             __db_path(grp, required=True)
-            __cugo_range(grp, required=True)
-            __flank_lower(grp, required=True)
-            __flank_upper(grp, required=True)
+            __upstream(grp, required=True)
+            __downstream(grp, required=True)
         with arg_group(parser, 'Optional') as grp:
-            __annotation(grp)
-            __output(grp)
-            __top_n(grp)
-            __bin_width(grp)
-            __y_range(grp)
-            __tmh_y_range(grp)
+            __cugo_range(grp)
+            __annotation_source(grp)
+            __annotation_columns(grp)
+            __length_bin_width(grp)
+            __length_ymax(grp)
+            __tmh_max(grp)
             __output(grp)
             __threads(grp)
             __svg(grp)
             __force(grp)
             __export(grp)
             __export_dir(grp)
-            __export_annotation(grp)
             __homogeneity_threshold(grp)
             __homogeneity_window(grp)
             __sequence_frequency_threshold(grp)

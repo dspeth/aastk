@@ -66,13 +66,13 @@ def process_target_context(target_id, parent_id, target_cugo, strand, cugo_range
     return results
 
 
-def write_context_output(all_results, annotation, output_file):
+def write_context_output(all_results, annotation_source, output_file):
     """Write all results to one TSV."""
     if not all_results:
         return
 
     headers = ['target_id', 'position', 'seqID', 'parent_ID', 'aa_length',
-               'strand', f'{annotation}', 'CUGO_number', 'no_TMH']
+               'strand', f'{annotation_source}_ID', 'CUGO_number', 'no_TMH']
 
     with open(output_file, 'w') as f:
         f.write('\t'.join(headers) + '\n')
@@ -81,12 +81,12 @@ def write_context_output(all_results, annotation, output_file):
             f.write('\t'.join(line) + '\n')
 
 
-def fetch_seqid_batch(batch, annotation, db_path):
+def fetch_seqid_batch(batch, annotation_source, db_path):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     placeholders = ",".join("?" * len(batch))
     query = f"""
-        SELECT seqID, parent_ID, aa_length, strand, {annotation}, CUGO_number, no_TMH
+        SELECT seqID, parent_ID, aa_length, strand, {annotation_source}_ID, CUGO_number, no_TMH
         FROM protein_data
         WHERE seqID IN ({placeholders})
     """
@@ -95,7 +95,7 @@ def fetch_seqid_batch(batch, annotation, db_path):
     conn.close()
     return rows
 
-def fetch_parent_context(parent_ID, needed_numbers, annotation, db_path, batch_size=500):
+def fetch_parent_context(parent_ID, needed_numbers, annotation_source, db_path, batch_size=500):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     rows_out = []
@@ -104,7 +104,7 @@ def fetch_parent_context(parent_ID, needed_numbers, annotation, db_path, batch_s
         batch = needed_list[j:j + batch_size]
         placeholders = ",".join("?" * len(batch))
         query = f"""
-            SELECT seqID, parent_ID, aa_length, strand, {annotation}, CUGO_number, no_TMH
+            SELECT seqID, parent_ID, aa_length, strand, {annotation_source}_ID, CUGO_number, no_TMH
             FROM protein_data
             WHERE parent_ID = ? AND CUGO_number IN ({placeholders})
             ORDER BY CUGO_number
@@ -117,23 +117,25 @@ def fetch_parent_context(parent_ID, needed_numbers, annotation, db_path, batch_s
 def context(fasta: str,
             id_list: str,
             db_path: str,
-            cugo_range: int,
             output_dir: str,
-            annotation: str = 'COG_ID',
+            cugo_range: int = 0,
+            annotation_source: str = 'COG',
             threads: int = 1,
             force: bool = False,
             ):
-    if annotation not in ANNOTATION_COLUMNS:
-        raise ValueError(f'Invalid annotation. Please select one of the following annotations: {",".join(ANNOTATION_COLUMNS)}')
+    if f'{annotation_source}_ID' not in ANNOTATION_COLUMNS:
+        raise ValueError('Invalid annotation source. Please select one of the following: COG, KEGG, Pfam')
+
+    range_suffix = f'_r{cugo_range}' if cugo_range != 0 else ''
 
     if fasta:
         protein_name = determine_dataset_name(fasta, '.', 0)
-        output_file = ensure_path(output_dir, f'{protein_name}_{annotation}_r{cugo_range}_context.tsv', force=force)
+        output_file = ensure_path(output_dir, f'{protein_name}_{annotation_source}{range_suffix}_context.tsv', force=force)
         sequences = read_fasta_to_dict(fasta)
         protein_identifiers = set(sequences.keys())
     elif id_list:
         protein_name = determine_dataset_name(id_list, '.', 0)
-        output_file = ensure_path(output_dir, f'{protein_name}_{annotation}_r{cugo_range}_context.tsv', force=force)
+        output_file = ensure_path(output_dir, f'{protein_name}_{annotation_source}{range_suffix}_context.tsv', force=force)
         with open(id_list, 'r') as f:
             protein_identifiers = [line.strip() for line in f]
     else:
@@ -145,7 +147,7 @@ def context(fasta: str,
     batches = [protein_list[i:i + BATCH_SIZE] for i in range(0, len(protein_list), BATCH_SIZE)]
 
     with ThreadPoolExecutor(max_workers=threads) as executor:
-        futures = {executor.submit(fetch_seqid_batch, batch, annotation, db_path): batch for batch in batches}
+        futures = {executor.submit(fetch_seqid_batch, batch, annotation_source, db_path): batch for batch in batches}
         for future in tqdm(as_completed(futures), total=len(futures), desc="Fetching seqIDs"):
             target_rows.extend(future.result())
 
@@ -164,12 +166,12 @@ def context(fasta: str,
         for i in range(CUGO_number - cugo_range, CUGO_number + cugo_range + 1):
             context_ranges[parent_ID].add(i)
 
-    headers = ["seqID", "parent_ID", "aa_length", "strand", f"{annotation}", "CUGO_number", "no_TMH"]
+    headers = ["seqID", "parent_ID", "aa_length", "strand", f"{annotation_source}_ID", "CUGO_number", "no_TMH"]
     context_data = defaultdict(list)
 
     with ThreadPoolExecutor(max_workers=threads) as executor:
         futures = {
-            executor.submit(fetch_parent_context, pid, numbers, annotation, db_path, BATCH_SIZE): pid
+            executor.submit(fetch_parent_context, pid, numbers, annotation_source, db_path, BATCH_SIZE): pid
             for pid, numbers in context_ranges.items()
         }
         for future in tqdm(as_completed(futures), total=len(futures), desc="Fetching parent contexts"):
@@ -192,7 +194,7 @@ def context(fasta: str,
         all_results.extend(results)
 
     if all_results:
-        write_context_output(all_results, annotation, output_file)
+        write_context_output(all_results, annotation_source, output_file)
         logging.info(f"Context written to {output_file}")
         return output_file
     else:
@@ -209,36 +211,36 @@ def load_cugo_context(path: str):
         raise ValueError(f"Not a valid CUGO context TSV file: {path}")
     return pd.read_csv(path, sep='\t', na_values='', keep_default_na=False)
 
-def extract_flanking_window(df: pd.DataFrame, lower: int, upper: int):
-    flank_list = list(range(lower, upper + 1))
+def extract_flanking_window(df: pd.DataFrame, upstream: int, downstream: int):
+    flank_list = list(range(-upstream, downstream + 1))
     flank_str = [str(i) for i in flank_list]
     return df[flank_str]
 
-def top_context(df: pd.DataFrame, top_n: int):
+def top_context(df: pd.DataFrame, annotation_columns: int):
     """
     Extracts top N most frequent values and their counts from each column.
 
     Args:
         df (pd.DataFrame): input dataframe to analyze
-        top_n (int): number of top values to extract per column
+        annotation_columns (int): number of top values to extract per column
 
     Returns:
         tuple: (id_df, count_df) where:
             - id_df (pd.DataFrame): top N values for each column
             - count_df (pd.DataFrame): corresponding counts for each value
     """
-    top_ids = [[] for _ in range(top_n)]
-    top_counts = [[] for _ in range(top_n)]
+    top_ids = [[] for _ in range(annotation_columns)]
+    top_counts = [[] for _ in range(annotation_columns)]
 
     for col in df.columns:
         # get value counts for current column
         counts = df[col].value_counts()
-        for i in range(top_n):
+        for i in range(annotation_columns):
             if i < len(counts):
                 top_ids[i].append(counts.index[i])
                 top_counts[i].append(counts.iloc[i])
             else:
-                # fill with nan if fewer than top_n values exist
+                # fill with nan if fewer than annotation_columns values exist
                 top_ids[i].append(np.nan)
                 top_counts[i].append(np.nan)
 
@@ -247,7 +249,7 @@ def top_context(df: pd.DataFrame, top_n: int):
     return id_df, count_df
 
 
-def bin_by_size(cont: pd.DataFrame, bin_width: int):
+def bin_by_size(cont: pd.DataFrame, length_bin_width: int):
     # Convert aa_length to numeric
     cont['aa_length'] = pd.to_numeric(cont['aa_length'], errors='coerce')
 
@@ -256,7 +258,7 @@ def bin_by_size(cont: pd.DataFrame, bin_width: int):
     # Determine bin edges for length histograms
     all_lengths = cont['aa_length'].dropna()
     max_len = all_lengths.max()
-    bin_edges = np.arange(0, max_len + bin_width, bin_width)
+    bin_edges = np.arange(0, max_len + length_bin_width, length_bin_width)
     n_bins = len(bin_edges) - 1
 
     # Create histogram data for each position
@@ -273,15 +275,15 @@ def bin_by_size(cont: pd.DataFrame, bin_width: int):
 
 
 def compute_homogeneity_index(context_path: str,
-                               flank_lower: int,
-                               flank_upper: int,
-                               bin_width: int,
+                               upstream: int,
+                               downstream: int,
+                               length_bin_width: int,
                                window: int = 1) -> pd.DataFrame:
     """
     Computes per-position homogeneity index from binned length data.
     """
-    cont = load_context_data(context_path, flank_lower, flank_upper)
-    heat_data, bin_edges, positions, position_counts = bin_by_size(cont, bin_width)
+    cont = load_context_data(context_path, upstream, downstream)
+    heat_data, bin_edges, positions, position_counts = bin_by_size(cont, length_bin_width)
 
     dist_df = pd.DataFrame(heat_data, index=bin_edges[:-1], columns=positions)
     mode_idx = dist_df.apply(lambda c: c.argmax())
@@ -302,22 +304,22 @@ def compute_homogeneity_index(context_path: str,
     return summary_df
 
 def load_context_data(context_path: str,
-                      flank_lower: int,
-                      flank_upper: int):
+                      upstream: int,
+                      downstream: int):
     cont = pd.read_csv(context_path, sep='\t', dtype=str)
     cont['position'] = pd.to_numeric(cont['position'], errors='coerce')
-    cont = cont[(cont['position'] >= flank_lower) & (cont['position'] <= flank_upper)]
+    cont = cont[(cont['position'] >= -upstream) & (cont['position'] <= downstream)]
 
     return cont
 
-def retrieve_top_annotations_per_position(cont: pd.DataFrame, top_n: int, positions: list, annotation: str):
-    top_ids = [[] for _ in range(top_n)]
-    top_counts = [[] for _ in range(top_n)]
+def retrieve_top_annotations_per_position(cont: pd.DataFrame, annotation_columns: int, positions: list, annotation_source: str):
+    top_ids = [[] for _ in range(annotation_columns)]
+    top_counts = [[] for _ in range(annotation_columns)]
 
     for pos in positions:
         pos_data = cont[cont['position'] == pos]
-        counts = pos_data[f'{annotation}'].value_counts(dropna=False)  # include NA
-        for i in range(top_n):
+        counts = pos_data[f'{annotation_source}_ID'].value_counts(dropna=False)  # include NA
+        for i in range(annotation_columns):
             if i < len(counts):
                 annotation_id = counts.index[i]
                 top_ids[i].append(annotation_id)
@@ -331,10 +333,10 @@ def retrieve_top_annotations_per_position(cont: pd.DataFrame, top_n: int, positi
 
 def plot_top_annotations_per_position(
         context_path: str,
-        flank_lower: int,
-        flank_upper: int,
-        top_n: int,
-        annotation: str,
+        upstream: int,
+        downstream: int,
+        annotation_columns: int,
+        annotation_source: str,
         save: bool = False,
         ax: plt.Axes = None,
         plot_path: str = None
@@ -342,39 +344,39 @@ def plot_top_annotations_per_position(
     """
     Creates scatter plot showing top annotation categories at each genomic position.
     """
-    title = f'Top {annotation}s per position'
+    title = f'Top {annotation_source}_IDs per position'
 
     if not is_cugo_context_tsv(context_path):
         raise ValueError(f"Not a valid CUGO context TSV file: {context_path}")
 
     # Load context data
-    cont = load_context_data(context_path, flank_lower, flank_upper)
+    cont = load_context_data(context_path, upstream, downstream)
 
     positions = sorted(cont['position'].unique())
 
     # dynamically color by first 6 digits of md5 hash
-    unique_annotations = cont[f'{annotation}'].dropna().unique()
+    unique_annotations = cont[f'{annotation_source}_ID'].dropna().unique()
     annotation_color_map = {
         ann_id: '#' + hashlib.md5(str(ann_id).encode()).hexdigest()[:6]
         for i, ann_id in enumerate(unique_annotations)
     }
 
     # Extract top N annotations per position
-    top_ids, top_counts = retrieve_top_annotations_per_position(cont, top_n, positions, annotation)
+    top_ids, top_counts = retrieve_top_annotations_per_position(cont, annotation_columns, positions, annotation_source)
 
     # X-position offsets for multiple ranks
-    subtick_width = 0.8 / top_n
-    subtick_offset = (top_n - 1) * subtick_width / 2
+    subtick_width = 0.8 / annotation_columns
+    subtick_offset = (annotation_columns - 1) * subtick_width / 2
 
     x_pos, y_values, annotation_labels, point_colors = [], [], [], []
     all_xticks, all_xlabels = [], []
 
     if ax is None:
-        width = max(8, int((flank_upper - flank_lower + 1) * top_n * 0.6))
+        width = max(8, int((upstream + downstream + 1) * annotation_columns * 0.6))
         fig, ax = plt.subplots(figsize=(width, 16/3))
 
     for pos_idx, pos in enumerate(positions):
-        for rank in range(top_n):
+        for rank in range(annotation_columns):
             annotation_id = top_ids[rank][pos_idx]
             count = top_counts[rank][pos_idx]
 
@@ -437,15 +439,15 @@ def plot_top_annotations_per_position(
 
 
 def plot_size_per_position(context_path: str,
-                           flank_lower: int,
-                           flank_upper: int,
+                           upstream: int,
+                           downstream: int,
                            title: str = 'Density of amino acid length per position',
-                           top_n: int = 3,
+                           annotation_columns: int = 3,
                            save: bool = False,
                            ax: Optional[plt.Axes] = None,
                            pos_boundaries: Optional[list] = None,
-                           bin_width: int = 50,
-                           y_range: int = None,
+                           length_bin_width: int = 50,
+                           length_ymax: int = None,
                            plot_path: str = None
                            ):
     """
@@ -454,13 +456,13 @@ def plot_size_per_position(context_path: str,
     if not is_cugo_context_tsv(context_path):
         raise ValueError(f"Not a valid CUGO context TSV file: {context_path}")
 
-    cont = load_context_data(context_path, flank_lower, flank_upper)
-    heat_data, bin_edges, positions, position_counts = bin_by_size(cont, bin_width)
+    cont = load_context_data(context_path, upstream, downstream)
+    heat_data, bin_edges, positions, position_counts = bin_by_size(cont, length_bin_width)
     n_bins = len(bin_edges) - 1
 
     # Create figure if no axes provided
     if ax is None:
-        width = max(8, int((flank_upper - flank_lower + 1) * top_n * 0.6))
+        width = max(8, int((upstream + downstream + 1) * annotation_columns * 0.6))
         fig, ax = plt.subplots(figsize=(width, 16/3))
 
     # Set up colormap and normalization
@@ -489,19 +491,19 @@ def plot_size_per_position(context_path: str,
     ax.set_xticklabels(xtick_labels, fontsize=14)
 
     # Set y-axis range
-    if y_range:
-        n_bins = int(y_range / bin_width)
+    if length_ymax:
+        n_bins = int(length_ymax / length_bin_width)
 
     ax.set_ylim(0, n_bins)
 
     # Set y-ticks at 0, middle, and maximum
-    max_length = n_bins * bin_width
+    max_length = n_bins * length_bin_width
     ax.set_yticks([0, n_bins/2, n_bins])
     ax.set_yticklabels(['0', f'{int(max_length/2)}', f'{int(max_length)}'], fontsize=16)
 
     # Set axis labels and title
     ax.set_xlabel('position', fontsize=18)
-    ax.set_ylabel(f'Length (bin size: {bin_width})', fontsize=18)
+    ax.set_ylabel(f'Length (bin size: {length_bin_width})', fontsize=18)
     ax.set_title(title, fontsize=20)
 
     if save:
@@ -510,14 +512,14 @@ def plot_size_per_position(context_path: str,
 
 
 def plot_tmh_per_position(context_path: str,
-                          flank_lower: int,
-                          flank_upper: int,
+                          upstream: int,
+                          downstream: int,
                           title: str = 'Density of transmembrane helix count per position',
-                          top_n: int = 3,
+                          annotation_columns: int = 3,
                           save: bool = False,
                           ax: Optional[plt.Axes] = None,
                           pos_boundaries: Optional[list] = None,
-                          y_range: int = None,
+                          tmh_max: int = None,
                           plot_path: str = None
                           ):
     """
@@ -526,7 +528,7 @@ def plot_tmh_per_position(context_path: str,
     if not is_cugo_context_tsv(context_path):
         raise ValueError(f"Not a valid CUGO context TSV file: {context_path}")
 
-    cont = load_context_data(context_path, flank_lower, flank_upper)
+    cont = load_context_data(context_path, upstream, downstream)
 
     # Convert no_TMH to numeric
     cont['no_TMH'] = pd.to_numeric(cont['no_TMH'], errors='coerce')
@@ -551,7 +553,7 @@ def plot_tmh_per_position(context_path: str,
 
     # Create figure if no axes provided
     if ax is None:
-        width = max(8, int((flank_upper - flank_lower + 1) * top_n * 0.6))
+        width = max(8, int((upstream + downstream + 1) * annotation_columns * 0.6))
         fig, ax = plt.subplots(figsize=(width, 16/3))
 
     # Set up colormap and normalization
@@ -580,8 +582,8 @@ def plot_tmh_per_position(context_path: str,
     ax.set_xticklabels(xtick_labels, fontsize=14)
 
     # Set y-axis range
-    if y_range:
-        n_bins = min(y_range, n_bins)
+    if tmh_max:
+        n_bins = min(tmh_max, n_bins)
 
     ax.set_ylim(0, n_bins)
 
@@ -600,18 +602,18 @@ def plot_tmh_per_position(context_path: str,
     return norm, cmap
 
 def cugo_plot(context_path: str,
-              flank_lower: int,
-              flank_upper: int,
+              upstream: int,
+              downstream: int,
               output: str,
-              annotation: str = 'COG_ID',
-              top_n: int = 3,
+              annotation_source: str = 'COG',
+              annotation_columns: int = 3,
               cugo: bool = False,
               size: bool = False,
               tmh: bool = False,
               all_plots: bool = False,
-              bin_width: int = 10,
-              y_range: int = None,
-              tmh_y_range: int = None,
+              length_bin_width: int = 50,
+              length_ymax: int = None,
+              tmh_max: int = None,
               svg: bool = False,
               force: bool = False
               ):
@@ -620,23 +622,26 @@ def cugo_plot(context_path: str,
 
     Args:
         context_path: Path to context TSV file
-        flank_lower: Lower flank boundary for plotting
-        flank_upper: Upper flank boundary for plotting
+        upstream: Number of positions upstream of the target protein
+        downstream: Number of positions downstream of the target protein
         output: Output directory for plots
-        annotation: Selects annotation type for analysis (default: COG_ID)
-        top_n: Number of top annotation to display (default: 3)
+        annotation_source: Annotation source: COG, KEGG, Pfam (default: COG)
+        annotation_columns: Number of most prevalent annotations to display per position (default: 3)
         cugo: Whether to generate annotation-only plot
         size: Whether to generate size-only plot
         tmh: Whether to generate TMH-only plot
         all_plots: Whether to generate combined plot
-        bin_width: Bin width for size plots
-        y_range: Y-axis range for size plots
-        tmh_y_range: Y-axis range for TMH plots
+        length_bin_width: Bin width for size plots (default: 50)
+        length_ymax: Y-axis upper limit for size plots
+        tmh_max: Y-axis upper limit for TMH plots
         svg: Generate plot in SVG format
         force: Whether to overwrite existing files
     """
-    if annotation not in ANNOTATION_COLUMNS:
-        raise ValueError(f'Invalid annotation. Please select one of the following annotations: {",".join(ANNOTATION_COLUMNS)}')
+    if f'{annotation_source}_ID' not in ANNOTATION_COLUMNS:
+        raise ValueError('Invalid annotation source. Please select one of the following: COG, KEGG, Pfam')
+
+    if upstream < 0 or downstream < 0:
+        raise ValueError('upstream and downstream must not be negative')
 
     if not (all_plots or cugo or size or tmh):
         raise ValueError(f'No output plot format chosen please select: --all, --cugo, --size, --tmh')
@@ -645,14 +650,14 @@ def cugo_plot(context_path: str,
 
     # generate annotation-only plot
     if cugo:
-        logger.info(f'Plotting top {top_n} annotations per position.')
+        logger.info(f'Plotting top {annotation_columns} annotations per position.')
         if svg:
             cugo_plot_path = ensure_path(output, f'{dataset_name}_cugo_only.svg', force=force)
         else:
             cugo_plot_path = ensure_path(output, f'{dataset_name}_cugo_only.png', force=force)
 
-        plot_top_annotations_per_position(context_path=context_path, flank_lower=flank_lower,
-                                   flank_upper=flank_upper, annotation=annotation, top_n=top_n, save=True,
+        plot_top_annotations_per_position(context_path=context_path, upstream=upstream,
+                                   downstream=downstream, annotation_source=annotation_source, annotation_columns=annotation_columns, save=True,
                                    plot_path=cugo_plot_path)
         (logger.info
          (f"Plot saved to {cugo_plot_path}"))
@@ -665,9 +670,9 @@ def cugo_plot(context_path: str,
         else:
             size_plot_path = ensure_path(output, f'{dataset_name}_size_only.png', force=force)
 
-        norm_size, cmap_size = plot_size_per_position(context_path=context_path, flank_lower=flank_lower,
-                                                      flank_upper=flank_upper, top_n=top_n, save=True, bin_width=bin_width,
-                                                      plot_path=size_plot_path, y_range=y_range)
+        norm_size, cmap_size = plot_size_per_position(context_path=context_path, upstream=upstream,
+                                                      downstream=downstream, annotation_columns=annotation_columns, save=True, length_bin_width=length_bin_width,
+                                                      plot_path=size_plot_path, length_ymax=length_ymax)
         logger.info(f"Plot saved to {size_plot_path}")
 
 
@@ -678,22 +683,22 @@ def cugo_plot(context_path: str,
         else:
             tmh_plot_path = ensure_path(output, f'{dataset_name}_tmh_only.png', force=force)
 
-        norm_tmh, cmap_tmh = plot_tmh_per_position(context_path=context_path, flank_lower=flank_lower,
-                                                   flank_upper=flank_upper, top_n=top_n, save=True, y_range=tmh_y_range,
+        norm_tmh, cmap_tmh = plot_tmh_per_position(context_path=context_path, upstream=upstream,
+                                                   downstream=downstream, annotation_columns=annotation_columns, save=True, tmh_max=tmh_max,
                                                    plot_path=tmh_plot_path)
         logger.info(f"Plot saved to {tmh_plot_path}")
 
 
     # generate combined plot
     if all_plots:
-        logger.info(f'Plotting top {top_n} annotations per position.')
+        logger.info(f'Plotting top {annotation_columns} annotations per position.')
         if svg:
             all_plot_path = ensure_path(output, f'{dataset_name}_cugo.svg', force=force)
         else:
             all_plot_path = ensure_path(output, f'{dataset_name}_cugo.png', force=force)
 
         # calculate dynamic figure width
-        width = max(8, int((flank_upper - flank_lower + 1) * top_n * 0.6))
+        width = max(8, int((upstream + downstream + 1) * annotation_columns * 0.6))
         figsize = (width, 16)
 
         # Create figure with gridspec for colorbar columns
@@ -713,34 +718,34 @@ def cugo_plot(context_path: str,
         # plot top annotation per position
         pos_centers, pos_boundaries = plot_top_annotations_per_position(
             context_path=context_path,
-            flank_lower=flank_lower,
-            flank_upper=flank_upper,
-            annotation=annotation,
-            top_n=top_n,
+            upstream=upstream,
+            downstream=downstream,
+            annotation_source=annotation_source,
+            annotation_columns=annotation_columns,
             ax=ax1,
         )
 
         # plot protein size distribution
         norm_size, cmap_size = plot_size_per_position(
             context_path=context_path,
-            flank_lower=flank_lower,
-            flank_upper=flank_upper,
+            upstream=upstream,
+            downstream=downstream,
             title='Density of amino acid length per position',
             ax=ax2,
             pos_boundaries=pos_boundaries,
-            bin_width=bin_width,
-            y_range=y_range
+            length_bin_width=length_bin_width,
+            length_ymax=length_ymax
         )
 
         # plot TMH distribution
         norm_tmh, cmap_tmh = plot_tmh_per_position(
             context_path=context_path,
-            flank_lower=flank_lower,
-            flank_upper=flank_upper,
+            upstream=upstream,
+            downstream=downstream,
             title='Density of transmembrane helix count per position',  # Fixed typo
             ax=ax3,
             pos_boundaries=pos_boundaries,
-            y_range=tmh_y_range
+            tmh_max=tmh_max
         )
 
         ax1.tick_params(labelbottom=True)
@@ -765,59 +770,67 @@ def cugo_plot(context_path: str,
         plt.savefig(all_plot_path, dpi=300, bbox_inches='tight')
         logger.info(f"Plot saved to {all_plot_path}")
 
-def fetch_cog_definitions(db_path: str, cog_ids: set):
-    with sqlite3.connect(db_path) as conn:
-        placeholders = ', '.join('?' for _ in cog_ids)
-        rows = conn.execute(f"""
-            SELECT COG_ID, COG_definition
-            FROM cog_data
-            WHERE COG_ID IN ({placeholders})
-        """, list(cog_ids)).fetchall()
-
-    return {cog_id: cog_definition for cog_id, cog_definition in rows}
-
-def fetch_annotation_definitions(db_path: str, annotation: str, annotation_ids: set):
-    annotation_prefix = annotation.replace('_ID', '')
-    table_name = f"{annotation_prefix.lower()}_data"
-    definition_column = f"{annotation_prefix}_definition"
+def fetch_annotation_definitions(db_path: str, annotation_source: str, annotation_ids: set):
+    table_name = f"{annotation_source.lower()}_data"
+    definition_column = f"{annotation_source}_definition"
 
     with sqlite3.connect(db_path) as conn:
         placeholders = ', '.join('?' for _ in annotation_ids)
         rows = conn.execute(f"""
-            SELECT {annotation}, {definition_column}
+            SELECT {annotation_source}_ID, {definition_column}
             FROM {table_name}
-            WHERE {annotation} IN ({placeholders})
+            WHERE {annotation_source}_ID IN ({placeholders})
         """, list(annotation_ids)).fetchall()
 
     return {annotation_id: definition for annotation_id, definition in rows}
 
+def annotation_definitions_available(db_path: str, annotation_source: str) -> bool:
+    table_name = f"{annotation_source.lower()}_data"
+    definition_column = f"{annotation_source}_definition"
+
+    with sqlite3.connect(db_path) as conn:
+        table_exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table_name,)
+        ).fetchone()
+        if not table_exists:
+            return False
+        has_definitions = conn.execute(
+            f"SELECT 1 FROM {table_name} WHERE {definition_column} IS NOT NULL LIMIT 1"
+        ).fetchone()
+
+    return has_definitions is not None
+
 def cugo_yaml(context_path: str,
-             flank_lower: int,
-             flank_upper: int,
+             upstream: int,
+             downstream: int,
              db_path: str,
              output: str,
-             annotation: str,
-             top_n: int = 3,
+             annotation_source: str,
+             annotation_columns: int = 3,
              force: bool = False
              ):
-    dataset_name = determine_dataset_name(context_path, '.', 0, '_context')
-    top_annotations_path = ensure_path(output, f'{dataset_name}_top{top_n}.yaml', force=force)
+    if not annotation_definitions_available(db_path, annotation_source):
+        logger.warning(f"No {annotation_source} definitions in database, skipping top annotations YAML")
+        return None
 
-    cont = load_context_data(context_path, flank_lower, flank_upper)
+    dataset_name = determine_dataset_name(context_path, '.', 0, '_context')
+    top_annotations_path = ensure_path(output, f'{dataset_name}_top{annotation_columns}.yaml', force=force)
+
+    cont = load_context_data(context_path, upstream, downstream)
 
     positions = sorted(cont['position'].unique())
 
-    top_ids, _ = retrieve_top_annotations_per_position(cont, top_n, positions, annotation)
+    top_ids, _ = retrieve_top_annotations_per_position(cont, annotation_columns, positions, annotation_source)
 
     unique_ids = {annotation_id for rank in top_ids for annotation_id in rank
                   if annotation_id is not None and not pd.isna(annotation_id)}
 
-    definitions = fetch_annotation_definitions(db_path, annotation, unique_ids)
+    definitions = fetch_annotation_definitions(db_path, annotation_source, unique_ids)
 
     top_annotations = {}
     for pos_idx, pos in enumerate(positions):
         position_annotations = {}
-        for rank in range(top_n):
+        for rank in range(annotation_columns):
             annotation_id = top_ids[rank][pos_idx]
             if annotation_id is None:
                 continue
@@ -828,7 +841,7 @@ def cugo_yaml(context_path: str,
 
     with open(top_annotations_path, 'w') as f:
         yaml.dump(top_annotations, f, sort_keys=False, default_flow_style=False, width=float('inf'))
-    logger.info(f"Top {top_n} annotations saved to {top_annotations_path}")
+    logger.info(f"Top {annotation_columns} annotations saved to {top_annotations_path}")
 
     return top_annotations_path
 
@@ -838,23 +851,23 @@ def cugo_yaml(context_path: str,
 # ======================================
 
 def cugo(db_path: str,
-         cugo_range: int,
          fasta: str,
          id_list: str,
          output_dir: str,
-         flank_lower: int,
-         flank_upper: int,
-         annotation: str = 'COG_ID',
-         top_n: int = 3,
+         upstream: int,
+         downstream: int,
+         cugo_range: int = 0,
+         annotation_source: str = 'COG',
+         annotation_columns: int = 3,
          threads: int = 1,
          svg: bool = False,
          force: bool = False,
-         bin_width: int = 10,
-         y_range: int = None,
-         tmh_y_range: int = None,
+         length_bin_width: int = 50,
+         length_ymax: int = None,
+         tmh_max: int = None,
          export: bool = False,
          export_dir: str = None,
-         export_annotation: bool = False,
+         export_annotation: bool = True,
          homogeneity_threshold: float = 0.75,
          homogeneity_window: int = 1,
          sequence_frequency_threshold: float = 0.75,
@@ -864,17 +877,19 @@ def cugo(db_path: str,
 
     Args:
         db_path: Path to CUGO file
-        cugo_range: Range around target protein for context
         output_dir: Directory for output files
-        flank_lower: Lower flank boundary for plotting
-        flank_upper: Upper flank boundary for plotting
-        top_n: Number of top COGs to display (default: 3)
+        upstream: Number of positions upstream of the target protein
+        downstream: Number of positions downstream of the target protein
+        cugo_range: Number of adjacent CUGO units to include on each side of the target's CUGO unit (default: 0)
+        annotation_source: Annotation source: COG, KEGG, Pfam (default: COG)
+        annotation_columns: Number of most prevalent annotations to display per position (default: 3)
         threads: Number of threads (default: 1).
         svg: Generate plot in SVG format.
         force: Whether to overwrite existing files
         fasta: Optional path to FASTA file
-        bin_width: Bin width for size plots
-        y_range: Y-axis range for size plots
+        length_bin_width: Bin width for size plots (default: 50)
+        length_ymax: Y-axis upper limit for size plots
+        tmh_max: Y-axis upper limit for TMH plots
         export: Whether to automatically export a FASTA file for each position whose
             homogeneity and relative sequence frequency pass their thresholds
         export_dir: Directory for automatically exported FASTA files (default: output_dir)
@@ -891,8 +906,14 @@ def cugo(db_path: str,
     Returns:
         tuple: (context_file_path, plot_file_path)
     """
-    if annotation not in ANNOTATION_COLUMNS:
-        raise ValueError(f'Invalid annotation. Please select one of the following annotations: {",".join(ANNOTATION_COLUMNS)}')
+    if f'{annotation_source}_ID' not in ANNOTATION_COLUMNS:
+        raise ValueError('Invalid annotation source. Please select one of the following: COG, KEGG, Pfam')
+
+    if upstream < 0 or downstream < 0:
+        raise ValueError('upstream and downstream must not be negative')
+
+    if cugo_range < 0:
+        raise ValueError('cugo_range must not be negative')
 
     if export and (homogeneity_threshold is None or sequence_frequency_threshold is None):
         raise ValueError(
@@ -905,7 +926,7 @@ def cugo(db_path: str,
         fasta=fasta,
         id_list=id_list,
         db_path=db_path,
-        annotation=annotation,
+        annotation_source=annotation_source,
         cugo_range=cugo_range,
         output_dir=output_dir,
         threads=threads,
@@ -917,13 +938,13 @@ def cugo(db_path: str,
         return None, None
 
     homogeneity_df = compute_homogeneity_index(
-        context_file, flank_lower, flank_upper, bin_width, window=homogeneity_window
+        context_file, upstream, downstream, length_bin_width, window=homogeneity_window
     )
     if export and export_annotation:
         dataset_name = determine_dataset_name(context_file, '.', 0, '_context')
-        cont = load_context_data(context_file, flank_lower, flank_upper)
+        cont = load_context_data(context_file, upstream, downstream)
         positions = list(homogeneity_df.index)
-        top_ids, _ = retrieve_top_annotations_per_position(cont, 1, positions, annotation)
+        top_ids, _ = retrieve_top_annotations_per_position(cont, 1, positions, annotation_source)
         top_annotations = {
             position: 'NA' if top_id is None or pd.isna(top_id) else top_id
             for position, top_id in zip(positions, top_ids[0])
@@ -942,15 +963,13 @@ def cugo(db_path: str,
 
     # create gene arrow plot for homogeneous positions
     if homogeneous_positions:
-        homogeneous_lower = min(homogeneous_positions)
-        homogeneous_upper = max(homogeneous_positions)
         cugo_arrow_plot(
             context_path=context_file,
-            flank_lower=homogeneous_lower,
-            flank_upper=homogeneous_upper,
+            upstream=max(0, -min(homogeneous_positions)),
+            downstream=max(0, max(homogeneous_positions)),
             output=output_dir,
-            annotation=annotation,
-            bin_width=bin_width,
+            annotation_source=annotation_source,
+            length_bin_width=length_bin_width,
             force=force
         )
     else:
@@ -959,27 +978,27 @@ def cugo(db_path: str,
     # create comprehensive plots
     cugo_plot(
         context_path=context_file,
-        flank_lower=flank_lower,
-        flank_upper=flank_upper,
-        top_n=top_n,
+        upstream=upstream,
+        downstream=downstream,
+        annotation_columns=annotation_columns,
         output=output_dir,
-        annotation=annotation,
+        annotation_source=annotation_source,
         all_plots=True,
-        bin_width=bin_width,
-        y_range=y_range,
-        tmh_y_range=tmh_y_range,
+        length_bin_width=length_bin_width,
+        length_ymax=length_ymax,
+        tmh_max=tmh_max,
         svg=svg,
         force=force
     )
 
     cugo_yaml(
         context_path=context_file,
-        flank_lower=flank_lower,
-        flank_upper=flank_upper,
+        upstream=upstream,
+        downstream=downstream,
         db_path=db_path,
         output=output_dir,
-        annotation=annotation,
-        top_n=top_n,
+        annotation_source=annotation_source,
+        annotation_columns=annotation_columns,
         force=force
     )
 
@@ -993,11 +1012,11 @@ def cugo(db_path: str,
     return context_file, plot_file
 
 def cugo_arrow_plot(context_path: str,
-                    flank_lower: int,
-                    flank_upper: int,
+                    upstream: int,
+                    downstream: int,
                     output: str,
-                    annotation: str,
-                    bin_width: int = 50,
+                    annotation_source: str,
+                    length_bin_width: int = 50,
                     force: bool = False):
     # arrow style without broad head
     # color by annotation
@@ -1006,10 +1025,10 @@ def cugo_arrow_plot(context_path: str,
     arrow_plot_path = ensure_path(output, f'{dataset_name}_cugo_arrow.svg', force=force)
 
     # Load context data
-    cont = load_context_data(context_path, flank_lower, flank_upper)
+    cont = load_context_data(context_path, upstream, downstream)
 
     # get bin with highest number of sequences for each position
-    heat_data, bin_edges, positions, position_counts = bin_by_size(cont, bin_width)
+    heat_data, bin_edges, positions, position_counts = bin_by_size(cont, length_bin_width)
     size_mode_idx = heat_data.argmax(axis=0)
     size_mode_lower = bin_edges[size_mode_idx]
     size_mode_upper = bin_edges[size_mode_idx + 1]
@@ -1017,11 +1036,11 @@ def cugo_arrow_plot(context_path: str,
 
     positions = sorted(cont['position'].unique())
 
-    if annotation not in cont.columns:
-        raise ValueError(f"No {annotation} annotation found in {context_path}")
+    if f'{annotation_source}_ID' not in cont.columns:
+        raise ValueError(f"No {annotation_source} annotation found in {context_path}")
 
     # get top annotation per position
-    top_ids, top_counts = retrieve_top_annotations_per_position(cont, 1, positions, annotation)
+    top_ids, top_counts = retrieve_top_annotations_per_position(cont, 1, positions, annotation_source)
 
     gene_context_length = 0
 
