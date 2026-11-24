@@ -41,9 +41,9 @@ AASTK is actively developed and supported, so do not hesitate to submit an issue
 ### Using conda (recommended)
 We recommend installing AASTK using conda, in a dedicated environment created for the software.
 ```bash
-conda create aastk
+conda create -n aastk
 conda activate aastk
-conda install -c bioconda aastk
+conda install -c conda-forge -c bioconda aastk
 ```
 
 In addition to the software and dependencies, AASTK requires a SQL database for full functionality, and is best used with the GlobDB protein complement. A fastA file of the GlobDB proteins can be exported from the AASTK SQL database using `aastk export_fasta` so only a single download is required. 
@@ -70,9 +70,9 @@ After installation of the AASTK software and dependencies, the AASTK SQL databas
 
 ### From source
 ```bash
-wget https://github.com/dspeth/aastk/archive/refs/tags/v0.1.0.tar.gz
-tar -xzf v0.1.0.tar.gz
-cd aastk-0.1.0
+git clone https://github.com/dspeth/aastk.git
+cd aastk
+git checkout $(git describe --tags --abbrev=0)
 pip install .
 ```
 
@@ -137,11 +137,11 @@ All command line options for CASM are available on the [CASM command line refere
 <br />
 
 ### CUGO
-`aastk cugo -r 0 -l -3 -u 6 -d aastk_sql_database.db -f fasta_file.faa -o cugo_output_dir`  
+`aastk cugo --upstream 3 --downstream 6 -d aastk_sql_database.db -f fasta_file.faa -o cugo_output_dir`  
 Where:  
-`-r` is the range of CUGO numbers to be considered  
-`-l` specifies the number of positions upstream of the gene of interest  
-`-u` specifies the number of positions downstream of the gene of interest  
+`--upstream` specifies the number of positions upstream of the gene of interest  
+`--downstream` specifies the number of positions downstream of the gene of interest  
+`--cugo_range` (optional, default 0) is the number of adjacent CUGO units to include on each side of the gene of interest's CUGO unit  
 `-d` is the path to the AASTK SQL database  
 `-f` and -o control the input and output  
 All command line options for CASM are available on the [CUGO command line reference page](https://globdb.org/aastk/cugo).  
